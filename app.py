@@ -579,12 +579,23 @@ def inject_version():
 
 @app.teardown_request
 def _close_db_connection(exc):
-    """Close thread-local DB connection after each request.
+    """Close thread-local DB connections after each request.
 
     Flask's dev server creates a new thread per request. Without this,
     SQLite connections accumulate until GC runs → "Too many open files".
+    Every module holding a thread-local connection must be closed here.
     """
     db.close()
+    try:
+        from models import api_rate_limit as _arl
+        _arl.close()
+    except Exception:
+        pass
+    try:
+        from models import rate_limit as _rl
+        _rl.close()
+    except Exception:
+        pass
 
 def _csrf_exempt(path):
     """Return True if the path should skip CSRF validation."""

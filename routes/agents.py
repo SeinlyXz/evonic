@@ -499,6 +499,60 @@ def api_get_agent_skills(agent_id):
     return jsonify({'skills': skill_ids})
 
 
+@agents_bp.route('/api/agents/<agent_id>/slash-commands', methods=['GET'])
+def api_get_slash_commands(agent_id):
+    """Return the slash commands available to this agent (web context).
+
+    Mirrors the permission filtering in slash_commands.help_handler so the
+    chat autocomplete only shows commands the agent can actually run.
+    """
+    from backend.slash_commands import command_registry
+
+    agent = db.get_agent(agent_id)
+    if not agent:
+        return jsonify({'error': 'Agent not found'}), 404
+
+    # Super agent?
+    try:
+        super_agent = db.get_super_agent()
+        is_super = bool(super_agent and super_agent.get('id') == agent_id)
+    except Exception:
+        is_super = False
+
+    # /cd and /cwd also available to agents with remote/tunnel workplaces
+    can_cd = is_super
+    if not can_cd:
+        try:
+            workplace_id = agent.get('workplace_id')
+            if workplace_id:
+                workplace = db.get_workplace(workplace_id)
+                if workplace and workplace.get('type') in ('remote', 'tunnel'):
+                    can_cd = True
+        except Exception:
+            pass
+
+    # /sub requires the subagent skill (or super)
+    has_subagent = is_super
+    if not has_subagent:
+        try:
+            has_subagent = 'subagent' in db.get_agent_skills(agent_id)
+        except Exception:
+            has_subagent = False
+
+    commands = []
+    for name, desc in command_registry.list_commands():
+        if name in {'cd', 'cwd'} and not can_cd:
+            continue
+        if name in {'restart', 'shutdown'} and not is_super:
+            continue
+        if name == 'sub' and not has_subagent:
+            continue
+        commands.append({'name': name, 'description': desc})
+
+    commands.sort(key=lambda c: c['name'])
+    return jsonify({'commands': commands})
+
+
 @agents_bp.route('/api/agents/<agent_id>/skills', methods=['PUT'])
 def api_set_agent_skills(agent_id):
     data = request.get_json()

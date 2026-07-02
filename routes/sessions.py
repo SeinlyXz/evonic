@@ -41,11 +41,15 @@ def _human_size(size_bytes: int | None) -> str:
 # Reuse text/pdf detection from read_attachment
 from backend.tools.read_attachment import (
     _is_textish, _is_pdf, _read_pdf_text, _TEXTISH_EXTS,
+    _is_xlsx, _read_xlsx_text, _XLSX_EXTS,
+    _is_docx, _read_docx_text, _DOCX_EXTS,
 )
 
 _ALLOWED_EXTS = (
     {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.zip'}
     | _TEXTISH_EXTS
+    | _XLSX_EXTS
+    | _DOCX_EXTS
 )
 
 
@@ -129,6 +133,18 @@ def _process_upload(file_storage, agent_id: str, session_id: str,
     # --- PDF: extract text ---
     if _is_pdf(mime_type, target_path):
         text = _read_pdf_text(target_path, offset=1)
+        prefix = f"[Attached file: {original_name}]\n```\n{text}\n```"
+        return {'image_url': None, 'text_prefix': prefix, 'attachment_info': attachment_info}
+
+    # --- Spreadsheet (xlsx/xlsm): extract cell text ---
+    if _is_xlsx(mime_type, target_path):
+        text = _read_xlsx_text(target_path)
+        prefix = f"[Attached file: {original_name}]\n```\n{text}\n```"
+        return {'image_url': None, 'text_prefix': prefix, 'attachment_info': attachment_info}
+
+    # --- Word document (docx): extract text ---
+    if _is_docx(mime_type, target_path):
+        text = _read_docx_text(target_path)
         prefix = f"[Attached file: {original_name}]\n```\n{text}\n```"
         return {'image_url': None, 'text_prefix': prefix, 'attachment_info': attachment_info}
 

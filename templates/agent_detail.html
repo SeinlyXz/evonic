@@ -851,7 +851,14 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
     <div id="tab-chat" class="tab-content flex-1 min-h-0">
         <div class="flex flex-col lg:flex-row gap-4 h-full" style="min-height:0;">
             <!-- Chat Panel -->
-            <div id="chat-panel" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 flex-[3] flex flex-col min-w-0" style="min-height:0; overflow:hidden;">
+            <div id="chat-panel" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 flex-[3] flex flex-col min-w-0" style="min-height:0; overflow:hidden; position:relative;">
+                <!-- Drag & drop overlay (covers whole chat panel) -->
+                <div id="chat-drop-overlay" class="hidden absolute inset-0 z-[60] flex items-center justify-center rounded-lg border-2 border-dashed border-indigo-400 bg-indigo-50/90 dark:bg-indigo-900/70 pointer-events-none">
+                    <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-300 text-base font-medium">
+                        <svg class="w-7 h-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Drop file to attach
+                    </div>
+                </div>
                 <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                     <h3 id="chatPanelTitle" class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[200px] sm:max-w-[320px] flex items-center gap-1.5">
                         <img id="agent-avatar-header" src="/api/agents/{{ agent.id }}/avatar" alt="" class="w-6 h-6 rounded-full object-cover bg-indigo-50 dark:bg-indigo-900/20 flex-shrink-0" onerror="this.style.display='none'">
@@ -900,7 +907,13 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
                     <p id="workplace-overlay-msg" class="text-sm text-yellow-700 dark:text-yellow-400">Connecting to workplace...</p>
                     <button onclick="retryWorkplaceConnect()" class="ml-auto text-xs text-yellow-700 dark:text-yellow-400 hover:underline flex-shrink-0">Retry</button>
                 </div>
-                <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <div id="chat-compose-area" class="relative p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+                    <!-- Slash command autocomplete popup -->
+                    <div id="slash-cmd-popup"
+                         style="bottom: 100%; margin-bottom: 0.5rem;"
+                         class="hidden absolute left-4 right-4 z-50 max-h-72 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
+                        <!-- Command items rendered here -->
+                    </div>
                     <!-- File preview strip -->
                     <div id="chat-file-preview" class="hidden mb-2 flex items-center gap-2 px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
                         <img id="chat-file-preview-img" class="hidden w-12 h-12 object-cover rounded" alt="">
@@ -921,7 +934,7 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
                     </div>
                     <div class="flex gap-2">
                         <input type="file" id="chat-file-input" class="hidden"
-                               accept="image/*,.pdf,.txt,.md,.log,.json,.yaml,.yml,.xml,.csv,.tsv,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.html,.css,.sql,.sh,.toml,.ini,.zip"
+                               accept="image/*,.pdf,.txt,.md,.log,.json,.yaml,.yml,.xml,.csv,.tsv,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.html,.css,.sql,.sh,.toml,.ini,.zip,.xlsx,.xlsm,.docx"
                                onchange="onChatFileSelected(this)">
                         <button type="button" id="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()"
                                 class="p-2.5 text-gray-400 hover:text-indigo-500 transition-colors flex-shrink-0" title="Attach file">
@@ -4517,7 +4530,175 @@ function stopIdlePoll() {
 // Desktop = viewport >= 1024px: Enter without Shift submits, Shift+Enter inserts newline.
 // The check runs per-keypress so it reacts immediately to resize / rotation.
 const CHAT_DESKTOP_BREAKPOINT = 1024;
+// ==================== Slash Command Autocomplete ====================
+
+let _slashCommands = null;          // cached [{name, description}]
+let _slashCommandsAgent = null;     // agent id the cache belongs to
+let _slashFiltered = [];            // currently shown commands
+let _slashActiveIdx = 0;            // highlighted index
+
+async function loadSlashCommands() {
+    if (_slashCommands && _slashCommandsAgent === AGENT_ID) return _slashCommands;
+    try {
+        const res = await fetch(`/api/agents/${AGENT_ID}/slash-commands`);
+        const data = await res.json();
+        _slashCommands = data.commands || [];
+        _slashCommandsAgent = AGENT_ID;
+    } catch (e) {
+        _slashCommands = [];
+    }
+    return _slashCommands;
+}
+
+function slashPopupOpen() {
+    const p = document.getElementById('slash-cmd-popup');
+    return p && !p.classList.contains('hidden');
+}
+
+function hideSlashPopup() {
+    const p = document.getElementById('slash-cmd-popup');
+    if (p) p.classList.add('hidden');
+    _slashFiltered = [];
+    _slashActiveIdx = 0;
+}
+
+// Return the command query (text after leading '/') if the input is a single
+// slash token, else null. "/", "/me" → query; "/model x", "hi" → null.
+function slashQuery(value) {
+    if (!value.startsWith('/')) return null;
+    const rest = value.slice(1);
+    if (/\s/.test(rest)) return null;   // space typed → into args, not a command pick
+    return rest;
+}
+
+async function updateSlashPopup() {
+    const input = document.getElementById('chat-input');
+    const q = slashQuery(input.value);
+    if (q === null) { hideSlashPopup(); return; }
+
+    const cmds = await loadSlashCommands();
+    const ql = q.toLowerCase();
+    _slashFiltered = cmds.filter(c => c.name.toLowerCase().includes(ql));
+    if (!_slashFiltered.length) { hideSlashPopup(); return; }
+
+    if (_slashActiveIdx >= _slashFiltered.length) _slashActiveIdx = 0;
+    renderSlashPopup();
+}
+
+function renderSlashPopup() {
+    const p = document.getElementById('slash-cmd-popup');
+    if (!p) return;
+    p.innerHTML = _slashFiltered.map((c, i) => `
+        <div class="slash-cmd-item flex items-baseline gap-2 px-3 py-2 cursor-pointer ${i === _slashActiveIdx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}"
+             data-idx="${i}" onmousedown="event.preventDefault(); pickSlashCommand(${i})" onmouseenter="setSlashActive(${i})">
+            <span class="text-sm font-medium text-indigo-600 dark:text-indigo-400 flex-shrink-0">/${c.name}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400 truncate">${c.description || ''}</span>
+        </div>`).join('');
+    p.classList.remove('hidden');
+    // Keep active item in view
+    const active = p.querySelector(`[data-idx="${_slashActiveIdx}"]`);
+    if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
+function setSlashActive(idx) {
+    _slashActiveIdx = idx;
+    renderSlashPopup();
+}
+
+function moveSlashActive(delta) {
+    if (!_slashFiltered.length) return;
+    _slashActiveIdx = (_slashActiveIdx + delta + _slashFiltered.length) % _slashFiltered.length;
+    renderSlashPopup();
+}
+
+// Insert the chosen command into the input; leave a trailing space so the user
+// can type args right away.
+function pickSlashCommand(idx) {
+    const cmd = _slashFiltered[idx];
+    if (!cmd) return;
+    const input = document.getElementById('chat-input');
+    input.value = '/' + cmd.name + ' ';
+    hideSlashPopup();
+    input.focus();
+    input.dispatchEvent(new Event('input')); // auto-grow
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const input = document.getElementById('chat-input');
+    if (!input) return;
+    input.addEventListener('input', updateSlashPopup);
+    // Hide popup when focus leaves the input (mousedown on items preempts blur).
+    input.addEventListener('blur', function () { setTimeout(hideSlashPopup, 120); });
+
+    initChatDropzone();
+});
+
+// ==================== Drag & Drop File Attach ====================
+
+function initChatDropzone() {
+    const area = document.getElementById('chat-panel');
+    const overlay = document.getElementById('chat-drop-overlay');
+    if (!area || !overlay) return;
+
+    let dragDepth = 0; // track nested dragenter/leave so overlay doesn't flicker
+
+    function hasFiles(e) {
+        return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+    }
+
+    area.addEventListener('dragenter', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth++;
+        overlay.classList.remove('hidden');
+    });
+    area.addEventListener('dragover', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    });
+    area.addEventListener('dragleave', function (e) {
+        if (!hasFiles(e)) return;
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) overlay.classList.add('hidden');
+    });
+    area.addEventListener('drop', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth = 0;
+        overlay.classList.add('hidden');
+        const file = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!file) return;
+        attachDroppedFile(file);
+    });
+}
+
+// Push a dropped file into the hidden file input, then reuse the normal
+// selected-file flow (preview + send).
+function attachDroppedFile(file) {
+    const fileInput = document.getElementById('chat-file-input');
+    try {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        onChatFileSelected(fileInput);
+    } catch (err) {
+        alert('Could not attach the dropped file.');
+    }
+}
+
 function chatInputKeydown(event) {
+    // Slash command popup navigation takes priority when open.
+    if (slashPopupOpen()) {
+        if (event.key === 'ArrowDown') { event.preventDefault(); moveSlashActive(1); return; }
+        if (event.key === 'ArrowUp')   { event.preventDefault(); moveSlashActive(-1); return; }
+        if (event.key === 'Escape')    { event.preventDefault(); hideSlashPopup(); return; }
+        if (event.key === 'Enter' || event.key === 'Tab') {
+            event.preventDefault();
+            pickSlashCommand(_slashActiveIdx);
+            return;
+        }
+    }
     if (event.key !== 'Enter') return;
     if (event.shiftKey) {
         // Shift+Enter inserts a newline natively; offer the editor-mode tip for long messages.

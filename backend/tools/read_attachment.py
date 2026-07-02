@@ -55,6 +55,134 @@ def _is_pdf(mime_type: Optional[str], path: str) -> bool:
     return path.lower().endswith('.pdf')
 
 
+_XLSX_EXTS = {'.xlsx', '.xlsm'}
+_XLSX_TEXT_CAP_BYTES = 100 * 1024  # 100 KB cap on extracted spreadsheet text
+
+
+def _is_xlsx(mime_type: Optional[str], path: str) -> bool:
+    if mime_type and mime_type.lower() in (
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel.sheet.macroenabled.12',
+    ):
+        return True
+    return os.path.splitext(path)[1].lower() in _XLSX_EXTS
+
+
+_DOCX_EXTS = {'.docx'}
+_DOCX_TEXT_CAP_BYTES = 100 * 1024  # 100 KB cap on extracted document text
+
+
+def _is_docx(mime_type: Optional[str], path: str) -> bool:
+    if mime_type and mime_type.lower() == (
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ):
+        return True
+    return os.path.splitext(path)[1].lower() in _DOCX_EXTS
+
+
+def _read_docx_text(path: str) -> str:
+    """Extract paragraph and table text from a .docx document."""
+    try:
+        from docx import Document  # type: ignore
+    except ImportError:
+        return (
+            "[DOCX text extraction unavailable: install 'python-docx' to enable]\n\n"
+            + json.dumps({'filename': os.path.basename(path), 'path': path}, indent=2)
+        )
+
+    try:
+        doc = Document(path)
+    except Exception as e:
+        return f"Error: Failed to open document: {e}"
+
+    out_parts = []
+    total = 0
+    truncated = False
+
+    def _append(text: str) -> bool:
+        nonlocal total, truncated
+        if not text:
+            return True
+        line = text + '\n'
+        if total + len(line) > _DOCX_TEXT_CAP_BYTES:
+            truncated = True
+            return False
+        out_parts.append(line)
+        total += len(line)
+        return True
+
+    for para in doc.paragraphs:
+        if not _append(para.text):
+            break
+    if not truncated:
+        for table in doc.tables:
+            stop = False
+            for row in table.rows:
+                cells = [c.text for c in row.cells]
+                if any(cells) and not _append('\t'.join(cells)):
+                    stop = True
+                    break
+            if stop:
+                break
+
+    body = ''.join(out_parts)
+    if not body.strip():
+        return (
+            "[Document contains no extractable text.]\n\n"
+            + json.dumps({'filename': os.path.basename(path), 'path': path}, indent=2)
+        )
+    header = f"[DOCX: {os.path.basename(path)}" + (" | truncated at 100KB" if truncated else "") + "]"
+    return f"{header}\n\n{body}"
+
+
+def _read_xlsx_text(path: str) -> str:
+    """Extract cell values from an .xlsx/.xlsm as tab-separated text per sheet."""
+    try:
+        from openpyxl import load_workbook  # type: ignore
+    except ImportError:
+        return (
+            "[XLSX text extraction unavailable: install 'openpyxl' to enable]\n\n"
+            + json.dumps({'filename': os.path.basename(path), 'path': path}, indent=2)
+        )
+
+    try:
+        wb = load_workbook(path, read_only=True, data_only=True)
+    except Exception as e:
+        return f"Error: Failed to open spreadsheet: {e}"
+
+    out_parts = []
+    total = 0
+    truncated = False
+    for ws in wb.worksheets:
+        out_parts.append(f"--- Sheet: {ws.title} ---\n")
+        for row in ws.iter_rows(values_only=True):
+            cells = ['' if v is None else str(v) for v in row]
+            # Skip fully empty rows to keep output compact
+            if not any(cells):
+                continue
+            line = '\t'.join(cells) + '\n'
+            if total + len(line) > _XLSX_TEXT_CAP_BYTES:
+                truncated = True
+                break
+            out_parts.append(line)
+            total += len(line)
+        if truncated:
+            break
+    try:
+        wb.close()
+    except Exception:
+        pass
+
+    body = ''.join(out_parts)
+    if not body.strip():
+        return (
+            "[Spreadsheet contains no readable cells.]\n\n"
+            + json.dumps({'filename': os.path.basename(path), 'path': path}, indent=2)
+        )
+    header = f"[XLSX: {os.path.basename(path)}" + (" | truncated at 100KB" if truncated else "") + "]"
+    return f"{header}\n\n{body}"
+
+
 def _agent_root(agent_id: str) -> str:
     return os.path.realpath(os.path.join(_ATTACHMENTS_ROOT, agent_id))
 
@@ -245,6 +373,12 @@ def execute(agent, args: dict) -> dict:
     # Dispatch
     if _is_pdf(mime_type, resolved_path):
         return {"result": _read_pdf_text(resolved_path, offset)}
+
+    if _is_xlsx(mime_type, resolved_path):
+        return {"result": _read_xlsx_text(resolved_path)}
+
+    if _is_docx(mime_type, resolved_path):
+        return {"result": _read_docx_text(resolved_path)}
 
     if _is_textish(mime_type, resolved_path):
         return {"result": _read_text_file(resolved_path, offset=offset)}
