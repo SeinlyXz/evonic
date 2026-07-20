@@ -62,6 +62,7 @@ class BackgroundJob:
     schedule_id: Optional[str] = None
     kind: str = "wrapper"            # wrapper | tmux | screen | nohup
     pgrep_pattern: str = ""          # nohup fallback when no PID file
+    backend_ctx: Optional[dict] = None  # backend-identity snapshot (see below)
     status: str = "running"          # running | done | timeout
     exit_code: Optional[int] = None
     finished_at: Optional[float] = None
@@ -77,7 +78,8 @@ class BackgroundJobRegistry:
 
     def register(self, session_id: str, session_name: str, log_file: str,
                  pid_file: str, command: str, kind: str = "wrapper",
-                 pgrep_pattern: str = "") -> BackgroundJob:
+                 pgrep_pattern: str = "",
+                 backend_ctx: Optional[dict] = None) -> BackgroundJob:
         with self._guard:
             dedup_key = session_name or pgrep_pattern or command
             for j in self._jobs.values():
@@ -95,6 +97,7 @@ class BackgroundJobRegistry:
                 started_at=time.time(),
                 kind=kind,
                 pgrep_pattern=pgrep_pattern,
+                backend_ctx=backend_ctx or {},
             )
             self._jobs[job.job_id] = job
             self._prune_finished(session_id)
@@ -146,6 +149,28 @@ class BackgroundJobRegistry:
 
 # Singleton
 background_jobs = BackgroundJobRegistry()
+
+
+# agent_context fields that determine WHICH execution backend/sandbox
+# registry.get_backend() resolves. The completion poll runs later from the
+# scheduler with only agent_id in hand and rebuilds the agent from the DB —
+# but is_subagent/is_explorer/agent_name are runtime-only and the resolved
+# `workspace` (e.g. a sub-agent scratchpad) isn't the raw DB column. A mismatch
+# makes get_backend RECREATE the session's container/keeper mid-run — destroying
+# the very tmux/nohup process being watched and yielding a bogus "finished".
+# Snapshotting these at spawn time lets the poll resolve the IDENTICAL sandbox.
+_BACKEND_CTX_KEYS = (
+    "sandbox_enabled", "workplace_id", "workspace",
+    "is_subagent", "is_explorer", "run_as_user",
+)
+
+
+def snapshot_backend_ctx(agent: dict) -> dict:
+    """Capture the backend-identity fields from a live agent_context."""
+    agent = agent or {}
+    snap = {k: agent.get(k) for k in _BACKEND_CTX_KEYS}
+    snap["agent_name"] = agent.get("agent_name") or agent.get("name") or ""
+    return snap
 
 
 def parse_wrapper_script(script: str) -> Optional[dict]:
@@ -316,6 +341,7 @@ def create_detach_schedule(job: BackgroundJob, agent_id: str,
         "pgrep_pattern": job.pgrep_pattern,
         "session_id": job.session_id,
         "agent_id": agent_id,
+        "backend_ctx": job.backend_ctx or {},
         "external_user_id": external_user_id,
         "channel_id": channel_id,
         "deadline_ts": job.started_at + _MAX_WATCH_SECONDS,
@@ -363,7 +389,14 @@ def run_poll_action(action_config: dict) -> dict:
         scripts = None
         check_status_script = build_manual_status_script(
             kind, session_name, pid_file, pgrep_pattern)
+    # Rebuild the agent context and overlay the spawn-time backend snapshot so
+    # get_backend resolves the SAME sandbox the job runs in. Without this, a
+    # workspace/identity mismatch would recreate (destroy) the container/keeper
+    # and the poll would see the process gone — a false "finished". See
+    # snapshot_backend_ctx / _BACKEND_CTX_KEYS.
     agent = db.get_agent(action_config["agent_id"]) or {}
+    agent = {**agent, **(action_config.get("backend_ctx") or {})}
+    agent.setdefault("id", action_config["agent_id"])
 
     try:
         backend = registry.get_backend(session_id, agent)

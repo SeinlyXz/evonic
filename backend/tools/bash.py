@@ -191,16 +191,21 @@ def _track_background_spawn(agent: dict, session_id: str, script: str,
         return
 
     from backend.agent_runtime.background_jobs import (
-        parse_wrapper_script, parse_manual_spawn, background_jobs, auto_watch)
+        parse_wrapper_script, parse_manual_spawn, background_jobs, auto_watch,
+        snapshot_backend_ctx)
+
+    # Capture which sandbox this ran in so the later completion poll targets the
+    # SAME one (the poll only has agent_id and would otherwise recreate it).
+    backend_ctx = snapshot_backend_ctx(agent)
 
     _wrap = parse_wrapper_script(script)
     if _wrap:
-        job = background_jobs.register(session_id, **_wrap)
+        job = background_jobs.register(session_id, backend_ctx=backend_ctx, **_wrap)
     else:
         _spawn = parse_manual_spawn(script)
         if not _spawn:
             return
-        job = background_jobs.register(session_id, **_spawn)
+        job = background_jobs.register(session_id, backend_ctx=backend_ctx, **_spawn)
 
     auto_watch(
         job,
