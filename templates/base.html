@@ -63,10 +63,10 @@
         }
     }
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=22">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=24">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/recap-prose.css') }}?v=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/hljs-chat.css') }}?v=1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/agent-sidebar.css') }}?v=14">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/agent-sidebar.css') }}?v=16">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/katex.min.css') }}?v=1">
     <script>
     // CSRF double-submit: attach X-CSRF-Token header to all mutating same-origin requests
@@ -118,7 +118,7 @@
 	    <div class="header-left-side flex w-auto gap-4">
 
             <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle agent sidebar" title="Toggle agent sidebar">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9 3v18"/><rect class="sb-fill" x="4.2" y="4.2" width="3.6" height="15.6" rx="1.8" fill="currentColor" stroke="none"/></svg>
             </button>
             <a href="/" class="brand">
                 <img src="{{ url_for('static', filename='img/mascot.png') }}" alt="Evonic" class="brand-icon" width="28" height="28">
@@ -249,7 +249,7 @@
     </div>
     <script src="{{ url_for('static', filename='js/update-banner.js') }}?v=2" defer></script>
     <script src="{{ url_for('static', filename='js/system-alerts.js') }}?v=1" defer></script>
-    <script src="{{ url_for('static', filename='js/agent-sidebar.js') }}?v=5" defer></script>
+    <script src="{{ url_for('static', filename='js/agent-sidebar.js') }}?v=7" defer></script>
     <script src="{{ url_for('static', filename='js/evonic.js') }}?v=5" defer></script>
     <!-- Wrapped so the deferred agent-sidebar.js has defined initSidebar by DOMContentLoaded -->
     <script>document.addEventListener('DOMContentLoaded', function () { initSidebar(); });</script>

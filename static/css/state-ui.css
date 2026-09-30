@@ -1,0 +1,86 @@
+/* Shared by agent_detail.html (and mirrors the inline copy in sessions.html) */
+/* ══════════ Agent State / Session State revamp ══════════
+   One palette with meaning: neutral surfaces; green = ok/active, indigo = plan/context, amber = attention. */
+.st-sec + .st-sec { margin-top: 1.25rem; }
+.st-sec-h { display: flex; align-items: center; gap: .5rem; min-height: 1.5rem; margin-bottom: .5rem; font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #64748b; }
+.st-sec-h svg { width: 14px; height: 14px; flex: none; }
+.st-sec-h .st-chip { padding: .125rem .5rem; font-size: .6875rem; letter-spacing: 0; text-transform: none; }
+.st-sec-h .st-sec-r { margin-left: auto; letter-spacing: 0; text-transform: none; font-weight: 500; font-variant-numeric: tabular-nums; }
+html.dark .st-sec-h { color: #94a3b8; }
+/* Agent State rows: [icon] label ............ value */
+.st-kv { display: flex; align-items: center; gap: .625rem; min-height: 2rem; font-size: .8125rem; }
+.st-kv + .st-kv { border-top: 1px solid rgb(148 163 184 / .16); }
+.st-kv > svg { width: 15px; height: 15px; flex: none; color: #94a3b8; }
+.st-kv-l { color: #64748b; flex: none; }
+html.dark .st-kv-l { color: #94a3b8; }
+.st-kv-v { margin-left: auto; min-width: 0; display: inline-flex; align-items: center; gap: .375rem; font-weight: 500; color: #1f2937; text-align: right; }
+html.dark .st-kv-v { color: #e2e8f0; }
+.st-kv-v > span:not(.st-dot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-kv-v button, button.st-kv-v { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: .125rem .375rem; margin-right: -.375rem; border-radius: 6px; }
+.st-kv-v button:hover, button.st-kv-v:hover { background: rgb(148 163 184 / .16); }
+.st-dot { width: .5rem; height: .5rem; border-radius: 9999px; flex: none; background: #94a3b8; }
+.st-dot.green { background: #22c55e; box-shadow: 0 0 0 3px rgb(34 197 94 / .18); }
+.st-dot.amber { background: #f59e0b; box-shadow: 0 0 0 3px rgb(245 158 11 / .18); }
+.st-dot.indigo { background: #6366f1; box-shadow: 0 0 0 3px rgb(99 102 241 / .18); }
+/* chips (skills, mode) */
+.st-chip { display: inline-flex; align-items: center; gap: .375rem; max-width: 100%; padding: .25rem .625rem; border-radius: 8px; border: 1px solid rgb(148 163 184 / .25);
+    background: rgb(148 163 184 / .10); color: #334155; font-size: .75rem; font-weight: 500; line-height: 1rem; }
+html.dark .st-chip { color: #cbd5e1; }
+.st-chip.green { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.st-chip.amber { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+html.dark .st-chip.green { background: rgb(16 185 129 / .14); color: #6ee7b7; border-color: rgb(16 185 129 / .30); }
+html.dark .st-chip.amber { background: rgb(245 158 11 / .16); color: #fcd34d; border-color: rgb(245 158 11 / .32); }
+.st-chip button { border: 0; background: transparent; color: inherit; opacity: .55; cursor: pointer; padding: 0 .125rem; font-size: .875rem; line-height: 1; }
+.st-chip button:hover { opacity: 1; color: #ef4444; }
+.st-chips { display: flex; flex-wrap: wrap; gap: .375rem; }
+/* context meter */
+.st-meter { height: .375rem; border-radius: 9999px; background: rgb(148 163 184 / .25); overflow: hidden; }
+.st-meter > div { height: 100%; border-radius: 9999px; transition: width .3s ease; }
+/* plan file */
+.st-plan { display: flex; align-items: flex-start; gap: .5rem; width: 100%; margin-top: .5rem; padding: .5rem .625rem; border: 1px solid rgb(99 102 241 / .28); border-radius: 10px;
+    background: rgb(99 102 241 / .08); color: #4338ca; font-size: .75rem; text-align: left; cursor: pointer; transition: background-color .15s; }
+.st-plan:hover { background: rgb(99 102 241 / .16); }
+html.dark .st-plan { color: #c7d2fe; border-color: rgb(129 140 248 / .32); background: rgb(129 140 248 / .10); }
+.st-plan svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.st-plan-dir { opacity: .6; flex: none; line-height: 1.25rem; }
+.st-plan-name { min-width: 0; overflow-wrap: anywhere; font-weight: 500; line-height: 1.25rem; }
+/* tasks */
+.st-tasks-progress { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.st-tasks-progress .st-meter { flex: 1; height: .25rem; }
+.st-task { display: flex; align-items: flex-start; gap: .5rem; padding: .25rem 0; font-size: .75rem; line-height: 1.25rem; color: #334155; }
+html.dark .st-task { color: #e2e8f0; }
+.st-task > svg { width: 14px; height: 14px; flex: none; margin-top: .3125rem; }
+.st-task.pending > svg { color: #94a3b8; }
+.st-task.doing > svg { color: #f59e0b; }
+.st-task.done { color: #94a3b8; }
+.st-task.done > svg { color: #22c55e; }
+html.dark .st-task.done { color: #64748b; }
+.st-done-toggle { display: flex; align-items: center; gap: .375rem; margin-top: .25rem; padding: .25rem 0; font-size: .75rem; color: #64748b; cursor: pointer; list-style: none; user-select: none; }
+.st-done-toggle::-webkit-details-marker { display: none; }
+.st-done-toggle svg { width: 14px; height: 14px; transition: transform .15s; }
+details[open] > .st-done-toggle svg { transform: rotate(90deg); }
+.st-done-toggle:hover { color: #334155; }
+html.dark .st-done-toggle:hover { color: #e2e8f0; }
+/* summary block */
+
+/* Side panel header actions: icon buttons (+ labelled Recap) instead of a bare emoji and duplicated look-alike arrows */
+.state-btn { display: inline-flex; align-items: center; justify-content: center; gap: .375rem; min-width: 1.75rem; height: 1.75rem; padding: 0 .375rem; border: 0; border-radius: 8px;
+    background: transparent; color: #6b7280; font-size: .75rem; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color .15s, color .15s; }
+.state-btn svg { width: 1rem; height: 1rem; flex: none; }
+.state-btn:hover:not(:disabled) { background: rgb(148 163 184 / .16); color: #1f2937; }
+.state-btn:disabled { opacity: .7; cursor: default; }
+.state-btn-text { padding: 0 .5rem; }
+.state-btn-text:hover:not(:disabled) { background: rgb(99 102 241 / .14); color: #4f46e5; }
+html.dark .state-btn { color: #94a3b8; }
+html.dark .state-btn:hover:not(:disabled) { color: #e2e8f0; }
+html.dark .state-btn-text:hover:not(:disabled) { color: #c7d2fe; }
+.state-spin { animation: state-spin .8s linear infinite; }
+@keyframes state-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .state-spin { animation: none; } }
+
+/* One container: sections stacked with a gap; the summary is separated by a divider */
+.st-stack { display: flex; flex-direction: column; gap: 1.25rem; }
+.st-stack > .st-sec + .st-sec { margin-top: 0; }
+.st-summary { padding-top: 1rem; border-top: 1px solid rgb(148 163 184 / .2); }
+.st-stack > .st-summary:first-child { border-top: 0; padding-top: 0; }
+#agent-state-content { padding-top: .25rem; }

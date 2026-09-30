@@ -1,6 +1,36 @@
 {% extends "base.html" %}
 {% from 'partials/toggle.html' import toggle_widget %}
 {% block content %}
+<style>
+/* Endpoint list: search box + tidy rows (method badges in a fixed column, monospace path, muted handler name) */
+.ep-search { position: relative; }
+.ep-search-icon { position: absolute; left: .875rem; top: 50%; width: 1rem; height: 1rem; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+.ep-search input { width: 100%; box-sizing: border-box; padding: .625rem .875rem .625rem 2.5rem; border-radius: 12px; border: 1px solid #e5e7eb; background: #f9fafb; color: #1f2937; font-size: .875rem; outline: none;
+    transition: border-color .15s, box-shadow .15s; }
+.ep-search input:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .14); }
+html.dark .ep-search input { border-color: #374151; background: rgb(15 23 42 / .6); color: #e5e7eb; }
+.ep-row { display: flex; align-items: flex-start; gap: .875rem; padding: .75rem .875rem; border: 1px solid #e5e7eb; border-radius: 12px; background: #f9fafb; transition: background-color .15s, border-color .15s; }
+.ep-row:hover { border-color: #c7d2fe; background: #f5f7ff; }
+html.dark .ep-row { border-color: rgb(148 163 184 / .16); background: rgb(148 163 184 / .06); }
+html.dark .ep-row:hover { border-color: rgb(129 140 248 / .4); background: rgb(129 140 248 / .08); }
+.ep-methods { flex: none; width: 5rem; display: flex; flex-wrap: wrap; gap: .25rem; padding-top: .0625rem; }
+.ep-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; padding: .125rem .4rem; border-radius: 6px; border: 1px solid transparent;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .6875rem; font-weight: 600; line-height: 1.125rem; background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+.ep-badge.get    { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.ep-badge.post   { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+.ep-badge.put, .ep-badge.patch { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.ep-badge.delete { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+html.dark .ep-badge.get    { background: rgb(16 185 129 / .14); color: #6ee7b7; border-color: rgb(16 185 129 / .30); }
+html.dark .ep-badge.post   { background: rgb(99 102 241 / .18); color: #a5b4fc; border-color: rgb(99 102 241 / .35); }
+html.dark .ep-badge.put, html.dark .ep-badge.patch { background: rgb(245 158 11 / .16); color: #fcd34d; border-color: rgb(245 158 11 / .32); }
+html.dark .ep-badge.delete { background: rgb(239 68 68 / .16); color: #fca5a5; border-color: rgb(239 68 68 / .32); }
+.ep-main { min-width: 0; flex: 1 1 auto; }
+.ep-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; font-weight: 500; line-height: 1.375rem; color: #1f2937; overflow-wrap: anywhere; }
+html.dark .ep-path { color: #e2e8f0; }
+.ep-name { margin-top: .125rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; color: #64748b; overflow-wrap: anywhere; }
+html.dark .ep-name { color: #94a3b8; }
+@media (max-width: 520px) { .ep-row { flex-direction: column; gap: .5rem; } .ep-methods { width: auto; } }
+</style>
 <div class="p-4 md:p-6">
     <!-- Header -->
     <div class="flex flex-wrap justify-between items-center gap-2 mb-6">
@@ -81,10 +111,9 @@
                         <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">HTTP/API Endpoints <span id="endpoint-count" class="text-sm font-normal text-gray-400"></span></h3>
                     </div>
                     <div id="endpoints-search-wrap" class="hidden mb-3">
-                        <div class="relative">
-                            <svg class="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
-                            <input id="endpoints-search" type="text" autocomplete="off" placeholder="Search endpoints..."
-                                   class="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <div class="ep-search">
+                            <svg class="ep-search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input id="endpoints-search" type="search" autocomplete="off" placeholder="Search endpoints..." aria-label="Search endpoints">
                         </div>
                     </div>
                     <div id="endpoints-list" class="space-y-2">
@@ -383,16 +412,13 @@ function renderEndpointsPage() {
 
     const start = (endpointsPage - 1) * ENDPOINTS_PER_PAGE;
     list.innerHTML = filtered.slice(start, start + ENDPOINTS_PER_PAGE).map(item => `
-        <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg dark:bg-gray-600">
-            <div class="flex-shrink-0 w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mt-0.5">
-                <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5m2.656-2.656l1.5-1.5a4 4 0 115.656 5.656l-1.5 1.5M8 16l8-8"/></svg>
+        <div class="ep-row">
+            <div class="ep-methods">
+                ${(item.methods || []).map(method => `<span class="ep-badge ${esc(String(method).toLowerCase())}">${esc(method)}</span>`).join('')}
             </div>
-            <div class="flex-1 min-w-0">
-                <div class="flex flex-wrap items-center gap-1.5">
-                    ${(item.methods || []).map(method => `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold font-mono bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">${esc(method)}</span>`).join('')}
-                    <span class="text-sm font-medium text-gray-800 dark:text-gray-100 font-mono break-all">${esc(item.path)}</span>
-                </div>
-                ${item.endpoint ? `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono break-all">${esc(item.endpoint)}</p>` : ''}
+            <div class="ep-main">
+                <div class="ep-path">${esc(item.path)}</div>
+                ${item.endpoint ? `<div class="ep-name">${esc(item.endpoint)}</div>` : ''}
             </div>
         </div>
     `).join('');

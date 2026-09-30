@@ -3,6 +3,8 @@
 /* Disable zoom on mobile */
 html {
     touch-action: manipulation;
+    /* No rubber-band bounce (or scroll chaining) when the main page is overscrolled */
+    overscroll-behavior: none;
     /* !important so CSS takes priority over the inline style set by anti-flash script,
        allowing var(--bg-page) to respond to html.dark class toggling at runtime. */
     background-color: var(--bg-page) !important;
@@ -28,6 +30,11 @@ html {
     --nav-active-mobile-bg: #eef2ff;
 }
 
+/* Tell the browser the page is dark so native UI (scrollbar tracks, form controls) renders dark too —
+   otherwise hovering a scrollbar paints a light-grey track. */
+html.dark { color-scheme: dark; }
+/* Chat message lists: slim scrollbar with a transparent track and a soft thumb */
+#chat-messages { scrollbar-width: thin; scrollbar-color: rgb(148 163 184 / .35) transparent; }
 html.dark {
     --bg-page: #0f172a;
     --bg-card: #1e293b;
@@ -239,6 +246,7 @@ html.dark .recall-hop { color: #94a3b8; }
 }
 
 body {
+    overscroll-behavior: none;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     line-height: 1.6;
     color: var(--text-primary);
