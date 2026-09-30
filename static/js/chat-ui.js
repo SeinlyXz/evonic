@@ -1798,7 +1798,9 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
 
     } else if (isError) {
         const $icon = $('<svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"/></svg>');
-        $bubble = $('<div class="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-2 text-sm flex items-start gap-2">').append($icon, $('<span>').text(content));
+        // min-width:0 + overflow-wrap:anywhere: a flex child cannot shrink below its longest unbroken token, so long
+        // error payloads (JSON without spaces) used to stretch the bubble and the whole message list sideways.
+        $bubble = $('<div class="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-2 text-sm flex items-start gap-2 min-w-0 max-w-full">').append($icon, $('<span style="min-width:0;overflow-wrap:anywhere">').text(content));
 
     } else if (isSystem) {
         const sysMatch = content.match(/^\[system[^\]]*\]\s*/i);

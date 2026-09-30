@@ -34,6 +34,8 @@ html {
    otherwise hovering a scrollbar paints a light-grey track. */
 html.dark { color-scheme: dark; }
 /* Chat message lists: slim scrollbar with a transparent track and a soft thumb */
+/* The message list only scrolls vertically: one over-wide bubble must never push the whole list sideways */
+#chat-messages { overflow-x: hidden; }
 #chat-messages { scrollbar-width: thin; scrollbar-color: rgb(148 163 184 / .35) transparent; }
 html.dark {
     --bg-page: #0f172a;
