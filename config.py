@@ -164,6 +164,12 @@ if not _SECRET_KEY_ENV:
 SECRET_KEY = _SECRET_KEY_ENV
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = _get_env_int("PORT", 8080, min_val=1, max_val=65535)
+
+# Default avatars for agents without an uploaded image (generated from the agent's name, Boring Avatars style).
+# AVATAR_STYLE: marble | beam | pixel | sunset | ring | bauhaus.  AVATAR_COLORS: comma-separated #RRGGBB list
+# (empty = the built-in palette).
+AVATAR_STYLE = os.getenv("AVATAR_STYLE", "beam").strip().lower() or "beam"
+AVATAR_COLORS = [c.strip() for c in os.getenv("AVATAR_COLORS", "").split(",") if c.strip()]
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
 # External service manager. When unset, Evonic manages its own process.
