@@ -5116,8 +5116,9 @@ def restore_command(backup_file, dry_run=False, force=False, no_restart=False):
     try:
         with open(backup_file, "rb") as f:
             header = f.read(4)
-            # tar.gz starts with 0x1f 0x8b (gzip magic)
-            if header[:2] != b"\x1f\x8b":
+            # Plain archives start with a known magic: gzip (0x1f 0x8b),
+            # bzip2 ("BZh") or zip ("PK"). Anything else is treated as encrypted.
+            if not (header[:2] == b"\x1f\x8b" or header[:3] == b"BZh" or header[:2] == b"PK"):
                 is_encrypted = True
     except Exception:
         pass
