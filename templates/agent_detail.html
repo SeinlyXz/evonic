@@ -52,7 +52,7 @@ html.dark #chat-bash-hint { background: #e11d48; color: #fff1f2; }
 .chat-composer.is-bash #chat-attach-btn { display: none; }
 #chat-send-btn { grid-area: send; }
 .chat-composer:focus-within { border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .14), 0 10px 28px -14px rgb(79 70 229 / .35); }
-html.dark .chat-composer { background: rgb(17 24 39 / .72); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
+html.dark .chat-composer { background: rgb(10 15 28 / .62); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
 html.dark .chat-composer:focus-within { border-color: #6366f1; box-shadow: 0 0 0 3px rgb(99 102 241 / .22), 0 10px 28px -14px rgb(79 70 229 / .5); }
 .chat-composer #chat-input { grid-area: input; display: block; box-sizing: border-box; width: 100%; min-height: 2.5rem; max-height: 150px; padding: .5rem .25rem; margin: 0; border: 0; border-radius: 0;
     background: transparent; box-shadow: none; outline: none; resize: none; overflow-y: hidden; line-height: 1.5rem; color: #1f2937;
@@ -138,6 +138,11 @@ html.dark .chat-composer:has(#chat-input.chat-bash-input) .chat-icon-btn { borde
     body[data-agent-tab]:not([data-agent-tab="chat"]) #mobile-floating-bar { display: flex; position: absolute; top: 0; left: 0; right: 0; z-index: 20; gap: .5rem; align-items: stretch; margin: 0; }
     /* reserve room so the first card starts below the bar, then scrolls under it */
     body[data-agent-tab]:not([data-agent-tab="chat"]) #agent-tab-area > .tab-content { padding-top: calc(3.25rem + .75rem); }
+    /* Knowledge graph fills the whole tab (so it can pass under the glass bar), but its search / filters / buttons are absolutely
+       positioned: push them below the bar instead of letting the bar cover them. Filters wrap into a row to save height. */
+    body[data-agent-tab="knowledge"] .kb-ov-left, body[data-agent-tab="knowledge"] .kb-ov-right { top: calc(3.25rem + 1.25rem); }
+    body[data-agent-tab="knowledge"] .kb-ov-left { max-width: calc(100% - 2rem); }
+    body[data-agent-tab="knowledge"] #kb-type-filters { flex-direction: row !important; flex-wrap: wrap; gap: .375rem !important; max-width: 100%; }
     .mfb-pill { text-align: left; cursor: pointer; color: inherit; font: inherit; -webkit-tap-highlight-color: transparent; }
     .mfb-who { display: flex; align-items: center; gap: .5rem; min-width: 0; }
     .mfb-who img { width: 1.5rem; height: 1.5rem; border-radius: 9999px; object-fit: cover; flex: none; }
@@ -192,8 +197,12 @@ html.dark #avatar-input::file-selector-button:hover { background: rgb(99 102 241
     .agent-rail #agent-page-header { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "back name";
         align-items: center; column-gap: .25rem; margin: 0 0 .75rem; padding: 0 .25rem 0 .5rem; }
     .agent-rail #agent-page-header > div:first-child { display: contents; }
-    .agent-rail #agent-page-header > div:first-child > a { grid-area: back; display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 12px; }
-    .agent-rail #agent-page-header > div:first-child > a:hover { background: var(--bg-hover); }
+    .agent-rail #agent-page-header > div:first-child > a { grid-area: back; display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: 50%;
+        background: rgb(100 116 139 / .1); color: var(--text-secondary); transition: background-color .15s, color .15s, transform .12s; }
+    .agent-rail #agent-page-header > div:first-child > a:hover { background: rgb(100 116 139 / .2); color: var(--text-heading); }
+    .agent-rail #agent-page-header > div:first-child > a:active { transform: scale(.94); }
+    html.dark .agent-rail #agent-page-header > div:first-child > a { background: rgb(148 163 184 / .1); }
+    html.dark .agent-rail #agent-page-header > div:first-child > a:hover { background: rgb(148 163 184 / .2); }
     .agent-rail #agent-header-name { grid-area: name; min-width: 0; margin: 0; font-size: 1.25rem; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .agent-rail #agent-header-id-badge { display: none !important; }
     /* Agent actions live at the bottom of the rail as a regular menu row; the dropdown opens upwards */
@@ -372,6 +381,7 @@ html.dark .gcard-ic { color: #a5b4fc; background: rgb(99 102 241 / .18); }
 #agent-tab-area .tab-content > .grid > .rounded-lg,
 #tab-general div.rounded-lg.border,        /* Settings: left card, Advanced Settings, Variables, Plugin settings */
 #kb-graph-svg { border-radius: 2.25rem; }
+#kb-graph-svg > svg { display: block; width: 100%; height: 100%; }
 /* ── Mobile state sheet: same canvas/cards/typography as the desktop cards and the mobile menu drawer ── */
 #mobile-chat-summary-overlay .msheet-backdrop { background: rgb(0 0 0 / .5); animation: msheet-fade .3s ease both; }
 #mobile-chat-summary-overlay .msheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(88vw, 360px); display: flex; flex-direction: column;
@@ -397,8 +407,8 @@ html.dark .mstate-h h3 { color: #f3f4f6; }
 /* Outer chat box: radius sized to sit concentrically around the floating cards (1rem inset, 1.75rem radius) */
 #chat-panel { position: relative; --composer-h: 7rem; border-radius: 2.25rem; }
 /* Message box background (dark mode). Swap --chat-bg to try other candidates:
-   #172236 (navy) · #131B2E (deeper) · #1B2440 (indigo-tinted) · #1A2230 (neutral slate, current pick) */
-html.dark #chat-shell { --chat-bg: #1A2230; background-color: var(--chat-bg); }
+   #172236 (navy) · #131B2E (deeper) · #1B2440 (indigo-tinted) · #1A2230 (neutral slate, previous pick); now follows the app's card colour (--bg-card, = the login card) */
+html.dark #chat-shell { --chat-bg: var(--bg-card); background-color: var(--chat-bg); }
 #chat-composer-wrap { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; border-top: 0; pointer-events: none; }
 #chat-composer-wrap > * { pointer-events: auto; }
 #chat-composer-wrap > .pblur { pointer-events: none; }
@@ -427,7 +437,7 @@ html.dark #chat-shell { --chat-bg: #1A2230; background-color: var(--chat-bg); }
 .chat-header-pill, .chat-header-circle { box-sizing: border-box; border: 1px solid #e5e7eb;
     background: rgb(255 255 255 / .78); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1);
     box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -12px rgb(15 23 42 / .14); }
-html.dark .chat-header-pill, html.dark .chat-header-circle { background: rgb(17 24 39 / .72); border-color: #374151;
+html.dark .chat-header-pill, html.dark .chat-header-circle { background: rgb(10 15 28 / .62); border-color: #374151;
     box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
 .chat-header-pill { --hdr-size: 3.25rem; flex: 1 1 auto; min-width: 0; height: var(--hdr-size); display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: 0 1.25rem; border-radius: 1.75rem; }
 /* Detached round button (Spotlight-style): only on mobile, where the summary lives in an overlay */
@@ -786,9 +796,9 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 12px;
+    padding: 9px 14px;
     border: none;
-    border-radius: 8px;
+    border-radius: 9999px;
     background: transparent;
     color: var(--text-secondary);
     font-size: 0.875rem;
@@ -807,7 +817,7 @@ html.dark #system-prompt-modal .hover\:text-gray-600:hover { color: #d1d5db; }
     transition: opacity 0.15s ease;
 }
 .agent-tab:hover {
-    background: var(--bg-hover);
+    background: rgb(148 163 184 / .1);
     color: var(--text-heading);
 }
 .agent-tab.active {
@@ -820,7 +830,19 @@ html.dark .agent-tab.active {
     color: #a5b4fc;
 }
 .agent-tab.hidden { display: none; }
-@media (min-width: 1024px) { .agent-tab { width: 100%; } }
+/* The global dark-mode `.tab-btn` rules (blue text, !important) used to win here: keep the rail on the indigo accent, and make
+   hover clearly weaker than the active item (it used to be a bigger grey block than the selected tab). */
+html.dark .agent-tab.tab-btn { color: #94a3b8 !important; }
+html.dark .agent-tab.tab-btn:hover { color: #e2e8f0 !important; background: rgb(148 163 184 / .09); }
+html.dark .agent-tab.tab-btn.active { color: #a5b4fc !important; background: rgb(129 140 248 / .18); }
+html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); }
+.agent-tab:focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+/* group separators (desktop rail only): main · configuration · connections */
+.agent-tab-sep { display: none; }
+@media (min-width: 1024px) {
+    .agent-tab { width: 100%; }
+    .agent-tab-sep { display: block; flex: none; height: 0; margin: .375rem .75rem; border: 0; border-top: 1px solid rgb(148 163 184 / .2); }
+}
 </style>
 <div id="agent-page-root" class="px-2 py-1 md:py-4 flex-1 min-h-0 flex flex-col h-[calc(100dvh-var(--header-h,56px))]">
     {% if workspace_invalid %}
@@ -868,11 +890,13 @@ html.dark .agent-tab.active {
          Uses <div> (not <nav>) to avoid the global mobile top-navbar CSS on `nav`. -->
     <div class="agent-tabs" role="tablist">
         <button class="agent-tab tab-btn active" onclick="showTab('chat')" data-tab="chat"><i data-lucide="message-square"></i><span>Chat</span></button>
+        <hr class="agent-tab-sep" aria-hidden="true">
         <button class="agent-tab tab-btn" onclick="showTab('general')" data-tab="general"><i data-lucide="sliders-horizontal"></i><span>Settings</span></button>
         <button class="agent-tab tab-btn" onclick="showTab('knowledge')" data-tab="knowledge"><i data-lucide="book-open"></i><span>Knowledge</span></button>
         <button class="agent-tab tab-btn" onclick="showTab('tools')" data-tab="tools"><i data-lucide="wrench"></i><span>Tools</span></button>
         {# Always rendered so softSwitchAgent can toggle without a full reload #}
         <button class="agent-tab tab-btn" onclick="showTab('skills')" data-tab="skills"><i data-lucide="sparkles"></i><span>Skills</span></button>
+        <hr class="agent-tab-sep" aria-hidden="true">
         <button class="agent-tab tab-btn" onclick="showTab('channels')" data-tab="channels"><i data-lucide="radio"></i><span>Channels</span></button>
         <button class="agent-tab tab-btn" onclick="showTab('portals')" data-tab="portals"><i data-lucide="folder-symlink"></i><span>Portals</span></button>
         {% if agent.artifacts_enabled %}
@@ -1371,7 +1395,7 @@ html.dark .agent-tab.active {
             <div id="kb-graph-svg" class="w-full h-full bg-gray-50 dark:bg-gray-900 rounded-lg"></div>
 
             <!-- Overlay: Search bar + type filters (top-left, stacked) -->
-            <div class="absolute top-4 left-4 z-10 flex flex-col items-start gap-1.5">
+            <div class="kb-ov-left absolute top-4 left-4 z-10 flex flex-col items-start gap-1.5">
                 <div class="relative">
                     <input type="search" id="kb-graph-search" name="agent_kb_graph_query" placeholder="Search nodes..." autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"
                            class="pl-3 pr-8 py-2 w-48 sm:w-64 bg-white/80 dark:bg-gray-800 backdrop-blur-sm border border-gray-200 dark:border-gray-600 rounded-lg text-sm shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/50 dark:text-gray-100 dark:placeholder-gray-400"
@@ -1388,7 +1412,7 @@ html.dark .agent-tab.active {
             </div>
 
             <!-- Overlay: Action buttons (top-right) -->
-            <div class="absolute top-4 right-4 z-10 flex gap-2">
+            <div class="kb-ov-right absolute top-4 right-4 z-10 flex gap-2">
                 <button onclick="showNewFileModal()" class="hidden md:flex bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm shadow-lg transition-colors items-center gap-1.5">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                     New
@@ -2425,7 +2449,7 @@ html.dark .agent-tab.active {
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=66" defer></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=69" defer></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=6" defer></script>
 <script src="{{ url_for('static', filename='js/state-ui.js') }}?v=1" defer></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -4080,10 +4104,12 @@ function renderKBGraph() {
     }
 
     // --- D3 setup ---
+    // The canvas follows its container (100%) instead of the pixel size measured at draw time: the tab can be laid out
+    // at a different width later (mobile bar/padding, orientation, drawer), which used to crop the right side of the graph.
     const svg = d3.select('#kb-graph-svg')
         .append('svg')
-        .attr('width', width)
-        .attr('height', height);
+        .attr('width', '100%')
+        .attr('height', '100%');
 
     const g = svg.append('g');
 
@@ -5920,7 +5946,7 @@ function renderEntries(entries) {
         const type = entry.type;
         if (type === 'user') {
             if (thinkingId) { chatUI.finalizeThinkingBubble(thinkingId); thinkingId = null; }
-            const $el = chatUI.appendMessage('user', entry.content, {metadata: entry.metadata});
+            const $el = chatUI.appendMessage('user', entry.content, {metadata: entry.metadata, timestamp: entry.ts});
             if (entry.message_id) {
                 $el.attr('data-message-id', entry.message_id);
                 _seenRealtimeMessages.add(`${_chatSessionId}:${entry.message_id}`);
@@ -5950,7 +5976,7 @@ function renderEntries(entries) {
             } else if (meta.error) {
                 chatUI.appendMessage('error', entry.content, {metadata: meta});
             } else {
-                const $el = chatUI.appendMessage('assistant', entry.content, {metadata: meta});
+                const $el = chatUI.appendMessage('assistant', entry.content, {metadata: meta, timestamp: entry.ts});
                 if (entry.message_id) {
                     $el.attr('data-message-id', entry.message_id);
                     _seenRealtimeMessages.add(`${_chatSessionId}:${entry.message_id}`);
@@ -6078,6 +6104,7 @@ function _renderTurnResponse(data) {
     const opts = data.attachment_info
         ? {metadata: {attachment_info: data.attachment_info}}
         : {metadata: {}};
+    opts.timestamp = data.timestamp || Date.now();
     const $el = chatUI.appendMessage(data.is_error ? 'error' : 'assistant', data.response, opts);
     if (data.message_id) {
         $el.attr('data-message-id', data.message_id);
@@ -6129,6 +6156,10 @@ function _handleAgentRealtime(evtName, data, sessionId) {
         return;
     }
 
+    // Live-thinking previews only make sense for a turn that is on screen; never let a stray one
+    // (e.g. replayed after the turn ended) spawn a new bubble.
+    if ((evtName === 'thinking_delta' || evtName === 'thinking_reset') &&
+            !(_currentTurn && _currentTurn.thinkingId && !_currentTurn.thinkingId._finalized)) return;
     let turn = _ensureRealtimeTurn(evtName === 'turn_begin' ? data.ts : null);
     if (evtName === 'turn_split') {
         turn.ingest({event: evtName, data, seq});
@@ -6156,7 +6187,7 @@ async function restoreActiveReasoning() {
     const es = new EventSource(url);
     _agentChatEs = es;
     const events = [
-        'agent_busy_changed', 'turn_queued', 'turn_begin', 'thinking',
+        'agent_busy_changed', 'turn_queued', 'turn_begin', 'thinking', 'thinking_delta', 'thinking_reset',
         'tool_call_started', 'tool_executed', 'state:changed', 'state_changed',
         'tasks:auto_transition', 'tasks:stale', 'response_chunk', 'done',
         'approval_required', 'approval_resolved', 'retry', 'turn_split',
@@ -6985,7 +7016,7 @@ async function sendChat() {
     const displayText = msg || attachmentInfos.map(info =>
         info.is_image ? `[Image #${++imageSlot}]` : `[File: ${info.filename}]`).join(' ');
 
-    const $msgEl = chatUI.appendMessage('user', displayText, {metadata: optimisticMeta});
+    const $msgEl = chatUI.appendMessage('user', displayText, {metadata: optimisticMeta, timestamp: Date.now()});
     const clientMessageId = newClientMessageId();
     $msgEl.attr('data-client-message-id', clientMessageId);
     _optimisticMessages.set(clientMessageId, $msgEl);
@@ -7046,7 +7077,7 @@ async function sendChat() {
                 let $resp = $();
                 if (!data.turn_id || !_renderedTurnIds.has(data.turn_id)) {
                     if (data.turn_id) _renderedTurnIds.add(data.turn_id);
-                    $resp = chatUI.appendMessage('assistant', data.response);
+                    $resp = chatUI.appendMessage('assistant', data.response, {timestamp: Date.now()});
                 }
                 // Reposition the slash command response immediately after the user
                 // message so it doesn't appear below an active thinking bubble that
@@ -7107,7 +7138,7 @@ async function sendChat() {
             const responseKey = data.response_message_id
                 ? `${_chatSessionId}:${data.response_message_id}` : null;
             if (!responseKey || !_seenRealtimeMessages.has(responseKey)) {
-                const $response = chatUI.appendMessage('assistant', data.response, { metadata: cmdMeta });
+                const $response = chatUI.appendMessage('assistant', data.response, { metadata: cmdMeta, timestamp: Date.now() });
                 if (data.response_message_id) {
                     $response.attr('data-message-id', data.response_message_id);
                     _seenRealtimeMessages.add(responseKey);
@@ -7141,7 +7172,7 @@ async function sendChat() {
             chatUI.closeStream();
             if (data.turn_id && !_renderedTurnIds.has(data.turn_id)) {
                 _renderedTurnIds.add(data.turn_id);
-                chatUI.appendMessage(data.error ? 'error' : 'assistant', data.response);
+                chatUI.appendMessage(data.error ? 'error' : 'assistant', data.response, {timestamp: Date.now()});
             }
         }
     } catch(e) {
@@ -8953,10 +8984,25 @@ async function loadPortalWorkplaces() {
 <!-- ==================== Chat UI v2 init ==================== -->
 <script>
 // Builds against the current AGENT_ID — also used by softSwitchAgent()
+// Message time under each bubble: "14:05" today, "Yesterday 14:05", "12 Sep 14:05", or with the year when older.
+function _formatMessageTime(date) {
+    const now = new Date();
+    const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const startOf = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((startOf(now) - startOf(date)) / 86400000);
+    if (days <= 0) return time;
+    if (days === 1) return 'Yesterday ' + time;
+    const opts = date.getFullYear() === now.getFullYear()
+        ? { day: 'numeric', month: 'short' }
+        : { day: 'numeric', month: 'short', year: 'numeric' };
+    return date.toLocaleDateString([], opts) + ' ' + time;
+}
+
 function _createChatUI() {
     return new window.ChatUI($('#chat-messages'), {
         perspective: 'A',
-        showTimestamps: false,
+        showTimestamps: true,
+        formatTimestamp: _formatMessageTime,
         userBubbleClass: 'bg-indigo-500 text-white dark:bg-indigo-800',
         assistantBubbleClass: 'bg-gray-200 text-gray-800 dark:bg-[#152A3A] border dark:border-[#1B394F] dark:text-gray-100',
         agentAvatarUrl: '/api/agents/' + encodeURIComponent(AGENT_ID) + '/avatar?size=small',

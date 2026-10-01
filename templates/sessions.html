@@ -150,7 +150,7 @@ html.dark .state-btn-text:hover:not(:disabled) { color: #c7d2fe; }
 #attach-btn { grid-area: attach; }
 #reply-btn { grid-area: send; }
 .chat-composer:focus-within { border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .14), 0 10px 28px -14px rgb(79 70 229 / .35); }
-html.dark .chat-composer { background: rgb(17 24 39 / .72); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
+html.dark .chat-composer { background: rgb(10 15 28 / .62); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
 html.dark .chat-composer:focus-within { border-color: #6366f1; box-shadow: 0 0 0 3px rgb(99 102 241 / .22), 0 10px 28px -14px rgb(79 70 229 / .5); }
 .chat-composer #reply-input { grid-area: input; display: block; box-sizing: border-box; width: 100%; min-height: 2.5rem; max-height: 150px; padding: .5rem .25rem; margin: 0; border: 0; border-radius: 0;
     background: transparent; box-shadow: none; outline: none; resize: none; overflow-y: hidden; line-height: 1.5rem; color: #1f2937;
@@ -230,7 +230,6 @@ html.dark #editor-tip { background: rgb(129 140 248 / .14); border-bottom-color:
 .sess-rail-title { padding: .25rem .75rem .75rem; }
 .sess-rail-title h2 { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text-heading, #1f2937); }
 #SidebarSearch { padding: 0 .25rem .75rem; }
-#sidebar-search { border-radius: 12px; padding: .625rem .875rem; }
 #session-list { padding: 0 .25rem; display: flex; flex-direction: column; gap: .25rem; }
 #session-list::-webkit-scrollbar { width: 4px; }
 #session-list::-webkit-scrollbar-thumb { background: rgb(148 163 184 / .3); border-radius: 4px; }
@@ -259,7 +258,7 @@ html.dark .sess-rail-settings.active { background: rgba(129, 140, 248, 0.14); co
 /* Chat panel: rounded box, same radius/colour as the agent chat panel */
 .sess-panel { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
     background: #fff; border: 1px solid #e5e7eb; border-radius: 2.25rem; --sess-hdr-h: 3.25rem; }
-html.dark .sess-panel { background: #1A2230; border-color: var(--color-gray-700, #364153); }
+html.dark .sess-panel { background: var(--bg-card); border-color: var(--color-gray-700, #364153); }
 .sess-panel > .pblur-top { top: 0; bottom: auto; height: calc(var(--sess-hdr-h) + 2.5rem); z-index: 19; }
 .sess-panel:has(#chat-header.hidden) > .pblur-top { display: none; }
 .sess-hdr { position: absolute; top: 1rem; left: 1rem; right: 1rem; z-index: 20; display: flex; }
@@ -267,7 +266,7 @@ html.dark .sess-panel { background: #1A2230; border-color: var(--color-gray-700,
 .sess-hdr .chat-header-pill { flex: 1 1 auto; min-width: 0; height: 3.25rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 0 1.25rem; border-radius: 1.75rem;
     box-sizing: border-box; border: 1px solid #e5e7eb; background: rgb(255 255 255 / .78); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1);
     box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -12px rgb(15 23 42 / .14); }
-html.dark .sess-hdr .chat-header-pill { background: rgb(17 24 39 / .72); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
+html.dark .sess-hdr .chat-header-pill { background: rgb(10 15 28 / .62); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
 .sess-hdr-avatar { width: 1.75rem; height: 1.75rem; border-radius: 9999px; object-fit: cover; flex: none; background: rgb(99 102 241 / .16); }
 .sess-panel #chat-messages { padding-top: calc(var(--sess-hdr-h) + 1.75rem); }
 .sess-panel:has(#chat-header.hidden) #chat-messages { padding-top: 1rem; }
@@ -283,7 +282,31 @@ html.dark #agent-state-panel, html.dark #summary-panel { background: var(--color
 #summary-panel { flex: 1 1 0; min-height: 0; }
 
 /* Settings tab cards */
-#tab-settings .rounded-xl { border-radius: 1.75rem; padding: 1.5rem; }
+#tab-settings .rounded-xl { border-radius: 1.5rem; padding: 1.25rem 1.375rem; }
+/* Settings: breathing room at the screen edges, readable descriptions, pill actions */
+.set-page { padding-left: .75rem; padding-right: .75rem; padding-bottom: 1.5rem; box-sizing: border-box; }
+#tab-settings .set-row h3 { font-size: .9375rem; line-height: 1.35rem; }
+#tab-settings .set-row p.text-xs { margin-top: .25rem; font-size: .8125rem; line-height: 1.5; color: #64748b; }
+html.dark #tab-settings .set-row p.text-xs { color: #94a3b8; }
+#tab-settings .set-row > div:first-child { min-width: 0; flex: 1 1 auto; }
+.set-danger { flex: none; display: inline-flex; align-items: center; justify-content: center; height: 2.25rem; padding: 0 1.125rem; border-radius: 9999px; cursor: pointer;
+  font-size: .8125rem; font-weight: 600; color: #dc2626; background: rgb(239 68 68 / .1); border: 1px solid rgb(239 68 68 / .35); transition: background-color .15s, color .15s, border-color .15s, transform .12s; }
+.set-danger:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+.set-danger:active { transform: scale(.97); }
+html.dark .set-danger { color: #fca5a5; background: rgb(239 68 68 / .14); border-color: rgb(248 113 113 / .4); }
+html.dark .set-danger:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+#tab-settings .hdr-icon-btn { width: 2.5rem; height: 2.5rem; border-radius: 50%; background: rgb(100 116 139 / .1); transition: background-color .15s, transform .12s; }
+#tab-settings .hdr-icon-btn:hover { background: rgb(100 116 139 / .2); }
+#tab-settings .hdr-icon-btn:active { transform: scale(.94); }
+html.dark #tab-settings .hdr-icon-btn { background: rgb(148 163 184 / .1); }
+html.dark #tab-settings .hdr-icon-btn:hover { background: rgb(148 163 184 / .2); }
+@media (max-width: 767.98px) {
+  .set-page { padding-left: .75rem; padding-right: .75rem; }
+  #tab-settings .rounded-xl { border-radius: 1.375rem; padding: 1.125rem 1.125rem; }
+  /* destructive rows: description first, full-width pill below */
+  .set-row-danger { flex-direction: column; align-items: stretch; gap: .875rem; }
+  .set-row-danger .set-danger { width: 100%; }
+}
 #tab-chat.chat-fullscreen { padding: 1rem; gap: 1rem; }
 
 @media (max-width: 767.98px) {
@@ -362,9 +385,75 @@ html.dark .st-done-toggle:hover { color: #e2e8f0; }
 /* Fullscreen chat hides the mobile search bar via a class (inline show()/hide() overrode md:hidden on desktop) */
 #tab-chat.chat-fullscreen > #mobile-search-bar { display: none; }
 /* Mobile search row + header pill that never wraps outside its box */
-#mobile-search-bar { padding: .5rem; }
+/* Mobile = a chat app: first the list of sessions (the rail), then, after picking one, the conversation with a back arrow.
+   #tab-chat.m-chat marks the conversation view. The old search bar + dropdown stay in the DOM but are never shown on mobile. */
+.sess-back { display: none; }
+@media (max-width: 767.98px) {
+  #mobile-search-bar { display: none !important; }
+  #tab-chat:not(.m-chat) #chat-room { display: none; }
+  #tab-chat.m-chat #sidebar { display: none !important; }
+  #tab-chat:not(.m-chat) #sidebar { display: flex !important; width: 100%; flex: 1 1 auto; padding: .25rem .75rem 0; box-sizing: border-box; }
+  #tab-chat:not(.m-chat) .sess-item { padding: .875rem .75rem; }
+  .sess-back { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; margin-left: -.25rem; padding: 0; border: 0; border-radius: 50%;
+    background: rgb(100 116 139 / .12); color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color .15s, transform .12s; }
+  .sess-back:hover { background: rgb(100 116 139 / .22); }
+  .sess-back:active { transform: scale(.94); }
+  .sess-back svg { width: 18px; height: 18px; }
+  html.dark .sess-back { background: rgb(148 163 184 / .14); color: #e2e8f0; }
+}
+/* z-index 30: the open results must cover the chat's floating header pill and composer (both z-index 20), but stay under the navbar (50) */
+#mobile-search-bar { position: relative; z-index: 30; padding: .5rem .25rem .625rem; }
 .msb-row { display: flex; align-items: center; gap: .5rem; }
-#mobile-search { flex: 1 1 auto; min-width: 0; padding: .625rem .875rem; }
+/* Search field: pill with a leading icon (mobile bar + desktop rail) */
+.msb-field { position: relative; display: block; flex: 1 1 auto; min-width: 0; }
+.msb-ico { position: absolute; left: .9375rem; top: 50%; width: 1rem; height: 1rem; transform: translateY(-50%); color: #94a3b8; pointer-events: none; transition: color .15s; }
+.msb-field:focus-within .msb-ico { color: #6366f1; }
+.msb-field input, html.dark .msb-field input { display: block; width: 100%; box-sizing: border-box; height: 2.5rem; padding: 0 1rem 0 2.5rem; margin: 0; border-radius: 9999px;
+  border: 1px solid #e5e7eb !important; background: rgb(255 255 255 / .85) !important; color: #111827 !important; font-size: .875rem; outline: none;
+  transition: border-color .15s, box-shadow .15s; }
+html.dark .msb-field input { border-color: #374151 !important; background: rgb(15 23 42 / .6) !important; color: #e5e7eb !important; }
+.msb-field input::placeholder { color: #94a3b8; opacity: 1; }
+.msb-field input:focus, html.dark .msb-field input:focus { border-color: #818cf8 !important; box-shadow: 0 0 0 3px rgb(99 102 241 / .16); }
+.msb-field input::-webkit-search-cancel-button { cursor: pointer; }
+/* gear: round tinted button, same as the navbar circles */
+.msb-row .hdr-icon-btn { flex: none; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: rgb(100 116 139 / .1); color: #64748b; transition: background-color .15s, color .15s, transform .12s; }
+.msb-row .hdr-icon-btn:hover { background: rgb(100 116 139 / .2); color: #1f2937; }
+.msb-row .hdr-icon-btn:active { transform: scale(.94); }
+.msb-row .hdr-icon-btn svg { width: 18px; height: 18px; }
+html.dark .msb-row .hdr-icon-btn { background: rgb(148 163 184 / .1); color: #cbd5e1; }
+html.dark .msb-row .hdr-icon-btn:hover { background: rgb(148 163 184 / .2); color: #f1f5f9; }
+/* autocomplete results: the search field and its results are ONE glass surface. The surface (#mobile-dropdown) is drawn from the
+   top of the input down, the input sits on top of it with a transparent background, and the rows scroll in .msd-list below. */
+#mobile-dropdown { position: absolute; z-index: 5; top: 0; left: 0; right: 0; margin: 0; padding: 2.5rem .375rem .375rem; box-sizing: border-box;
+  border-radius: 1.25rem; border: 1px solid #e5e7eb; background: rgb(255 255 255 / .86);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 24px 48px -16px rgb(15 23 42 / .4); }
+html.dark #mobile-dropdown { background: rgb(15 23 42 / .82); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 24px 48px -16px rgb(0 0 0 / .7); }
+.msb-field:focus-within #mobile-dropdown, html.dark .msb-field:focus-within #mobile-dropdown { border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .16), 0 24px 48px -16px rgb(0 0 0 / .6); }
+#mobile-dropdown::before { content: ""; position: absolute; left: .875rem; right: .875rem; top: 2.5rem; border-top: 1px solid rgb(148 163 184 / .22); }
+.msd-list { max-height: min(55vh, 24rem); overflow-y: auto; scrollbar-width: none; padding-top: .25rem; }
+.msd-list::-webkit-scrollbar { display: none; }
+/* while open, the field itself gives up its own border/background/ring: the surface behind it carries them */
+.msb-field input { position: relative; z-index: 6; }
+.msb-ico { z-index: 7; }
+.msb-field:has(#mobile-dropdown:not(.hidden)) input, html.dark .msb-field:has(#mobile-dropdown:not(.hidden)) input {
+  border-color: transparent !important; background: transparent !important; box-shadow: none; }
+.msd-row { display: flex; align-items: center; gap: .75rem; width: 100%; padding: .5625rem .75rem; border: 0; border-radius: 1.25rem; background: transparent; text-align: left; cursor: pointer; color: inherit; transition: background-color .15s; }
+.msd-row:hover { background: rgb(99 102 241 / .1); }
+.msd-row.is-active { background: rgb(99 102 241 / .14); }
+html.dark .msd-row:hover { background: rgb(99 102 241 / .18); }
+html.dark .msd-row.is-active { background: rgb(99 102 241 / .22); }
+.msd-ic { flex: none; width: 2.25rem; height: 2.25rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #6366f1; background: rgb(99 102 241 / .12); }
+html.dark .msd-ic { color: #a5b4fc; background: rgb(99 102 241 / .2); }
+.msd-ic svg { width: 17px; height: 17px; }
+.msd-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.msd-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9375rem; font-weight: 600; line-height: 1.25rem; color: #1f2937; }
+html.dark .msd-name { color: #f1f5f9; }
+.msd-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; line-height: 1rem; color: #64748b; }
+html.dark .msd-sub { color: #94a3b8; }
+.msd-name.user-id-human { color: #15803d; }
+html.dark .msd-name.user-id-human { color: #4ade80; }
+.msd-row > span[class*="px-1.5"] { flex: none; border-radius: 9999px !important; padding: .125rem .5rem !important; }
 .sess-hdr-name { display: flex; align-items: center; gap: .5rem; min-width: 0; }
 #hdr-agent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #hdr-channel-badge { flex: none; }
@@ -380,7 +469,7 @@ html.dark .st-done-toggle:hover { color: #e2e8f0; }
    #chat-room owns background / border / radius; the panel and the two state blocks are plain regions inside it,
    separated by hairlines. */
 #chat-room { gap: 0; overflow: hidden; border: 1px solid #e5e7eb; border-radius: 2.25rem; background: #fff; }
-html.dark #chat-room { border-color: var(--color-gray-700, #364153); background: #1A2230; }
+html.dark #chat-room { border-color: var(--color-gray-700, #364153); background: var(--bg-card); }
 #chat-room > .sess-panel, html.dark #chat-room > .sess-panel { background: transparent; border: 0; border-radius: 0; }
 #chat-room > #side-panels-wrapper { gap: 0; border-left: 1px solid rgb(148 163 184 / .2); }
 #chat-room #agent-state-panel, #chat-room #summary-panel { background: transparent; border: 0; border-radius: 0; }
@@ -395,14 +484,15 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
     <!-- Mobile: autocomplete search bar -->
     <div id="mobile-search-bar" class="md:hidden relative">
         <div class="msb-row">
-            <input type="search" id="mobile-search" name="mobile_search_filter" placeholder="Search session (agent or user ID)..."
-                   class="border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+            <label class="msb-field"><svg class="msb-ico" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="search" id="mobile-search" name="mobile_search_filter" placeholder="Search session (agent or user ID)..." aria-label="Search sessions"
+                   
                    oninput="onMobileSearch(this.value)" onfocus="this.removeAttribute('readonly');showMobileDropdown()" autocomplete="off" readonly>
+            <div id="mobile-dropdown" class="hidden"></div>
+        </label>
             <button type="button" onclick="switchTab('settings')" class="hdr-icon-btn" title="Sessions settings" aria-label="Sessions settings">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         </div>
-        <div id="mobile-dropdown" class="hidden absolute left-3 right-3 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-y-auto z-50"></div>
     </div>
 
     <div class="flex flex-1 min-h-0 gap-4 overflow-hidden">
@@ -410,9 +500,9 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
         <div id="sidebar" class="sess-rail hidden md:flex">
             <div class="sess-rail-title"><h2>Sessions</h2></div>
             <div id="SidebarSearch">
-                <input type="search" id="sidebar-search" name="sidebar_search_filter" placeholder="Search agent or user ID..."
-                       class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                       oninput="debouncedLoadSessions(this.value)" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')">
+                <label class="msb-field"><svg class="msb-ico" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="search" id="sidebar-search" name="sidebar_search_filter" placeholder="Search agent or user ID..."
+                       aria-label="Search sessions"
+                       oninput="debouncedLoadSessions(this.value)" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"></label>
             </div>
             <div id="session-list" class="flex-1 overflow-y-auto"></div>
             <div class="sess-rail-footer">
@@ -430,6 +520,9 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
                 <div class="pblur pblur-top" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
             <div id="chat-header" class="hidden sess-hdr">
                 <div class="chat-header-pill">
+                    <button id="sess-back-btn" type="button" class="sess-back" onclick="setMobileView('list')" title="Back to sessions" aria-label="Back to sessions list">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
                     <img id="hdr-avatar" class="sess-hdr-avatar" alt="" onerror="this.style.visibility='hidden'">
                     <div class="min-w-0 flex-1">
                         <div class="sess-hdr-name">
@@ -608,7 +701,7 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
 
     <!-- ==================== Settings Tab ==================== -->
     <div id="tab-settings" class="flex-1 overflow-y-auto hidden">
-        <div class="max-w-3xl mx-auto py-2 space-y-4">
+        <div class="set-page max-w-3xl mx-auto py-2 space-y-4">
             <div class="flex items-center gap-2 px-1 pb-1">
                 <button type="button" class="hdr-icon-btn" onclick="switchTab('chat')" title="Back to sessions" aria-label="Back to sessions">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
@@ -618,12 +711,12 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
 
             <!-- Clear All Sessions -->
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <div class="flex items-start justify-between gap-4">
+                <div class="set-row set-row-danger flex items-start justify-between gap-4">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Clear All Sessions</h3>
                         <p class="text-xs text-gray-500 mt-1">Permanently delete all chat sessions, messages, summaries, and their attachments across all agents. This action cannot be undone.</p>
                     </div>
-                    <button onclick="clearAllSessions()" class="flex-shrink-0 px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors">
+                    <button onclick="clearAllSessions()" class="set-danger">
                         Clear All
                     </button>
                 </div>
@@ -631,12 +724,12 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
 
             <!-- Clear All Attachments -->
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <div class="flex items-start justify-between gap-4">
+                <div class="set-row set-row-danger flex items-start justify-between gap-4">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Clear All Attachments</h3>
                         <p class="text-xs text-gray-500 mt-1">Permanently delete every stored attachment (files and database rows) across all agents and sessions, without removing the conversations themselves. This action cannot be undone.</p>
                     </div>
-                    <button onclick="clearAllAttachments()" class="flex-shrink-0 px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors">
+                    <button onclick="clearAllAttachments()" class="set-danger">
                         Clear All
                     </button>
                 </div>
@@ -644,7 +737,7 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
 
             <!-- Chat Perspective Toggle -->
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <div class="flex items-start justify-between gap-4">
+                <div class="set-row flex items-start justify-between gap-4">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Chat Perspective</h3>
                         <p class="text-xs text-gray-500 mt-1">When set to <strong>B</strong> (left side), your messages appear on the left. When set to <strong>A</strong> (right side), your messages appear on the right. Works for both agent↔user and agent↔agent sessions.</p>
@@ -663,7 +756,7 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
 
             <!-- Events Dispatch Toggle -->
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <div class="flex items-start justify-between gap-4">
+                <div class="set-row flex items-start justify-between gap-4">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Events Dispatch</h3>
                         <p class="text-xs text-gray-500 mt-1">When enabled, events (turn_complete, message_received, summary_updated, etc.) are dispatched to third-party plugins. Disable to stop all plugin event processing.</p>
@@ -714,7 +807,7 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=66"></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=69"></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=7"></script>
 <script>
 let allSessions = [];
@@ -1129,18 +1222,20 @@ function renderMobileDropdown() {
     const dd = document.getElementById('mobile-dropdown');
     if (!allSessions.length) { dd.classList.add('hidden'); return; }
     dd.classList.remove('hidden');
-    dd.innerHTML = allSessions.slice(0, 20).map(s => {
+    dd.innerHTML = '<div class="msd-list">' + allSessions.slice(0, 20).map(s => {
         const chBadge = channelBadge(s.channel_type);
         const displayName = explorerDisplayName(s);
+        const active = s.id === currentSessionId ? ' is-active' : '';
         return `
-        <div class="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-50 dark:border-gray-600 last:border-0" onclick="selectSession('${s.id}'); document.getElementById('mobile-dropdown').classList.add('hidden');">
-            <div class="flex items-center gap-2">
-                <span class="text-sm font-medium truncate ${userIdColorClass(s.external_user_id)}">${displayName}</span>
-                ${chBadge}
-            </div>
-            <div class="text-xs text-gray-400">${esc(s.external_user_id)} &middot; ${timeAgo(s.updated_at)}</div>
-        </div>`;
-    }).join('');
+        <button type="button" class="msd-row${active}" onclick="selectSession('${s.id}'); document.getElementById('mobile-dropdown').classList.add('hidden');">
+            <span class="msd-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+            <span class="msd-main">
+                <span class="msd-name ${userIdColorClass(s.external_user_id)}">${displayName}</span>
+                <span class="msd-sub">${esc(s.external_user_id)} &middot; ${timeAgo(s.updated_at)}</span>
+            </span>
+            ${chBadge}
+        </button>`;
+    }).join('') + '</div>';
 }
 
 document.addEventListener('click', e => {
@@ -1151,7 +1246,15 @@ document.addEventListener('click', e => {
 
 // ==================== Chat Room ====================
 
-async function selectSession(sessionId) {
+// Mobile: 'list' shows the sessions, 'chat' the conversation (no effect on the desktop layout)
+function isMobileLayout() { return window.matchMedia('(max-width: 767.98px)').matches; }
+function setMobileView(view) {
+    const tab = document.getElementById('tab-chat');
+    if (tab) tab.classList.toggle('m-chat', view === 'chat');
+}
+
+async function selectSession(sessionId, opts = {}) {
+    if (!opts.keepView) setMobileView('chat');   // a background resync must not yank the user out of the list
     // Picking a session from the rail while Settings is open returns to the chat view
     const _st = document.getElementById('tab-settings');
     if (_st && !_st.classList.contains('hidden')) switchTab('chat');
@@ -1367,7 +1470,7 @@ function connectSessionStream(sessionId, afterSeq = 0) {
         _sessionHistoryResyncing = true;
         es.close();
         _sessionEs = null;
-        selectSession(sessionId).finally(() => { _sessionHistoryResyncing = false; });
+        selectSession(sessionId, {keepView: true}).finally(() => { _sessionHistoryResyncing = false; });
     });
 
     es.addEventListener('auth_expired', () => {
@@ -2055,6 +2158,7 @@ async function deleteSession(sessionId) {
     if (sessionId === currentSessionId) {
         disconnectSessionStream();
         currentSessionId = null;
+        setMobileView('list');
         document.getElementById('chat-header').classList.add('hidden');
         document.getElementById('reply-bar').classList.add('hidden');
         document.getElementById('chat-messages').innerHTML = '<div id="empty-state" class="flex items-center justify-center h-full text-gray-400 text-sm">Select a session to view conversation</div>';
@@ -2762,6 +2866,7 @@ async function clearAllSessions() {
         // Reset chat view
         disconnectSessionStream();
         currentSessionId = null;
+        setMobileView('list');
         allSessions = [];
         renderSessionList();
         document.getElementById('chat-header').classList.add('hidden');
@@ -2867,7 +2972,8 @@ startSidebarPolling();
 (async () => {
     try {
         const lastSession = sessionStorage.getItem(_LAST_SESSION_KEY);
-        if (lastSession) {
+        // On mobile the page opens on the list of sessions (like a chat app); the desktop keeps auto-opening the last one.
+        if (lastSession && !isMobileLayout()) {
             // Wait a brief moment for session list to load
             await new Promise(r => setTimeout(r, 300));
             selectSession(lastSession);

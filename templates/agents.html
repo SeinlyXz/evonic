@@ -71,14 +71,31 @@ html.dark .ag-disabled-label { color: #e2e8f0; }
 .ag-disabled-count { min-width: 1.375rem; padding: 0 .4375rem; border-radius: 9999px; text-align: center; font-size: .6875rem; font-weight: 600; line-height: 1.25rem; color: #64748b; background: rgb(148 163 184 / .18); }
 html.dark .ag-disabled-count { color: #cbd5e1; }
 .ag-disabled-count:empty { display: none; }
+/* ── Mobile: compact header, full-width segmented tabs, one-row toolbar with icon buttons ── */
+@media (max-width: 639.98px) {
+  .ag-head h2 { font-size: 1.375rem; line-height: 1.75rem; }
+  .ag-sub { display: none; }
+  .ag-head { margin-bottom: .75rem; }
+  .ag-tabs { display: flex; width: 100%; box-sizing: border-box; margin-bottom: 1rem; overflow-x: auto; scrollbar-width: none; }
+  .ag-tabs::-webkit-scrollbar { display: none; }
+  .ag-tab { flex: 1 1 0; justify-content: center; gap: .375rem; padding: .5rem .5rem; font-size: .8125rem; white-space: nowrap; }
+  .ag-toolbar { flex-direction: row !important; flex-wrap: wrap; align-items: center; gap: .5rem !important; margin-bottom: 1rem !important; }
+  .ag-search-wrap { flex: 1 1 8rem; min-width: 0; }
+  .ag-search, html.dark .ag-search { max-width: none; }
+  .ag-toolbar .ag-btn { flex: none; width: 2.5rem; padding: 0; }
+  .ag-toolbar .ag-btn-label { display: none; }
+  #agents-grid, #disabled-agents-grid, #workplaces-grid { gap: .75rem; }
+  .ag-card { padding: .875rem; border-radius: 1.125rem; }
+  .ag-avatar { width: 2.5rem; height: 2.5rem; }
+}
 @media (prefers-reduced-motion: reduce) { .ag-card, .ag-tab, .ag-btn, .ag-disabled-chev { transition: none; } .ag-card:hover { transform: none; } }
 </style>
 <div class="p-4 md:p-6">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+    <div class="ag-head flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
         <div class="flex-1 w-full sm:w-auto">
             <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Agents</h2>
-            <p class="text-sm text-gray-500 mt-1">Manage AI agents with custom prompts, tools, and channels</p>
+            <p class="ag-sub text-sm text-gray-500 mt-1">Manage AI agents with custom prompts, tools, and channels</p>
         </div>
     </div>
 
@@ -91,21 +108,21 @@ html.dark .ag-disabled-count { color: #cbd5e1; }
 
     <!-- ========== AGENTS TAB ========== -->
     <div id="tab-agents">
-        <div class="flex flex-col sm:flex-row gap-3 mb-6">
-            <div class="relative">
+        <div class="ag-toolbar flex flex-col sm:flex-row gap-3 mb-6">
+            <div class="ag-search-wrap relative">
                 <svg class="ag-search-ico" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 <input type="search" id="agent-search" name="agent_search_filter" placeholder="Search agents..." oninput="filterAgents()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
                        class="ag-search">
             </div>
             <button onclick="showCreateAgentModal()"
-                    class="ag-btn ag-btn-primary">
+                    class="ag-btn ag-btn-primary" title="New Agent" aria-label="New Agent">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                New Agent
+                <span class="ag-btn-label">New Agent</span>
             </button>
             <button onclick="showImportAgentModal()"
-                    class="ag-btn ag-btn-ghost">
+                    class="ag-btn ag-btn-ghost" title="Import Agent" aria-label="Import Agent">
                 <i data-lucide="upload" class="w-4 h-4"></i>
-                Import Agent
+                <span class="ag-btn-label">Import Agent</span>
             </button>
         </div>
 
@@ -133,16 +150,16 @@ html.dark .ag-disabled-count { color: #cbd5e1; }
 
     <!-- ========== WORKPLACES TAB ========== -->
     <div id="tab-workplaces" class="hidden">
-        <div class="flex flex-col sm:flex-row gap-3 mb-6">
-            <div class="relative">
+        <div class="ag-toolbar flex flex-col sm:flex-row gap-3 mb-6">
+            <div class="ag-search-wrap relative">
                 <svg class="ag-search-ico" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 <input type="search" id="workplace-search" name="workplace_search_filter" placeholder="Search workplaces..." oninput="filterWorkplaces()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
                        class="ag-search">
             </div>
             <button onclick="showCreateWorkplaceModal()"
-                    class="ag-btn ag-btn-primary">
+                    class="ag-btn ag-btn-primary" title="New Workplace" aria-label="New Workplace">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                New Workplace
+                <span class="ag-btn-label">New Workplace</span>
             </button>
         </div>
 
@@ -157,8 +174,8 @@ html.dark .ag-disabled-count { color: #cbd5e1; }
 
     <!-- ========== TEMPLATES TAB ========== -->
     <div id="tab-templates" class="hidden">
-        <div class="flex flex-col sm:flex-row gap-3 mb-6">
-            <div class="relative">
+        <div class="ag-toolbar flex flex-col sm:flex-row gap-3 mb-6">
+            <div class="ag-search-wrap relative">
                 <svg class="ag-search-ico" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 <input type="search" id="template-search" name="template_search_filter" placeholder="Search templates..." oninput="filterTemplates()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
                        class="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">

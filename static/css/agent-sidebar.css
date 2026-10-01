@@ -15,9 +15,9 @@
 }
 
 html.dark {
-    --sidebar-bg: #0f172a;
+    --sidebar-bg: var(--bg-page, #0a0f1c);   /* = page colour (darker than the navbar), so the navbar's inverted corner stays visible above the sidebar */
     --sidebar-hover: rgba(255, 255, 255, 0.06);
-    --sidebar-tooltip-bg: #1e293b;
+    --sidebar-tooltip-bg: #111827;
     --sidebar-avatar-bg: #334155;
     --sidebar-text: #e2e8f0;
     --sidebar-text-muted: #94a3b8;
@@ -216,7 +216,7 @@ html.dark {
     left: 12px;
     width: 40px;
     height: 40px;
-    border-radius: 12px;
+    border-radius: 50%;
     background: rgba(100, 116, 139, 0.10);
     transition: background 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
 }
@@ -255,7 +255,12 @@ html.dark .sidebar-toggle-btn:hover::before { background: rgba(148, 163, 184, 0.
 @media (max-width: 768px) {
     .sidebar-toggle-btn {
         margin-left: -1rem;
+        width: 52px;   /* 12px left slack + 40px circle: no dead space before the brand */
+        box-sizing: border-box;
+        padding-left: 12px;   /* keep the icon centred in the circle, not in the whole button */
+        color: #4b5563;       /* same icon tone as the hamburger on the right */
     }
+    html.dark .sidebar-toggle-btn { color: #e2e8f0; }
 }
 
 /* ── Bubble Popup (turn-complete notification) ── */

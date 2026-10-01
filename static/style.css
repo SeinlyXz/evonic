@@ -38,15 +38,19 @@ html.dark { color-scheme: dark; }
 #chat-messages { overflow-x: hidden; }
 #chat-messages { scrollbar-width: thin; scrollbar-color: rgb(148 163 184 / .35) transparent; }
 html.dark {
-    --bg-page: #0f172a;
-    --bg-card: #1e293b;
-    --bg-header: #1e293b;
+    /* Primary palette = the login page's: page #0a0f1c, surfaces (header, cards) #111827, indigo accent.
+       The Tailwind gray-800/900 variables are remapped too, so every `dark:bg-gray-800` card and `dark:bg-gray-900` page follows. */
+    --color-gray-800: #111827;
+    --color-gray-900: #0a0f1c;
+    --bg-page: #0a0f1c;
+    --bg-card: #111827;
+    --bg-header: #111827;
     --bg-hover: #334155;
     --bg-controls: #1e293b;
-    --bg-secondary: #1a2332;
+    --bg-secondary: #0f1626;
     --text-primary: #e2e8f0;
     --text-heading: #f1f5f9;
-    --text-secondary: #94a3b8;
+    --text-secondary: #a3b1c6;
     --text-muted: #64748b;
     --border-color: #334155;
     --border-input: #475569;
@@ -732,9 +736,26 @@ footer {
         position: relative;
     }
 
+    /* Left cluster hugs the toggle; hamburger gets the same round, tinted wrapper as the toggle */
+    .header-left-side { gap: 0.5rem !important; }
+    .brand-version { display: none; }
     .nav-toggle {
-        display: block;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        margin-right: -4px;   /* mirrors the toggle's 12px inset so both circles sit 12px from the screen edge */
+        border-radius: 50%;
+        background: rgba(100, 116, 139, 0.10);
+        -webkit-tap-highlight-color: transparent;
+        transition: background 0.15s ease, transform 0.12s ease;
     }
+    .nav-toggle:hover { background: rgba(100, 116, 139, 0.20); }
+    .nav-toggle:active { transform: scale(0.94); }
+    html.dark .nav-toggle { background: rgba(148, 163, 184, 0.10); }
+    html.dark .nav-toggle:hover { background: rgba(148, 163, 184, 0.20); }
 
     nav {
         display: none;
@@ -1255,3 +1276,113 @@ html.dark .chat-img-skeleton {
 #chat-messages .tl-thinking-pending > span:last-child {
     font-size: 0.6875rem;
 }
+
+/* Live (streamed) thinking row in the chat timeline: same left rail as the other entries, plain text (no bubble), fading tail */
+#chat-messages .tl-thinking-live { border-left: 2px solid #c4b5fd; animation: tl-rail 1.8s ease-in-out infinite; }
+@keyframes tl-rail { 50% { border-left-color: #a855f7; } }
+#chat-messages .tl-thinking-live .tl-live-head { display: flex; align-items: center; gap: .375rem; margin-left: 1.125rem; font-size: 11px; font-weight: 600; color: #a855f7; }
+#chat-messages .tl-thinking-live .tl-live-label { background: linear-gradient(90deg, #a855f7 0%, #e9d5ff 50%, #a855f7 100%); background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: tl-shimmer 1.8s linear infinite; }
+@keyframes tl-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+#chat-messages .tl-thinking-live .tl-live-dots { display: inline-flex; gap: 3px; margin-left: .125rem; }
+#chat-messages .tl-thinking-live .tl-live-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .25; animation: tl-dot 1.2s ease-in-out infinite; }
+#chat-messages .tl-thinking-live .tl-live-dots i:nth-child(2) { animation-delay: .15s; }
+#chat-messages .tl-thinking-live .tl-live-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes tl-dot { 40% { opacity: 1; transform: translateY(-2px); } }
+#chat-messages .tl-thinking-live .tl-live-body { position: relative; margin: .375rem 0 .125rem 1.125rem; max-height: 6.5rem; overflow-y: auto; scrollbar-width: none; padding: 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem); mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem); }
+#chat-messages .tl-thinking-live .tl-live-body::-webkit-scrollbar { display: none; }
+#chat-messages .tl-thinking-live .tl-live-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.55; font-style: italic; color: #6b21a8; }
+#chat-messages .tl-thinking-live .tl-live-text::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -.15em; border-radius: 1px; background: currentColor; animation: tl-caret 1s steps(1) infinite; }
+html.dark #chat-messages .tl-thinking-live { border-left-color: #a78bfa; }
+html.dark #chat-messages .tl-thinking-live .tl-live-head { color: #c4b5fd; }
+html.dark #chat-messages .tl-thinking-live .tl-live-label { background-image: linear-gradient(90deg, #c4b5fd 0%, #ffffff 50%, #c4b5fd 100%); }
+html.dark #chat-messages .tl-thinking-live .tl-live-text { color: #ddd6fe; }
+@keyframes tl-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #chat-messages .tl-thinking-live, #chat-messages .tl-thinking-live .tl-live-label, #chat-messages .tl-thinking-live .tl-live-dots i, #chat-messages .tl-thinking-live .tl-live-text::after { animation: none; }
+  #chat-messages .tl-thinking-live .tl-live-dots i { opacity: .6; }
+}
+
+/* Message time under chat bubbles (agent page) */
+#chat-messages time { display: block; margin: .25rem .75rem 0; padding: 0; font-size: 11px; line-height: 1rem; letter-spacing: .01em; font-variant-numeric: tabular-nums;
+  color: #9ca3af; opacity: .85; user-select: none; transition: opacity .15s ease; }
+#chat-messages time:hover { opacity: 1; }
+html.dark #chat-messages time { color: #8b97ab; }
+
+/* ── Mobile navigation: floating glass panel, left-aligned icon rows, pill-shaped active item ── */
+.nav-ic, .nav-sep, #nav-backdrop, .nav-version { display: none; }
+@media (max-width: 768px) {
+  #nav-backdrop { display: block; position: fixed; inset: 0; z-index: -2; background: rgb(2 6 23 / .5); opacity: 0; visibility: hidden;
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); transition: opacity .2s ease, visibility 0s linear .2s; }
+  body.nav-menu-open #nav-backdrop { opacity: 1; visibility: visible; transition: opacity .2s ease; }
+  .header-left-side, .nav-toggle { position: relative; z-index: 3; }
+
+  /* The menu is part of the navbar: no panel of its own. The glass layer (.header-glass) grows by --nav-extra (set from JS to
+     the menu's height) so navbar + menu are ONE surface, with the inverted corners at the bottom of the whole thing. */
+  nav#site-nav { display: flex; flex-direction: column; align-items: stretch; gap: .125rem; position: absolute; z-index: 2;
+    top: 100%; left: 0; right: 0; padding: .25rem .75rem .75rem; margin: 0; background: none; border: 0; border-radius: 0; box-shadow: none;
+    max-height: calc(100vh - 56px - var(--nav-corner) - 1rem); overflow-y: auto; scrollbar-width: none;
+    visibility: hidden; opacity: 0; transform: translateY(-6px); pointer-events: none;
+    transition: opacity .12s ease, transform .2s ease, visibility 0s linear .2s; }
+  nav#site-nav::-webkit-scrollbar { display: none; }
+  nav#site-nav.nav-open { visibility: visible; opacity: 1; transform: none; pointer-events: auto;
+    transition: opacity .2s ease .06s, transform .24s cubic-bezier(.2, .8, .2, 1) .04s; }
+
+  nav#site-nav a { display: flex; align-items: center; justify-content: flex-start; gap: .75rem; padding: .6875rem .875rem; border-radius: 9999px;
+    font-size: .9375rem; text-align: left; }
+  nav#site-nav a .nav-ic { display: block; flex: none; opacity: .75; }
+  nav#site-nav a .nav-label { flex: 1 1 auto; min-width: 0; }
+  nav#site-nav a #wa-disconnect-badge { margin-left: auto; }
+  nav#site-nav a.nav-active { background: rgb(99 102 241 / .12); color: #4f46e5; }
+  nav#site-nav a.nav-active .nav-ic { opacity: 1; }
+  html.dark nav#site-nav a.nav-active { background: rgb(99 102 241 / .22); color: #c7d2fe; }
+  nav#site-nav .nav-sep, nav#site-nav .nav-divider { display: block; height: 0; margin: .375rem .75rem; border: 0; border-top: 1px solid rgb(148 163 184 / .25); }
+  /* version info lives at the bottom of the menu on mobile (the brand's own version tag is hidden there) */
+  nav#site-nav .nav-version { display: flex; align-items: center; justify-content: center; gap: .375rem; margin: .5rem 0 0; padding-top: .5rem;
+    font-size: .6875rem; letter-spacing: .02em; color: #94a3b8; opacity: .8; user-select: none; }
+  nav#site-nav .nav-version span { padding: .0625rem .4rem; border-radius: 9999px; background: rgb(148 163 184 / .14); font-variant-numeric: tabular-nums; }
+  nav#site-nav a.nav-logout { display: flex; margin: 0; padding-top: .6875rem; color: #dc2626 !important; font-weight: 600; opacity: 1; }
+  nav#site-nav a.nav-logout:hover { background: rgb(239 68 68 / .1); }
+  html.dark nav#site-nav a.nav-logout { color: #fca5a5 !important; }
+  html.dark nav#site-nav a.nav-logout:hover { background: rgb(239 68 68 / .16); }
+}
+@media (prefers-reduced-motion: reduce) {
+  nav#site-nav, nav#site-nav.nav-open, #nav-backdrop, .header-glass { transition: none; }
+}
+
+/* ── Mobile navbar: translucent glass (same recipe as the floating agent-name pill in the chat), page scrolls under it ──
+   The blur lives on a separate layer (.header-glass), NOT on <header>: backdrop-filter on the header would turn it into the
+   containing block of the fixed menu backdrop. The layer is masked to the navbar shape, including the two inverted corners. */
+.header-glass { display: none; }
+@media (max-width: 768px) {
+  header { --header-glass: rgb(255 255 255 / .66); background: transparent; box-shadow: none; }
+  html.dark header { --header-glass: rgb(17 24 39 / .6); background: transparent; }
+  header::before, header::after { display: none; }
+  .header-glass { display: block; position: absolute; left: 0; right: 0; top: 0; z-index: -1; pointer-events: none;
+    height: calc(100% + var(--nav-extra, 0px) + var(--nav-corner)); background: var(--header-glass);
+    transition: height .26s cubic-bezier(.2, .8, .2, 1);
+    -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2);
+    -webkit-mask-image: linear-gradient(#000, #000),
+      radial-gradient(circle at 100% 100%, transparent calc(var(--nav-corner) - .5px), #000 var(--nav-corner)),
+      radial-gradient(circle at 0 100%, transparent calc(var(--nav-corner) - .5px), #000 var(--nav-corner));
+    mask-image: linear-gradient(#000, #000),
+      radial-gradient(circle at 100% 100%, transparent calc(var(--nav-corner) - .5px), #000 var(--nav-corner)),
+      radial-gradient(circle at 0 100%, transparent calc(var(--nav-corner) - .5px), #000 var(--nav-corner));
+    -webkit-mask-size: 100% calc(100% - var(--nav-corner)), var(--nav-corner) var(--nav-corner), var(--nav-corner) var(--nav-corner);
+    mask-size: 100% calc(100% - var(--nav-corner)), var(--nav-corner) var(--nav-corner), var(--nav-corner) var(--nav-corner);
+    -webkit-mask-position: 0 0, 0 100%, 100% 100%; mask-position: 0 0, 0 100%, 100% 100%;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+}
+
+/* ── Dark theme: colours inside the chat message box follow the login palette (slate surfaces, indigo accent) ── */
+html.dark #chat-messages .chat-prose.rounded-2xl { background: rgb(30 41 59 / .7); border-color: rgb(148 163 184 / .18); }   /* agent reply bubble */
+html.dark #chat-messages .rounded-2xl.bg-indigo-500 { background: #4f46e5; }                                              /* your message: the login's accent */
+html.dark #chat-messages .rounded-2xl.dark\:bg-gray-800 { background: rgb(30 41 59 / .7); border-color: rgb(148 163 184 / .18); }   /* Sessions: human side */
+html.dark .chat-prose code { background: rgb(10 15 28 / .55); }
+html.dark .chat-prose pre { background: rgb(10 15 28 / .72); border: 1px solid rgb(148 163 184 / .14); }
+html.dark .chat-prose pre code { background: none; }
+html.dark .chat-prose blockquote { border-left-color: rgb(129 140 248 / .5); }
+html.dark .chat-prose th, html.dark .chat-prose td { border-color: rgb(148 163 184 / .2); }
+html.dark .chat-prose th { background: rgb(148 163 184 / .08); }
+html.dark .chat-prose a { color: #a5b4fc; }

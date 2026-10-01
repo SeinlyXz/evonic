@@ -403,6 +403,19 @@ def _extract_command(tool_name: str, args: dict) -> str:
     return extract_command(tool_name, args)
 
 
+def _new_thinking_stream(agent_id, session_id):
+    """Per-call live-thinking emitter, or None when streaming is disabled / unavailable."""
+    try:
+        from config import AGENT_STREAM_THINKING
+        if not AGENT_STREAM_THINKING or not session_id:
+            return None
+        from backend.agent_runtime.thinking_stream import make_realtime_thinking_emitter
+        return make_realtime_thinking_emitter(agent_id, session_id)
+    except Exception:
+        _logger.debug("thinking stream unavailable", exc_info=True)
+        return None
+
+
 def run_tool_loop(agent: Dict[str, Any],
                   agent_context: dict,
                   messages: List[dict],
@@ -1218,6 +1231,7 @@ def run_tool_loop(agent: Dict[str, Any],
 
         # LOCK ORDERING: Main path — llm_lock only. No other locks held here.
         _enable_thinking_this_call = not _thinking_budget_aborted
+        _thinking_stream = _new_thinking_stream(agent_id, session_id)
         with llm_lock:
             result = llm.chat_completion(
                 messages=_request.messages,
@@ -1227,7 +1241,10 @@ def run_tool_loop(agent: Dict[str, Any],
                 max_tokens=None,
                 log_file=llm_log_path,
                 tool_choice=_required_tool if _required_tool_pending else None,
+                **({'stream_callback': _thinking_stream} if _thinking_stream else {}),
             )
+        if _thinking_stream:
+            _thinking_stream.flush()
 
         # Check A: stop signal check after LLM call (earliest safe point)
         if stop_event.is_set():
@@ -1581,6 +1598,9 @@ def run_tool_loop(agent: Dict[str, Any],
                         **_fallback_request.metrics(),
                     })
                     with llm_lock:
+                        _fb_stream = _new_thinking_stream(agent_id, session_id)
+                        if _fb_stream:
+                            _fb_stream.reset(force=True)   # clear whatever the failed primary attempt streamed
                         _fallback_result = _fallback_llm.chat_completion(
                             messages=_fallback_request.messages,
                             tools=_fallback_request.tools,
@@ -1590,7 +1610,10 @@ def run_tool_loop(agent: Dict[str, Any],
                             log_file=llm_log_path,
                             tool_choice=(
                                 _required_tool if _required_tool_pending else None),
+                            **({'stream_callback': _fb_stream} if _fb_stream else {}),
                         )
+                        if _fb_stream:
+                            _fb_stream.flush()
                     if _fallback_result.get('success'):
                         _logger.info(
                             "Fallback model %s succeeded for agent %s — using for remaining iterations",

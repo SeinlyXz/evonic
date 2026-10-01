@@ -2328,7 +2328,7 @@ async function _renderViewerContent($body, url, filename, category) {
 // ── SSEAdapter ────────────────────────────────────────────────────────────────
 
 const SSE_EVENTS = [
-    'turn_begin', 'turn_split', 'thinking', 'tool_call_started', 'tool_executed',
+    'turn_begin', 'turn_split', 'thinking', 'thinking_delta', 'thinking_reset', 'tool_call_started', 'tool_executed',
     'state:changed', 'tasks:auto_transition', 'tasks:stale', 'response_chunk', 'done', 'approval_required', 'approval_resolved', 'retry',
     'message_injected', 'message_injection_applied', 'message_received', 'whatsapp_restriction_warning', 'session_clear',
     'state_changed', 'turn_queued', 'ready', 'heartbeat', 'auth_expired',
@@ -2871,7 +2871,20 @@ class Turn {
     _handleEventRendering(evtName, data) {
         if (evtName === 'turn_begin') {
             // Already in thinking phase — bubble is ready
-            if (data.ts) this._startTime = data.ts;
+            // Keep the EARLIEST start: the eager bubble began at submit, while turn_begin carries the
+            // (later) moment the server started the turn after queueing/buffering. Re-basing to it made
+            // the timer jump back to 0.
+            if (data.ts) this._startTime = Math.min(this._startTime, data.ts);
+            return;
+        }
+
+        if (evtName === 'thinking_delta') {
+            this._appendLiveThinking(data.content || '');
+            return;
+        }
+
+        if (evtName === 'thinking_reset') {
+            this._clearLiveThinking();
             return;
         }
 
@@ -2934,7 +2947,17 @@ class Turn {
 
         if (evtName === 'done') {
             console.warn('[turn] done event turn=%s _finalized=%s _finalContent=%s', this.id, this._finalized, !!this._finalContent);
-            this._finalizeBubble(data.thinking_duration);
+            // The server's duration only covers the model loop (it excludes queueing, the message
+            // buffer and pre-passes such as CMP), so it can be SHORTER than what the timer already
+            // counted live — the label then visibly jumped backwards. Never show less than the
+            // wall time this turn was actually on screen. Replayed turns have ~0 elapsed, so they
+            // keep the stored value.
+            let shownDuration = data.thinking_duration;
+            if (shownDuration != null) {
+                const wall = Math.max(0, (Date.now() - this._startTime) / 1000);
+                shownDuration = Math.max(Number(shownDuration) || 0, wall);
+            }
+            this._finalizeBubble(shownDuration);
             // Fire final:response so page-level code can render the response bubble
             // synchronously from the durable stream.
             if (this._finalContent) {
@@ -2942,7 +2965,7 @@ class Turn {
                 this._onTrigger('final:response', {
                     turnId: this.id,
                     content: this._finalContent,
-                    thinking_duration: data.thinking_duration,
+                    thinking_duration: shownDuration,
                 });
             }
             return;
@@ -2972,8 +2995,9 @@ class Turn {
         if (total > 0 && total % 10 === 0) {
             console.warn('[turn] _addTimelineEntry count=%d type=%s turn=%s — possible duplicate replay?', total + 1, ev.type, this.id);
         }
-        // Remove "Thinking..." placeholder when a new event arrives
+        // Remove "Thinking..." placeholder (and the streamed preview) when a new event arrives
         this.$timeline.find('.tl-thinking-pending').remove();
+        this._clearLiveThinking();
 
         // Deactivate previous last entry
         const $prevLast = this.$timeline.find('.timeline-entry:last-child');
@@ -3065,6 +3089,41 @@ class Turn {
         this._smartScroll();
     }
 
+    // ── Live thinking preview (streamed reasoning) ────────────────────────────
+    // Shown while the model is still thinking; replaced by the real timeline entry
+    // when the full `thinking` event arrives (or cleared on retry / next event).
+
+    _appendLiveThinking(text) {
+        if (this._finalized || !text) return;
+        let $live = this.$timeline.find('.tl-thinking-live');
+        if (!$live.length) {
+            this.$timeline.find('.tl-thinking-pending').remove();
+            const $prevLast = this.$timeline.find('.timeline-entry:last-child');
+            if ($prevLast.length) this._deactivateEntry($prevLast);
+            $live = $('<div class="tl-thinking-live pl-3 py-1 relative">').append(
+                $('<div class="tl-live-head">').append(
+                    $('<span class="inline-flex">').html(uiIcon('brain', 14)),
+                    $('<span class="tl-live-label">').text('Thinking'),
+                    $('<span class="tl-live-dots" aria-hidden="true">').append($('<i>'), $('<i>'), $('<i>'))
+                ),
+                $('<div class="tl-live-body">').append($('<div class="tl-live-text">'))
+            );
+            this.$timeline.append($live);
+            this.$timeline.removeClass('hidden');
+        }
+        const body = $live.find('.tl-live-body')[0];
+        const pre = $live.find('.tl-live-text')[0];
+        // Follow the tail unless the reader scrolled up inside the box.
+        const atTail = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
+        pre.appendChild(document.createTextNode(text));
+        if (atTail) body.scrollTop = body.scrollHeight;
+        this._smartScroll();
+    }
+
+    _clearLiveThinking() {
+        this.$timeline.find('.tl-thinking-live').remove();
+    }
+
     _showThinkingRow() {
         if (this._finalized) return; // don't add a pending row to a completed turn
         this.$timeline.find('.tl-thinking-pending').remove();
@@ -3106,6 +3165,7 @@ class Turn {
         }
 
         this.$timeline.find('.tl-thinking-pending').remove();
+        this._clearLiveThinking();
         this._deactivateEntry(this.$timeline.find('.timeline-entry:last-child'));
 
         // Auto-collapse the timeline when turn completes, keeping UI clean
