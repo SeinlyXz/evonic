@@ -125,6 +125,8 @@ html.dark .bot-bubble .chat-prose th { background: rgba(255,255,255,0.08); }
 
 /* Tool trace bubbles */
 .tool-trace-chevron { transition: transform 0.15s ease; display: inline-block; }
+/* Inline SVG icons used in the chat timeline / status / approval UI (replace the old emoji) */
+.ui-ic { display: inline-block; flex: none; vertical-align: -0.2em; }
 .tool-trace-chevron.rotated { transform: rotate(90deg); }
 .tool-spinner {
     display: inline-block;
@@ -257,12 +259,35 @@ body {
 
 /* Header */
 header {
+    --nav-corner: 22px;                       /* radius of the inverted (concave) bottom corners; 0 turns them off */
     position: sticky;
     top: 0;
     z-index: 50;
     background: var(--bg-header);
-    border-bottom: 1px solid var(--border-color);
+    /* no bottom border: it would stop dead where the corners curve; the colour step to the page is the edge */
+    box-shadow: 0 1px 2px rgb(0 0 0 / .06);
 }
+html.dark header { box-shadow: none; }
+/* Inverted corners: the navbar colour flows down into the two lower corners of the page, so the content
+   below looks like it has rounded top corners (quarter-circle cut out of a square filled with the navbar colour). */
+header::before,
+header::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    width: var(--nav-corner);
+    height: var(--nav-corner);
+    pointer-events: none;
+}
+header::before {
+    left: 0;
+    background: radial-gradient(circle at 100% 100%, transparent calc(var(--nav-corner) - .5px), var(--bg-header) var(--nav-corner));
+}
+header::after {
+    right: 0;
+    background: radial-gradient(circle at 0 100%, transparent calc(var(--nav-corner) - .5px), var(--bg-header) var(--nav-corner));
+}
+@media (max-width: 767.98px) { header { --nav-corner: 16px; } }
 
 /* Thin top-loading bar — shows during agent soft-switch / navigation */
 #nav-progress-bar {

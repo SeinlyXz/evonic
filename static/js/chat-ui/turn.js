@@ -22,6 +22,7 @@
 
 import { log, assert } from './debug.js';
 import { buildSavedArtifactsBlock } from './artifacts.js';
+import { uiIcon } from './icons.js';
 
 const TERMINAL_PHASES = new Set(['final', 'done', 'aborted']);
 
@@ -147,12 +148,12 @@ export class Turn {
 
         const $inner = $('<div class="thinking-bubble flex items-center gap-2 rounded-lg px-3 py-2 text-xs border border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60 cursor-pointer">');
         $inner.append(
-            $('<span>').html('&#129504;'),
+            $('<span class="inline-flex">').html(uiIcon('brain', 16)),
             $('<span class="font-medium text-purple-700 dark:text-purple-200">').text('Thinking'),
             $('<span class="thinking-step-count text-purple-500 dark:text-purple-300 text-[10px] ml-0.5 hidden">'),
             $('<span class="thinking-spinner">').append($('<span class="tool-spinner">')),
             $('<span class="thinking-timer-inline text-purple-500 dark:text-purple-400 text-[10px]">').text('0.0 s'),
-            $('<span class="ml-1 text-purple-500 dark:text-purple-300 tool-trace-chevron text-sm">').html('&#9656;')
+            $('<span class="ml-1 text-purple-500 dark:text-purple-300 tool-trace-chevron">').html(uiIcon('chevron-right', 14))
         );
 
         if (avatarHtml) this.$bubble.append($(avatarHtml));
@@ -245,7 +246,7 @@ export class Turn {
             $approvalColor
                 .removeClass('border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60')
                 .addClass('border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/60');
-            this.$bubble.find('span:first').html('&#128274;');
+            this.$bubble.find('span:first').html(uiIcon('lock', 16));
             this.$bubble.find('.font-medium')
                 .text('Menunggu Approval')
                 .removeClass('text-purple-700 dark:text-purple-200')
@@ -254,7 +255,7 @@ export class Turn {
             $approvalColor
                 .addClass('border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60')
                 .removeClass('border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/60');
-            this.$bubble.find('span:first').html('&#129504;');
+            this.$bubble.find('span:first').html(uiIcon('brain', 16));
             this.$bubble.find('.font-medium')
                 .text('Thinking')
                 .addClass('text-purple-700 dark:text-purple-200')
@@ -416,8 +417,8 @@ export class Turn {
         const $status = $target.find('.tl-status');
         if ($status.length) {
             $status.html(data.error
-                ? '<span class="text-[14px] font-bold leading-none" style="color:#ef4444">&#10005;</span>'
-                : '<span class="text-[14px] font-bold leading-none" style="color:#22c55e">&#10003;</span>');
+                ? '<span class="inline-flex" style="color:#ef4444">' + uiIcon('x', 14) + '</span>'
+                : '<span class="inline-flex" style="color:#22c55e">' + uiIcon('check', 14) + '</span>');
         }
 
         const $detail = $target.find('.tl-detail');
@@ -556,7 +557,7 @@ export class Turn {
         const $details = $('<div class="approval-details p-3">');
         $details.append(
             $('<div class="flex items-center gap-2 mb-2">').append(
-                $('<span class="text-sm font-semibold">').addClass(riskColorClass).html('&#9888; Approval Required'),
+                $('<span class="text-sm font-semibold inline-flex items-center gap-1.5">').addClass(riskColorClass).html(uiIcon('alert', 15) + ' Approval Required'),
                 $('<span class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-current">').addClass(riskColorClass).text(riskLevel)
             ),
             $('<div class="text-xs text-gray-700 dark:text-gray-200 mb-1">').append(
@@ -634,9 +635,9 @@ export class Turn {
         if (timedOut) {
             statusText = 'Timed out — auto-rejected.'; statusClass = 'text-gray-500'; iconHtml = '&#x23F1; Timed out';
         } else if (decision === 'approve') {
-            statusText = 'Approved — executing...'; statusClass = 'text-green-600'; iconHtml = '&#10003; Approved';
+            statusText = 'Approved — executing...'; statusClass = 'text-green-600'; iconHtml = uiIcon('check', 14) + ' Approved';
         } else {
-            statusText = 'Rejected.'; statusClass = 'text-red-500'; iconHtml = '&#10007; Rejected';
+            statusText = 'Rejected.'; statusClass = 'text-red-500'; iconHtml = uiIcon('x', 14) + ' Rejected';
         }
         $card.find('.approval-status').text(statusText).removeClass('hidden').addClass(statusClass);
         $card.find('.approval-summary-icon').html(iconHtml);

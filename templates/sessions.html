@@ -376,6 +376,16 @@ html.dark .st-done-toggle:hover { color: #e2e8f0; }
     .sess-hdr .hdr-bot { padding-left: .25rem; }
     .sess-hdr .hdr-bot-label, .sess-hdr .hdr-sep, #session-chat-fullscreen-btn { display: none; }
 }
+/* ── One surface: chat panel + Agent State + Session State share a single rounded section ──
+   #chat-room owns background / border / radius; the panel and the two state blocks are plain regions inside it,
+   separated by hairlines. */
+#chat-room { gap: 0; overflow: hidden; border: 1px solid #e5e7eb; border-radius: 2.25rem; background: #fff; }
+html.dark #chat-room { border-color: var(--color-gray-700, #364153); background: #1A2230; }
+#chat-room > .sess-panel, html.dark #chat-room > .sess-panel { background: transparent; border: 0; border-radius: 0; }
+#chat-room > #side-panels-wrapper { gap: 0; border-left: 1px solid rgb(148 163 184 / .2); }
+#chat-room #agent-state-panel, #chat-room #summary-panel { background: transparent; border: 0; border-radius: 0; }
+#chat-room #agent-state-panel + #summary-panel { border-top: 1px solid rgb(148 163 184 / .2); }
+@media (max-width: 767.98px) { #chat-room { border-radius: 0; border-width: 0; } }
 </style>
 <div class="sessions-page flex flex-col h-[calc(100vh-3.5rem)] px-2 py-1 md:py-4">
 
@@ -704,7 +714,7 @@ html.dark .st-done-toggle:hover { color: #e2e8f0; }
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=65"></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=66"></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=7"></script>
 <script>
 let allSessions = [];

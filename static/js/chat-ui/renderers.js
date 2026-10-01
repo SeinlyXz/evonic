@@ -9,6 +9,7 @@
 import { Lightbox } from './lightbox.js';
 import { setupImageForLazy, createLazyImage, retrofitImageForLazy } from './lazy-image.js';
 import { buildAttachmentCard } from './artifacts.js';
+import { uiIcon } from './icons.js';
 
 // ── Sanitizer ─────────────────────────────────────────────────────────────────
 
@@ -514,7 +515,7 @@ function _renderRunpyResult(r) {
     const hasError  = r.exit_code !== 0;
     const statusColor = hasError ? 'text-red-600' : 'text-green-600';
     const statusBg    = hasError ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
-    const statusIcon  = hasError ? '&#10060;' : '&#9989;';
+    const statusIcon  = hasError ? uiIcon('x-circle', 12) : uiIcon('check-circle', 12);
     const $wrap = $('<div>');
     const $badge = $(`<div class="flex items-center gap-2 mb-1.5 text-[10px] font-mono border rounded px-2 py-1">`).addClass(statusColor).addClass(statusBg);
     $badge.append(
@@ -540,7 +541,7 @@ function _renderBashResult(r) {
     const hasError  = r.exit_code !== 0;
     const statusColor = hasError ? 'text-red-600' : 'text-green-600';
     const statusBg    = hasError ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
-    const statusIcon  = hasError ? '&#10060;' : '&#9989;';
+    const statusIcon  = hasError ? uiIcon('x-circle', 12) : uiIcon('check-circle', 12);
     const $wrap = $('<div>');
     const $badge = $(`<div class="flex items-center gap-2 mb-1.5 text-[10px] font-mono border rounded px-2 py-1">`).addClass(statusColor).addClass(statusBg);
     $badge.append(
@@ -859,24 +860,24 @@ export function buildTimelineEntry(ev, isActive) {
     let borderClass, icon, label, labelClass, $summary, $detail, spinnerColor, extraAttrs = {};
 
     if (ev.type === 'thinking') {
-        borderClass = 'border-purple-300'; icon = '&#129504;'; label = 'Thinking'; labelClass = 'text-purple-500'; spinnerColor = '#a855f7';
+        borderClass = 'border-purple-300'; icon = uiIcon('brain', 14); label = 'Thinking'; labelClass = 'text-purple-500'; spinnerColor = '#a855f7';
         $summary = $('<span class="text-[11px] text-gray-400 truncate max-w-[780px]">').text(truncateLine(ev.content, 80));
         $detail = _buildThinkingContent(ev.content);
 
     } else if (ev.type === 'tool_call') {
-        borderClass = 'border-blue-300'; icon = '&#128295;'; label = 'Tool Call'; labelClass = 'text-blue-500'; spinnerColor = '#3b82f6';
+        borderClass = 'border-blue-300'; icon = uiIcon('wrench', 14); label = 'Tool Call'; labelClass = 'text-blue-500'; spinnerColor = '#3b82f6';
         extraAttrs['data-tool-type'] = 'tool_call';
         extraAttrs['data-tool-name'] = ev.tool;
         $summary = $('<span class="text-[11px] text-gray-400 truncate max-w-[780px]">').text(ev.tool + '(' + truncateLine(JSON.stringify(ev.args), 60) + ')');
         $detail = _buildToolCallDetail(ev.tool, ev.args || {}, ev.param_types || {});
 
     } else if (ev.type === 'response') {
-        borderClass = 'border-gray-300'; icon = '&#128172;'; label = 'Response'; labelClass = 'text-gray-500'; spinnerColor = '#6b7280';
+        borderClass = 'border-gray-300'; icon = uiIcon('message', 14); label = 'Response'; labelClass = 'text-gray-500'; spinnerColor = '#6b7280';
         $summary = $('<span class="text-[11px] text-gray-400 truncate max-w-[780px]">').text(truncateLine(ev.content, 80));
         $detail = $('<pre class="whitespace-pre-wrap dark:text-gray-200 break-words overflow-x-auto max-w-full text-[11px] text-gray-700">').text(ev.content);
 
     } else if (ev.type === 'retry') {
-        borderClass = 'border-yellow-300'; icon = '&#128260;'; label = 'Mencoba Ulang'; labelClass = 'text-yellow-600'; spinnerColor = '#f59e0b';
+        borderClass = 'border-yellow-300'; icon = uiIcon('retry', 14); label = 'Mencoba Ulang'; labelClass = 'text-yellow-600'; spinnerColor = '#f59e0b';
         $summary = $('<span class="text-[11px] text-gray-400 truncate max-w-[780px]">').text(ev.message || `Mencoba ulang... (${ev.retry_count}/${ev.max_retries})`);
         $detail = null;
 
@@ -896,7 +897,7 @@ export function buildTimelineEntry(ev, isActive) {
     }
 
     const $headerRow = $('<div class="flex items-center gap-1 cursor-pointer select-none">');
-    const $chev = $('<span class="tl-chev tool-trace-chevron text-[9px] text-gray-300">').html('&#9656;');
+    const $chev = $('<span class="tl-chev tool-trace-chevron text-gray-300">').html(uiIcon('chevron-right', 11));
     const $iconSpan = $('<span class="text-[10px] font-semibold">').addClass(labelClass).html(icon);
     $headerRow.append($chev, $iconSpan);
 
@@ -932,7 +933,7 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
     const $tagSpan = $('<span class="text-xs font-semibold mr-1.5">').addClass(tagColorClass).text(tag);
     const $preview = $('<span class="sys-balloon-content block">').append($tagSpan, document.createTextNode(truncated));
     $header.append($preview);
-    if (needsCollapse) $header.append($('<span class="sys-chevron text-[10px] flex-shrink-0 mt-0.5 ml-auto">').addClass(fullColorClass).html('&#9660;'));
+    if (needsCollapse) $header.append($('<span class="sys-chevron text-[10px] flex-shrink-0 mt-0.5 ml-auto">').addClass(fullColorClass).html(uiIcon('chevron-down', 12)));
 
     const $full = $('<div class="sys-balloon-full whitespace-pre-wrap">').css('display','none').append(
         $('<span class="text-xs font-semibold mr-1.5">').addClass(tagColorClass).text(tag),
@@ -1240,7 +1241,9 @@ export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
 
     } else if (isError) {
         const $icon = $('<svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"/></svg>');
-        $bubble = $('<div class="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-2 text-sm flex items-start gap-2">').append($icon, $('<span>').text(content));
+        // min-width:0 + overflow-wrap:anywhere: a flex child cannot shrink below its longest unbroken token, so long
+        // error payloads (JSON without spaces) used to stretch the bubble and the whole message list sideways.
+        $bubble = $('<div class="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-2 text-sm flex items-start gap-2 min-w-0 max-w-full">').append($icon, $('<span style="min-width:0;overflow-wrap:anywhere">').text(content));
 
     } else if (isSystem) {
         const sysMatch = content.match(/^\[system[^\]]*\]\s*/i);

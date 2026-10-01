@@ -45,7 +45,11 @@ html.dark #chat-bash-hint { background: #e11d48; color: #fff1f2; }
 .chat-composer.is-expanded { border-radius: 1.25rem; padding: .875rem .75rem .625rem 1.125rem; column-gap: 0;
     grid-template-areas: "tip tip tip" "files files files" "input input input" "attach . send"; }
 #chat-file-preview { grid-area: files; }
-#chat-attach-btn { grid-area: attach; }
+#chat-attach-btn, #chat-bash-btn { grid-area: attach; }
+/* Bash mode: the "!" chip takes the attach button's slot (the "!" is a mode, not text) */
+#chat-bash-btn { display: none; font: 700 1.05rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
+.chat-composer.is-bash #chat-bash-btn { display: inline-flex; }
+.chat-composer.is-bash #chat-attach-btn { display: none; }
 #chat-send-btn { grid-area: send; }
 .chat-composer:focus-within { border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .14), 0 10px 28px -14px rgb(79 70 229 / .35); }
 html.dark .chat-composer { background: rgb(17 24 39 / .72); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
@@ -206,6 +210,163 @@ html:not(.dark) .chat-header-pill button:hover { color: #111827; }
 html:not(.dark) .chat-header-pill button[onclick*="confirmClearHistory"]:hover { color: #dc2626; }
 html:not(.dark) .chat-header-pill .chat-hdr-secondary.w-px { background: rgb(100 116 139 / .45); }
 html:not(.dark) .chat-header-back { color: #4b5563; }
+/* ── Tools / Skills tables: header that stays readable on hover, icon tiles, pill controls, concentric radius ── */
+.tbl-wrap { overflow-x: auto; border: 1px solid rgb(148 163 184 / .25); border-radius: 1.25rem; }   /* card is 2.25rem with 1.5rem padding → 1.25rem here */
+.tbl-wrap table { border-collapse: separate; border-spacing: 0; }
+.tbl-th { padding: .75rem; font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; text-align: left; user-select: none; cursor: pointer;
+    color: #64748b; background: rgb(148 163 184 / .08); border-bottom: 1px solid rgb(148 163 184 / .2); transition: color .15s, background-color .15s; }
+html.dark .tbl-th { color: #94a3b8; }
+.tbl-th-toggle { width: 3.5rem; cursor: default; }
+/* hover: lighter text on a tinted band (never darker than the page — the old hover class resolved to dark grey in dark mode) */
+.tbl-th:not(.tbl-th-toggle):hover { color: #111827; background: rgb(99 102 241 / .10); }
+html.dark .tbl-th:not(.tbl-th-toggle):hover { color: #f1f5f9; background: rgb(129 140 248 / .16); }
+.tbl-th.is-sorted { color: #4f46e5; }
+html.dark .tbl-th.is-sorted { color: #a5b4fc; }
+.tbl-th-in { display: inline-flex; align-items: center; gap: .375rem; }
+.tbl-th-in > svg { width: 14px; height: 14px; flex: none; opacity: .85; }
+.tbl-sort { display: inline-flex; margin-left: .125rem; }
+.tbl-sort svg { width: 12px; height: 12px; }
+.tbl-sort.idle { opacity: 0; transition: opacity .15s; }
+.tbl-th:hover .tbl-sort.idle { opacity: .6; }
+.tool-row td { padding-top: .75rem; padding-bottom: .75rem; vertical-align: middle; }
+.tool-name-cell { display: flex; align-items: center; gap: .625rem; }
+.tool-name-text { font-weight: 500; }
+.tool-lock { display: inline-flex; color: #94a3b8; }
+.tool-lock svg { width: 13px; height: 13px; }
+.ti { width: 1.75rem; height: 1.75rem; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: .625rem; }
+.ti svg { width: 15px; height: 15px; }
+.ti-green  { background: #ecfdf5; color: #047857; }
+.ti-indigo { background: #eef2ff; color: #4338ca; }
+.ti-blue   { background: #eff6ff; color: #1d4ed8; }
+.ti-gray   { background: #f3f4f6; color: #4b5563; }
+.ti-amber  { background: #fffbeb; color: #b45309; }
+html.dark .ti-green  { background: rgb(16 185 129 / .16); color: #6ee7b7; }
+html.dark .ti-indigo { background: rgb(99 102 241 / .20); color: #a5b4fc; }
+html.dark .ti-blue   { background: rgb(59 130 246 / .18); color: #93c5fd; }
+html.dark .ti-gray   { background: rgb(148 163 184 / .14); color: #cbd5e1; }
+html.dark .ti-amber  { background: rgb(245 158 11 / .18); color: #fcd34d; }
+.tool-badge { display: inline-flex; align-items: center; gap: .3125rem; border-radius: 9999px; padding: .125rem .625rem .125rem .5rem; }
+.tool-badge svg { width: 12px; height: 12px; flex: none; }
+.tbl-src { color: #6b7280; }
+html.dark .tbl-src { color: #94a3b8; }
+.tbl-src-in { display: inline-flex; align-items: center; gap: .375rem; }
+.tbl-src-in svg { width: 13px; height: 13px; opacity: .8; }
+.tbl-dash { opacity: .4; }
+/* toolbar controls: pills, like the composer and header pills */
+#tool-filter, #skill-filter { border-radius: 9999px; padding-left: 1.125rem; padding-right: 1.125rem; }
+#tool-adv-filter-btn, #skill-adv-filter-btn { border-radius: 9999px; padding-left: 1rem; padding-right: 1rem; }
+div:has(> #filter-btn-assigned), div:has(> #skill-mode-assigned) { border-radius: 9999px; }
+#tool-filter-panel, #skill-filter-panel { border-radius: 1.25rem; }
+/* ── Row grouping ── */
+.tbl-group-ctl { position: relative; display: inline-flex; align-items: center; flex: none; min-height: 44px; }
+.tbl-group-ctl-ico { position: absolute; left: .875rem; display: inline-flex; pointer-events: none; color: #64748b; }
+.tbl-group-ctl-ico svg { width: 15px; height: 15px; }
+.tbl-group-ctl select { height: 44px; padding: 0 1rem 0 2.25rem; border-radius: 9999px; border: 1px solid #d1d5db; background-color: #fff; color: #4b5563; font-size: .75rem; font-weight: 500; cursor: pointer; outline: none; appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right .75rem center; background-size: 12px; padding-right: 2.25rem; }
+.tbl-group-ctl select:hover { background-color: #f9fafb; }
+.tbl-group-ctl select:focus-visible { border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .14); }
+html.dark .tbl-group-ctl select { border-color: #4b5563 !important; background-color: #374151 !important; color: #d1d5db !important; }
+html.dark .tbl-group-ctl select:hover { background-color: #4b5563 !important; }
+.tbl-group td { padding: .5rem .75rem; background: rgb(148 163 184 / .07); cursor: pointer; user-select: none; transition: background-color .15s; }
+.tbl-group:hover td { background: rgb(99 102 241 / .09); }
+.tbl-group:focus-visible td { outline: 2px solid #818cf8; outline-offset: -2px; }
+.tbl-group-in { display: flex; align-items: center; gap: .625rem; }
+.tbl-group-chev { display: inline-flex; color: #94a3b8; transition: transform .15s ease; }
+.tbl-group-chev svg { width: 14px; height: 14px; }
+.tbl-group.is-collapsed .tbl-group-chev { transform: rotate(-90deg); }
+.tbl-group .ti { width: 1.5rem; height: 1.5rem; border-radius: .5rem; }
+.tbl-group .ti svg { width: 13px; height: 13px; }
+.tbl-group-label { font-size: .75rem; font-weight: 600; letter-spacing: .03em; color: #334155; }
+html.dark .tbl-group-label { color: #e2e8f0; }
+.tbl-group-count { min-width: 1.375rem; padding: 0 .4375rem; border-radius: 9999px; text-align: center; font-size: .6875rem; font-weight: 600; line-height: 1.125rem; color: #64748b; background: rgb(148 163 184 / .18); }
+html.dark .tbl-group-count { color: #cbd5e1; }
+/* ── One surface: message box + Agent State + Session State live in the same rounded section ──
+   The shell owns background / border / radius; the chat panel and the two state cards become plain regions
+   inside it, separated by hairline dividers. */
+#chat-shell { gap: 0; overflow: hidden; border: 1px solid #e5e7eb; border-radius: 2.25rem; background: #fff; }
+html.dark #chat-shell { border-color: var(--color-gray-700, #364153); }
+#chat-shell #chat-panel { flex: 1 1 0; min-width: 0; background: transparent; border: 0; border-radius: 0; }
+#chat-shell #chat-state-col { gap: 0; border-left: 1px solid rgb(148 163 184 / .2); }
+#chat-state-col #agent-state-card,
+#chat-state-col #summary-card { background: transparent; border: 0; border-radius: 0; }
+/* hairline between Agent State and Session State (only when both exist; beats the border reset above) */
+#chat-state-col #agent-state-card + #summary-card { border-top: 1px solid rgb(148 163 184 / .2); }
+#chat-state-col #summary-meta { border-top-color: rgb(148 163 184 / .2); }
+#tab-chat.chat-fullscreen #chat-shell { border-radius: 0; border-width: 0; }
+@media (max-width: 1023.98px) { #chat-shell { border-radius: 0; border-width: 0; } }
+/* Slash-command menu: a panel fused to the composer's top edge, with concave fillets (same shape language as the bash tab) */
+#chat-command-menu { --cm-fill: #fff; --cm-line: #818cf8; --cm-r: .75rem;
+  position: absolute; left: 2.5rem; right: 2.5rem; bottom: 100%; z-index: 50; transform-origin: 50% 100%;
+  border: 1px solid var(--cm-line); border-bottom: 0; border-radius: 1.5rem 1.5rem 0 0; background: var(--cm-fill); }
+html.dark #chat-command-menu { --cm-fill: #151c2b; --cm-line: #6366f1; }
+#chat-command-menu.hidden { display: none; }
+#chat-command-menu:not(.hidden):not(.cm-leave) { animation: cm-in .24s cubic-bezier(.2,.8,.2,1) both; }
+#chat-command-menu.cm-leave { animation: cm-out .16s ease-in both; pointer-events: none; }
+@keyframes cm-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes cm-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px) scale(.97); } }
+#chat-command-menu::before, #chat-command-menu::after { content: ""; position: absolute; bottom: 0; width: calc(var(--cm-r) + 1px); height: calc(var(--cm-r) + 1px); pointer-events: none; }
+#chat-command-menu::before { right: 100%;
+  background: radial-gradient(circle at 0 0, transparent var(--cm-r), var(--cm-line) var(--cm-r), var(--cm-line) calc(var(--cm-r) + 1px), var(--cm-fill) calc(var(--cm-r) + 1px)); }
+#chat-command-menu::after { left: 100%;
+  background: radial-gradient(circle at 100% 0, transparent var(--cm-r), var(--cm-line) var(--cm-r), var(--cm-line) calc(var(--cm-r) + 1px), var(--cm-fill) calc(var(--cm-r) + 1px)); }
+#chat-command-list { max-height: 16rem; overflow-y: auto; padding: .375rem; scrollbar-width: none; }
+#chat-command-list::-webkit-scrollbar { display: none; }
+@media (max-width: 767.98px) { #chat-command-menu { left: 1.25rem; right: 1.25rem; --cm-r: .5rem; } }
+@media (prefers-reduced-motion: reduce) { #chat-command-menu, #chat-command-menu.cm-leave { animation: none !important; } }
+#chat-command-menu .cmd-opt { display: flex; width: 100%; align-items: center; gap: .75rem; padding: .5rem .625rem; border: 0; border-radius: 1.125rem; background: transparent; text-align: left; cursor: pointer; color: inherit; }
+#chat-command-menu .cmd-opt:hover, #chat-command-menu .cmd-opt[aria-selected="true"] { background: rgb(99 102 241 / .1); }
+html.dark #chat-command-menu .cmd-opt:hover, html.dark #chat-command-menu .cmd-opt[aria-selected="true"] { background: rgb(99 102 241 / .18); }
+#chat-command-menu .cmd-name { flex: none; padding: .125rem .625rem; border-radius: 999px; font: 600 .8125rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; color: #4f46e5; background: rgb(99 102 241 / .1); }
+html.dark #chat-command-menu .cmd-name { color: #a5b4fc; background: rgb(99 102 241 / .18); }
+#chat-command-menu .cmd-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8125rem; color: #6b7280; }
+html.dark #chat-command-menu .cmd-desc { color: #9ca3af; }
+#chat-command-menu .cmd-args { flex: none; padding: .0625rem .5rem; border-radius: 999px; font-size: .6875rem; color: #6b7280; border: 1px solid rgb(148 163 184 / .35); }
+html.dark #chat-command-menu .cmd-args { color: #9ca3af; }
+#chat-command-menu .cmd-enter { flex: none; display: none; color: #818cf8; }
+#chat-command-menu .cmd-opt[aria-selected="true"] .cmd-enter { display: inline-flex; }
+@media (max-width: 767.98px) { #chat-command-menu .cmd-enter { display: none !important; } }
+/* Bash-mode badge: a tab fused to the composer's top edge, with concave (inverted) fillets flaring into the composer border */
+#chat-bash-hint { --bh-fill: #ffe8ea; --bh-line: #fb7185; --bh-r: .75rem;
+  display: inline-flex; align-items: center; gap: .375rem; top: auto; left: 2.5rem; bottom: 100%; z-index: 2;
+  padding: .3125rem .875rem .375rem .75rem; border-radius: .875rem .875rem 0 0; border: 1px solid var(--bh-line); border-bottom: 0;
+  font: 600 .75rem/1rem ui-monospace, SFMono-Regular, Menlo, monospace; color: #be123c; background: var(--bh-fill); pointer-events: none; }
+#chat-bash-hint { transform-origin: 50% 100%; transition: opacity .2s ease, transform .26s cubic-bezier(.2,.8,.2,1), visibility 0s; }
+#chat-bash-hint.hidden { display: inline-flex; visibility: hidden; opacity: 0; transform: translateY(8px) scale(.94); transition: opacity .15s ease, transform .2s ease, visibility 0s linear .2s; }
+/* "!" chip pops in where the attach button was; attach pops back when leaving */
+@keyframes bash-pop { from { opacity: 0; transform: scale(.55) rotate(-25deg); } to { opacity: 1; transform: none; } }
+.chat-composer.is-bash #chat-bash-btn, .chat-composer.bash-exit #chat-attach-btn { animation: bash-pop .26s cubic-bezier(.2,.9,.3,1.3) both; }
+@media (prefers-reduced-motion: reduce) { #chat-bash-hint, #chat-bash-hint.hidden { transition: none; } .chat-composer.is-bash #chat-bash-btn, .chat-composer.bash-exit #chat-attach-btn { animation: none; } }
+#chat-bash-hint::before, #chat-bash-hint::after { content: ""; position: absolute; bottom: 0; width: calc(var(--bh-r) + 1px); height: calc(var(--bh-r) + 1px); pointer-events: none; }
+/* left fillet: sits outside the tab's left edge; circle centred on its top-left corner */
+#chat-bash-hint::before { right: 100%;
+  background: radial-gradient(circle at 0 0, transparent var(--bh-r), var(--bh-line) var(--bh-r), var(--bh-line) calc(var(--bh-r) + 1px), var(--bh-fill) calc(var(--bh-r) + 1px)); }
+#chat-bash-hint::after { left: 100%;
+  background: radial-gradient(circle at 100% 0, transparent var(--bh-r), var(--bh-line) var(--bh-r), var(--bh-line) calc(var(--bh-r) + 1px), var(--bh-fill) calc(var(--bh-r) + 1px)); }
+#chat-bash-hint .bh-sub { font-weight: 400; opacity: .7; padding-left: .375rem; border-left: 1px solid rgb(225 29 72 / .35); }
+html.dark #chat-bash-hint { --bh-fill: #421423; --bh-line: #fb7185; color: #fda4af; background: var(--bh-fill); }
+html.dark #chat-bash-hint .bh-sub { border-left-color: rgb(251 113 133 / .35); }
+/* ── General tab: sectioned cards, setting rows, rounded fields ── */
+.gcard-h { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid rgb(148 163 184 / .2); }
+.gcard-h h3 { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.3; color: #111827; }
+.gcard-h p { margin: .125rem 0 0; font-size: .75rem; color: #6b7280; }
+html.dark .gcard-h h3 { color: #f3f4f6; }
+html.dark .gcard-h p { color: #9ca3af; }
+.gcard-ic { flex: none; width: 2.25rem; height: 2.25rem; border-radius: .875rem; display: inline-flex; align-items: center; justify-content: center; color: #4f46e5; background: rgb(99 102 241 / .1); }
+html.dark .gcard-ic { color: #a5b4fc; background: rgb(99 102 241 / .18); }
+/* fields */
+#tab-general input[type="text"], #tab-general input[type="number"], #tab-general select, #tab-general textarea { border-radius: .875rem; }
+#tab-general input[type="text"], #tab-general input[type="number"], #tab-general select { padding-left: .875rem; padding-right: .875rem; }
+#tab-general textarea { padding: .75rem .875rem; }
+#tab-general label.block { font-size: .8125rem; letter-spacing: .01em; }
+#tab-general #agent-safety-rules-list { border-radius: 1rem; }
+/* toggles become setting rows: title + description on the left, switch on the right */
+#tab-general label.flex.items-center.gap-3.cursor-pointer { flex-direction: row-reverse; justify-content: space-between; align-items: center; gap: 1rem;
+  padding: .75rem 1rem; border: 1px solid rgb(148 163 184 / .25); border-radius: 1rem; transition: background-color .15s, border-color .15s; }
+#tab-general label.flex.items-center.gap-3.cursor-pointer:hover { background: rgb(99 102 241 / .05); border-color: rgb(99 102 241 / .35); }
+#tab-general label.flex.items-center.gap-3.cursor-pointer > div { flex: 1 1 auto; min-width: 0; }
+#tab-general .gcard .mb-4:last-child { margin-bottom: 0; }
+#advanced-section { border-top-color: rgb(148 163 184 / .2) !important; }
 /* Main sections of every agent tab: same radius as the chat message box (#chat-panel) */
 #agent-tab-area .tab-content > .rounded-lg,
 #agent-tab-area .tab-content > .grid > .rounded-lg,
@@ -237,7 +398,7 @@ html.dark .mstate-h h3 { color: #f3f4f6; }
 #chat-panel { position: relative; --composer-h: 7rem; border-radius: 2.25rem; }
 /* Message box background (dark mode). Swap --chat-bg to try other candidates:
    #172236 (navy) · #131B2E (deeper) · #1B2440 (indigo-tinted) · #1A2230 (neutral slate, current pick) */
-html.dark #chat-panel { --chat-bg: #1A2230; background-color: var(--chat-bg); }
+html.dark #chat-shell { --chat-bg: #1A2230; background-color: var(--chat-bg); }
 #chat-composer-wrap { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; border-top: 0; pointer-events: none; }
 #chat-composer-wrap > * { pointer-events: auto; }
 #chat-composer-wrap > .pblur { pointer-events: none; }
@@ -771,7 +932,9 @@ html.dark .agent-tab.active {
     <!-- Settings Tab -->
     <div id="tab-general" class="tab-content hidden flex-1 min-h-0 overflow-y-auto">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+        <div class="space-y-6">
+        <div class="gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+            <div class="gcard-h"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><div><h3>Profile</h3><p>Name, identity and avatar</p></div></div>
             <div class="mb-4">
                 <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Name</label>
                 <input type="text" id="agent-name" value="{{ agent.name }}" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:text-gray-100">
@@ -799,6 +962,9 @@ html.dark .agent-tab.active {
                 </div>
                 <p class="text-xs text-gray-400 mt-1">Upload a PNG, JPEG, GIF, WebP, or SVG image. Recommended: square aspect ratio.</p>
             </div>
+        </div>
+        <div class="gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+            <div class="gcard-h"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></svg></span><div><h3>Model &amp; Environment</h3><p>Which model runs the agent and where it executes</p></div></div>
             <div class="mb-4">
                 <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Model</label>
                 <select id="agent-model-select" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:text-gray-100">
@@ -840,6 +1006,9 @@ html.dark .agent-tab.active {
                 </label>
                 <div id="sandbox-warning" class="hidden mt-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2.5 py-1.5">⚠ Docker Sandbox only available for local workplace.</div>
             </div>
+        </div>
+        <div class="gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+            <div class="gcard-h"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span><div><h3>Prompt &amp; Safety</h3><p>Persona and the rules that guard it</p></div></div>
             <!-- HMADS: Agent-specific safety rules -->
             <div class="mb-4" id="agent-safety-rules-section">
                 <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Safety Rules (Specific)</label>
@@ -853,6 +1022,9 @@ html.dark .agent-tab.active {
                 <textarea id="agent-system-prompt" rows="10" placeholder="Define the agent's persona and behavior..." class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">{{ agent.system_prompt or '' }}</textarea>
                 <a href="javascript:void(0)" onclick="openSystemPromptModal()" class="inline-block mt-1 text-xs text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors">Edit in full screen &#8599;</a>
             </div>
+        </div>
+        <div class="gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+            <div class="gcard-h"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg></span><div><h3>Capabilities</h3><p>What the agent can receive and what gets injected</p></div></div>
             <div class="mb-4">
                 <label class="flex items-center gap-3 cursor-pointer select-none">
                     {{ toggle_widget(id='agent-vision', checked=agent.vision_enabled) }}
@@ -914,12 +1086,13 @@ html.dark .agent-tab.active {
             </div>
 
         </div>
+        </div>
         <!-- Right column -->
         <div class="space-y-6">
             <!-- Advanced Settings -->
             <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
                 <button type="button" onclick="toggleAdvanced()" class="w-full flex justify-between items-center px-6 py-4 text-sm font-semibold dark:text-gray-200 text-gray-700 hover:text-gray-900 dark:hover:text-gray-50 transition-colors">
-                    <span>Advanced Settings</span>
+                    <span class="flex items-center gap-3"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg></span><span class="text-left"><span class="block text-sm font-semibold">Advanced Settings</span><span class="block text-xs font-normal text-gray-400">Memory, execution, safety and slash commands</span></span></span>
                     <span id="adv-arrow" class="text-xs transition-transform">&#9654;</span>
                 </button>
                 <div id="advanced-section" class="hidden px-6 pb-6 space-y-4 border-t border-gray-100">
@@ -1308,7 +1481,7 @@ html.dark .agent-tab.active {
         .dark :is(#tools-list, #skills-list) tr.tool-orphan { background: rgb(120 53 15 / .3); }
         :is(#tools-list, #skills-list) tr.tool-row:not(.tool-orphan):hover { background: rgb(249 250 251); }
         .dark :is(#tools-list, #skills-list) tr.tool-row:not(.tool-orphan):hover { background: rgb(55 65 81 / .6); }
-        .tool-badge { display: inline-block; font-size: .75rem; line-height: 1rem; padding: .125rem .5rem; border-radius: .375rem; border: 1px solid transparent; white-space: nowrap; }
+        .tool-badge { display: inline-flex; align-items: center; gap: .3125rem; font-size: .75rem; line-height: 1rem; padding: .125rem .625rem .125rem .5rem; border-radius: 9999px; border: 1px solid transparent; white-space: nowrap; }
         .tb-green  { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
         .tb-indigo { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
         .tb-blue   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
@@ -1320,7 +1493,6 @@ html.dark .agent-tab.active {
         html.dark .tb-gray   { background: rgb(148 163 184 / .12); color: #cbd5e1; border-color: rgb(148 163 184 / .25); }
         html.dark .tb-amber  { background: rgb(245 158 11 / .16); color: #fcd34d; border-color: rgb(245 158 11 / .32); }
         /* Table chrome: readable text + subtle separators in dark mode */
-        html.dark :is(#tab-tools, #tab-skills) thead { background: rgb(30 41 59 / .9); color: #94a3b8; }
         html.dark :is(#tools-list, #skills-list) td { color: #cbd5e1; }
         html.dark :is(#tools-list, #skills-list) td.tool-name { color: #f1f5f9; }
         html.dark :is(#tools-list, #skills-list) .tool-id { color: #94a3b8; }
@@ -1363,6 +1535,7 @@ html.dark .agent-tab.active {
                         </div>
                     </div>
                 </div>
+                <span id="tool-group-by-slot" class="tbl-group-slot"></span>
                 <div class="flex rounded-md border border-gray-200 overflow-hidden text-xs font-medium flex-shrink-0 w-full sm:w-auto dark:border-gray-600">
                     <button id="filter-btn-assigned" onclick="setFilterMode('assigned')"
                             class="flex-1 min-h-[44px] px-3 py-2 bg-indigo-500 text-white transition-colors dark:bg-indigo-600">Assigned</button>
@@ -1375,9 +1548,9 @@ html.dark .agent-tab.active {
             <!-- Orphan / info banners -->
             <div id="tools-banners" class="space-y-2 empty:hidden mb-3"></div>
             <!-- Tools Table -->
-            <div class="overflow-x-auto border border-gray-200 rounded-md dark:border-gray-600">
+            <div class="tbl-wrap">
                 <table class="w-full text-sm text-left">
-                    <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                    <thead>
                         <tr id="tools-thead"></tr>
                     </thead>
                     <tbody id="tools-list"></tbody>
@@ -1421,6 +1594,7 @@ html.dark .agent-tab.active {
                         </div>
                     </div>
                 </div>
+                <span id="skill-group-by-slot" class="tbl-group-slot"></span>
                 <div class="flex rounded-md border border-gray-200 overflow-hidden text-xs font-medium flex-shrink-0 w-full sm:w-auto dark:border-gray-600">
                     <button id="skill-mode-assigned" onclick="setSkillFilterMode('assigned')"
                             class="flex-1 min-h-[44px] px-3 py-2 bg-indigo-500 text-white transition-colors dark:bg-indigo-600">Assigned</button>
@@ -1431,9 +1605,9 @@ html.dark .agent-tab.active {
                 </div>
             </div>
             <!-- Skills Table -->
-            <div class="overflow-x-auto border border-gray-200 rounded-md dark:border-gray-600">
+            <div class="tbl-wrap">
                 <table class="w-full text-sm text-left">
-                    <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                    <thead>
                         <tr id="skills-thead"></tr>
                     </thead>
                     <tbody id="skills-list"></tbody>
@@ -1576,7 +1750,7 @@ html.dark .agent-tab.active {
 
     <!-- Chat Tab -->
     <div id="tab-chat" class="tab-content flex-1 min-h-0">
-        <div class="flex flex-col lg:flex-row gap-4 h-full" style="min-height:0;">
+        <div id="chat-shell" class="flex flex-col lg:flex-row gap-4 h-full" style="min-height:0;">
             <!-- Chat Panel -->
             <div id="chat-panel" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 flex-[3] flex flex-col min-w-0" style="min-height:0; overflow:hidden;">
                 <div class="pblur pblur-top" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -1652,8 +1826,8 @@ html.dark .agent-tab.active {
                                 <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd"/></svg>
                             </button>
                         </div>
-                        <div id="chat-command-menu" class="hidden chat-anim-in absolute left-0 right-0 z-50 max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800" style="bottom: calc(100% + 0.5rem);" role="listbox" aria-label="Available slash commands"></div>
-                        <div id="chat-bash-hint" class="hidden" aria-live="polite">! Bash mode: shell command</div>
+                        <div id="chat-command-menu" class="hidden" aria-label="Available slash commands"><div id="chat-command-list" role="listbox" aria-label="Available slash commands"></div></div>
+                        <div id="chat-bash-hint" class="hidden" aria-live="polite"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg><span>Bash mode</span><span class="bh-sub">shell command</span></div>
                         <!-- Floats above the card so showing/hiding it never shifts the layout -->
                         <div id="chat-command-hint" class="hidden" aria-live="polite"></div>
                         <!-- Pending image/file attachments for the next message -->
@@ -1665,6 +1839,7 @@ html.dark .agent-tab.active {
                             <input type="file" id="chat-file-input" class="hidden" multiple
                                    accept="image/*,.pdf,.txt,.md,.log,.json,.yaml,.yml,.xml,.csv,.tsv,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.html,.css,.sql,.sh,.toml,.ini,.zip,.docx,.xlsx,.pptx,.odt,.ods,.odp,.rtf,.epub"
                                    onchange="onChatFileSelected(this)">
+                            <button type="button" id="chat-bash-btn" class="chat-icon-btn" title="Bash mode — press Backspace on an empty input to exit" aria-label="Exit bash mode" onclick="setChatBashMode(false); document.getElementById('chat-input').focus();">!</button>
                             {% if agent.attachments_enabled %}
                             <button type="button" id="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()"
                                     class="chat-icon-btn" title="Attach file" aria-label="Attach file">
@@ -1702,7 +1877,7 @@ html.dark .agent-tab.active {
                 </div>
             </div>
             <!-- Summary Panel — hidden on mobile, sidebar on desktop -->
-            <div class="hidden lg:flex flex-col gap-3 flex-shrink-0 min-h-0 min-w-0 overflow-hidden w-80">
+            <div id="chat-state-col" class="hidden lg:flex flex-col gap-3 flex-shrink-0 min-h-0 min-w-0 overflow-hidden w-80">
                 <!-- Agent State Card -->
                 {% if agent.enable_agent_state %}
                 <div id="agent-state-card" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 flex-col flex-shrink-0 min-w-0 overflow-hidden" style="min-height:0;">
@@ -2250,7 +2425,7 @@ html.dark .agent-tab.active {
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=65" defer></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=66" defer></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=6" defer></script>
 <script src="{{ url_for('static', filename='js/state-ui.js') }}?v=1" defer></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -2301,7 +2476,7 @@ let chatLoaded = false;
     function saveDraft() {
         const input = document.getElementById('chat-input');
         if (!input) return;
-        const val = input.value;
+        const val = (window._chatBash ? '!' : '') + input.value;
         if (val.trim()) {
             try { localStorage.setItem(draftKey(), val); } catch(e) { /* quota exceeded, ignore */ }
         } else {
@@ -4134,12 +4309,12 @@ function isToolAssigned(toolId) {
 // Column definitions: key, label, sortable value getter
 const TOOL_COLUMNS = [
     { key: 'toggle',      label: '',            sort: null },
-    { key: 'name',        label: 'Name',        sort: r => r.name },
-    { key: 'id',          label: 'ID',          sort: r => r.id },
-    { key: 'type',        label: 'Type',        sort: r => r.type },
-    { key: 'source',      label: 'Source',      sort: r => r.source },
-    { key: 'status',      label: 'Status',      sort: r => r.status },
-    { key: 'description', label: 'Description', sort: r => r.description },
+    { key: 'name',        label: 'Name',        icon: 'tag',      sort: r => r.name },
+    { key: 'id',          label: 'ID',          icon: 'hash',     sort: r => r.id },
+    { key: 'type',        label: 'Type',        icon: 'shapes',   sort: r => r.type },
+    { key: 'source',      label: 'Source',      icon: 'package',  sort: r => r.source },
+    { key: 'status',      label: 'Status',      icon: 'activity', sort: r => r.status },
+    { key: 'description', label: 'Description', icon: 'text',     sort: r => r.description },
 ];
 // Fields available in the advanced filter (Frappe-style): label, kind (text|select), options
 const TOOL_FILTER_FIELDS = {
@@ -4159,6 +4334,145 @@ let toolSort = { key: 'name', dir: 1 };
 let toolFilters = [];       // applied advanced filters: {field, op, value}
 let toolFilterDraft = [];   // rows being edited in the popover
 
+// ---- Table icons (lucide-style) + header builder shared by the Tools and Skills tables ----
+const _tI = (d) => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+const TBL_ICON = {
+    tag:      _tI('<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>'),
+    hash:     _tI('<line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/>'),
+    shapes:   _tI('<path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/>'),
+    package:  _tI('<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/>'),
+    activity: _tI('<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>'),
+    text:     _tI('<path d="M15 12H3"/><path d="M17 18H3"/><path d="M21 6H3"/>'),
+    cpu:      _tI('<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/>'),
+    wrench:   _tI('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>'),
+    sparkles: _tI('<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>'),
+    plug:     _tI('<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>'),
+    alert:    _tI('<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>'),
+    lock:     _tI('<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+    check:    _tI('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
+    circle:   _tI('<circle cx="12" cy="12" r="10"/>'),
+    zap:      _tI('<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>'),
+    timer:    _tI('<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>'),
+    up:       _tI('<path d="m18 15-6-6-6 6"/>'),
+    down:     _tI('<path d="m6 9 6 6 6-6"/>'),
+    updown:   _tI('<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>'),
+    user:     _tI('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+    layers:   _tI('<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'),
+};
+const TYPE_META = {   // icon + colour for the tile in the Name column
+    builtin: { icon: 'cpu', cls: 'ti-green' }, skill: { icon: 'sparkles', cls: 'ti-indigo' },
+    plugin: { icon: 'plug', cls: 'ti-blue' }, custom: { icon: 'wrench', cls: 'ti-gray' }, missing: { icon: 'alert', cls: 'ti-amber' },
+};
+const STATUS_META = { assigned: { icon: 'check', cls: 'tb-green' }, available: { icon: 'circle', cls: 'tb-gray' }, locked: { icon: 'lock', cls: 'tb-gray' } };
+
+function tblHeaderHtml(columns, sort, setter) {
+    return columns.map(c => {
+        if (!c.sort) return '<th class="tbl-th tbl-th-toggle" aria-label="Toggle"></th>';
+        const on = sort.key === c.key;
+        const arrow = on ? (sort.dir === 1 ? TBL_ICON.up : TBL_ICON.down) : TBL_ICON.updown;
+        return `<th class="tbl-th ${on ? 'is-sorted' : ''}" onclick="${setter}('${c.key}')" aria-sort="${on ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}">`
+             + `<span class="tbl-th-in">${TBL_ICON[c.icon] || ''}<span>${c.label}</span><span class="tbl-sort ${on ? '' : 'idle'}">${arrow}</span></span></th>`;
+    }).join('');
+}
+function tblNameCell(r, typeKey, locked) {
+    const m = TYPE_META[typeKey] || TYPE_META.custom;
+    return `<div class="tool-name-cell"><span class="ti ${m.cls}">${TBL_ICON[m.icon]}</span><span class="tool-name-text">${escapeHtml(r.name)}</span>${locked ? `<span class="tool-lock" title="Managed by a setting">${TBL_ICON.lock}</span>` : ''}</div>`;
+}
+
+// ---- Row grouping (Tools / Skills): "Group by" + collapsible group header rows ----
+const TBL_GROUPS = {
+    tools: {
+        none: null,
+        type:   { label: 'Type',   key: r => r.type,   order: ['builtin', 'skill', 'plugin', 'custom', 'missing'],
+                  meta: k => ({ label: { builtin: 'Built-in', skill: 'Skills', plugin: 'Plugins', custom: 'Custom', missing: 'Missing' }[k] || k,
+                                icon: (TYPE_META[k] || TYPE_META.custom).icon, cls: (TYPE_META[k] || TYPE_META.custom).cls }) },
+        source: { label: 'Source', key: r => r.source || '', order: null,
+                  meta: k => ({ label: k || 'No source', icon: 'package', cls: 'ti-gray' }) },
+        status: { label: 'Status', key: r => r.status, order: ['assigned', 'available', 'locked'],
+                  meta: k => ({ label: { assigned: 'Assigned', available: 'Available', locked: 'Locked' }[k] || k, icon: (STATUS_META[k] || STATUS_META.available).icon,
+                                cls: k === 'assigned' ? 'ti-green' : 'ti-gray' }) },
+    },
+    skills: {
+        none: null,
+        load:   { label: 'Load',   key: r => r.load, order: ['lazy', 'eager'],
+                  meta: k => ({ label: k === 'lazy' ? 'Lazy · loaded on demand' : 'Eager · tools injected automatically', icon: k === 'lazy' ? 'timer' : 'zap', cls: k === 'lazy' ? 'ti-indigo' : 'ti-amber' }) },
+        author: { label: 'Author', key: r => r.author || '', order: null,
+                  meta: k => ({ label: k || 'Unknown author', icon: 'user', cls: 'ti-gray' }) },
+        status: { label: 'Status', key: r => r.status, order: ['assigned', 'available'],
+                  meta: k => ({ label: k === 'assigned' ? 'Assigned' : 'Available', icon: (STATUS_META[k] || STATUS_META.available).icon, cls: k === 'assigned' ? 'ti-green' : 'ti-gray' }) },
+    },
+};
+const TBL_GROUP_DEFAULT = { tools: 'type', skills: 'load' };
+const _tblGroupState = {};
+function tblGroupState(scope) {
+    if (_tblGroupState[scope]) return _tblGroupState[scope];
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('evonic-tbl-group-' + scope) || 'null'); } catch (_) {}
+    const by = saved && (saved.by === 'none' || TBL_GROUPS[scope][saved.by]) ? saved.by : TBL_GROUP_DEFAULT[scope];
+    return (_tblGroupState[scope] = { by, collapsed: new Set(saved && Array.isArray(saved.collapsed) ? saved.collapsed : []) });
+}
+function _tblGroupSave(scope) {
+    const st = tblGroupState(scope);
+    try { localStorage.setItem('evonic-tbl-group-' + scope, JSON.stringify({ by: st.by, collapsed: [...st.collapsed] })); } catch (_) {}
+}
+function _tblRerender(scope) { if (scope === 'tools') renderToolsTable(); else renderSkillsList(); }
+function setTblGroupBy(scope, by) { tblGroupState(scope).by = by; _tblGroupSave(scope); _tblRerender(scope); }
+function toggleTblGroup(scope, keyEnc) {
+    const key = decodeURIComponent(keyEnc);
+    const c = tblGroupState(scope).collapsed;
+    const id = tblGroupState(scope).by + ':' + key;
+    c.has(id) ? c.delete(id) : c.add(id);
+    _tblGroupSave(scope);
+    _tblRerender(scope);
+}
+function syncGroupSelect(scope, selectId) {
+    const sel = document.getElementById(selectId);
+    if (sel) sel.value = tblGroupState(scope).by;
+}
+
+/** Build the <tbody> HTML: rows as-is when ungrouped, else group header rows + (unless collapsed) their rows. */
+function tblGroupedBody(scope, visible, cols, rowHtml) {
+    const st = tblGroupState(scope);
+    const def = st.by === 'none' ? null : TBL_GROUPS[scope][st.by];
+    if (!def) return visible.map(rowHtml).join('');
+    const buckets = new Map();
+    visible.forEach(r => { const k = def.key(r); if (!buckets.has(k)) buckets.set(k, []); buckets.get(k).push(r); });
+    let keys = [...buckets.keys()];
+    keys.sort((a, b) => {
+        if (def.order) return (def.order.indexOf(a) + 1 || 99) - (def.order.indexOf(b) + 1 || 99);
+        if (a === '' || b === '') return a === '' ? 1 : -1;             // "no source / unknown" last
+        return String(a).localeCompare(String(b));
+    });
+    return keys.map(k => {
+        const rows = buckets.get(k);
+        const m = def.meta(k);
+        const id = st.by + ':' + k;
+        const collapsed = st.collapsed.has(id);
+        // encodeURIComponent leaves ' untouched, which would break the inline handler's string — encode it too
+        const keyAttr = encodeURIComponent(String(k)).replace(/'/g, '%27');
+        const head = `<tr class="tbl-group ${collapsed ? 'is-collapsed' : ''}" role="button" tabindex="0" aria-expanded="${!collapsed}"
+                          onclick="toggleTblGroup('${scope}', '${keyAttr}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleTblGroup('${scope}', '${keyAttr}')}">
+            <td colspan="${cols}"><div class="tbl-group-in">
+                <span class="tbl-group-chev">${TBL_ICON.down}</span>
+                <span class="ti ${m.cls}">${TBL_ICON[m.icon]}</span>
+                <span class="tbl-group-label">${escapeHtml(m.label)}</span>
+                <span class="tbl-group-count">${rows.length}</span>
+            </div></td></tr>`;
+        return head + (collapsed ? '' : rows.map(rowHtml).join(''));
+    }).join('');
+}
+
+function tblGroupControlHtml(scope, selectId) {
+    const opts = Object.entries(TBL_GROUPS[scope]).map(([k, d]) => `<option value="${k}">${d ? 'Group: ' + d.label : 'No grouping'}</option>`).join('');
+    return `<label class="tbl-group-ctl" title="Group rows by"><span class="tbl-group-ctl-ico">${TBL_ICON.layers}</span><select id="${selectId}" onchange="setTblGroupBy('${scope}', this.value)" aria-label="Group rows by">${opts}</select></label>`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    [['tools', 'tool-group-by'], ['skills', 'skill-group-by']].forEach(([scope, id]) => {
+        const slot = document.getElementById(id + '-slot');
+        if (slot) slot.outerHTML = tblGroupControlHtml(scope, id);
+    });
+});
 function buildToolRows() {
     const knownIds = new Set(allToolsDefs.map(t => t.id));
     const fnNameToTool = {};
@@ -4258,22 +4572,11 @@ function renderToolsTable() {
     document.getElementById('tools-banners').innerHTML = banners;
 
     // Header
-    document.getElementById('tools-thead').innerHTML = TOOL_COLUMNS.map(c => {
-        if (!c.sort) return '<th class="px-3 py-2.5 w-14"></th>';
-        const arrow = toolSort.key === c.key ? (toolSort.dir === 1 ? ' ▲' : ' ▼') : '';
-        return `<th class="px-3 py-2.5 font-medium cursor-pointer select-none whitespace-nowrap hover:text-gray-800 dark:hover:text-gray-100"
-                    onclick="setToolSort('${c.key}')">${c.label}${arrow}</th>`;
-    }).join('');
+    document.getElementById('tools-thead').innerHTML = tblHeaderHtml(TOOL_COLUMNS, toolSort, 'setToolSort');
 
     // Body
-    const typeBadge = {
-        builtin: 'tb-green', skill: 'tb-indigo', plugin: 'tb-blue', custom: 'tb-gray', missing: 'tb-amber',
-    };
-    const statusBadge = {
-        assigned: 'tb-green', available: 'tb-gray', locked: 'tb-gray',
-    };
-    const lockIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5 text-gray-400 inline-block mr-1" style="margin-top:-2px"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd"/></svg>';
-    document.getElementById('tools-list').innerHTML = visible.map(r => {
+    const typeBadge = { builtin: 'tb-green', skill: 'tb-indigo', plugin: 'tb-blue', custom: 'tb-gray', missing: 'tb-amber' };
+    const toolRowHtml = (r) => {
         const safeId = escapeHtml(r.id);
         const action = r.orphan
             ? `<button onclick="event.stopPropagation(); removeOrphan('${safeId}')" title="Remove"
@@ -4289,15 +4592,17 @@ function renderToolsTable() {
                </label>`;
         return `<tr class="tool-row ${r.orphan ? 'tool-orphan' : ''} transition-colors ${r.orphan ? '' : 'cursor-pointer'}"
                     data-tool-id="${safeId}" ${r.orphan ? '' : `onclick="showToolDetail('${safeId}')"`}>
-            <td class="px-3 py-2.5 align-top">${action}</td>
-            <td class="px-3 py-2.5 align-top font-medium text-gray-800 whitespace-nowrap tool-name">${r.locked ? lockIcon : ''}${escapeHtml(r.name)}</td>
-            <td class="px-3 py-2.5 align-top font-mono text-xs whitespace-nowrap tool-id">${safeId}</td>
-            <td class="px-3 py-2.5 align-top"><span class="tool-badge ${typeBadge[r.type]}">${r.type}</span></td>
-            <td class="px-3 py-2.5 align-top text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">${escapeHtml(r.source)}</td>
-            <td class="px-3 py-2.5 align-top"><span class="tool-badge ${statusBadge[r.status]}">${r.status}</span></td>
+            <td class="px-3 py-2.5 align-middle">${action}</td>
+            <td class="px-3 py-2.5 align-middle font-medium whitespace-nowrap tool-name">${tblNameCell(r, r.type, r.locked)}</td>
+            <td class="px-3 py-2.5 align-middle font-mono text-xs whitespace-nowrap tool-id">${safeId}</td>
+            <td class="px-3 py-2.5 align-middle"><span class="tool-badge ${typeBadge[r.type]}">${r.type}</span></td>
+            <td class="px-3 py-2.5 align-middle text-xs whitespace-nowrap tbl-src">${r.source ? `<span class="tbl-src-in">${TBL_ICON[r.type === 'plugin' ? 'plug' : 'package']}${escapeHtml(r.source)}</span>` : '<span class="tbl-dash">—</span>'}</td>
+            <td class="px-3 py-2.5 align-middle"><span class="tool-badge ${STATUS_META[r.status].cls}">${TBL_ICON[STATUS_META[r.status].icon]}${r.status}</span></td>
             <td class="px-3 py-2.5 align-top text-xs text-gray-500 dark:text-gray-400 tools-desc-col">${escapeHtml(r.description)}</td>
         </tr>`;
-    }).join('');
+    };
+    document.getElementById('tools-list').innerHTML = tblGroupedBody('tools', visible, TOOL_COLUMNS.length, toolRowHtml);
+    syncGroupSelect('tools', 'tool-group-by');
 
     document.getElementById('tools-empty').classList.toggle('hidden', visible.length > 0);
     document.getElementById('tools-count').textContent = `${visible.length} of ${rows.length} tools`;
@@ -4512,13 +4817,13 @@ async function loadSkills() {
 
 const SKILL_COLUMNS = [
     { key: 'toggle',      label: '',            sort: null },
-    { key: 'name',        label: 'Name',        sort: r => r.name },
-    { key: 'id',          label: 'ID',          sort: r => r.id },
-    { key: 'load',        label: 'Load',        sort: r => r.load },
-    { key: 'tools',       label: 'Tools',       sort: r => String(r.tools).padStart(4, '0') },
-    { key: 'author',      label: 'Author',      sort: r => r.author },
-    { key: 'status',      label: 'Status',      sort: r => r.status },
-    { key: 'description', label: 'Description', sort: r => r.description },
+    { key: 'name',        label: 'Name',        icon: 'tag',      sort: r => r.name },
+    { key: 'id',          label: 'ID',          icon: 'hash',     sort: r => r.id },
+    { key: 'load',        label: 'Load',        icon: 'timer',    sort: r => r.load },
+    { key: 'tools',       label: 'Tools',       icon: 'wrench',   sort: r => String(r.tools).padStart(4, '0') },
+    { key: 'author',      label: 'Author',      icon: 'user',     sort: r => r.author },
+    { key: 'status',      label: 'Status',      icon: 'activity', sort: r => r.status },
+    { key: 'description', label: 'Description', icon: 'text',     sort: r => r.description },
 ];
 const SKILL_FILTER_FIELDS = {
     name:        { label: 'Name',        kind: 'text' },
@@ -4562,32 +4867,31 @@ function renderSkillsList() {
         visible.sort((a, b) => String(col.sort(a) ?? '').localeCompare(String(col.sort(b) ?? '')) * skillSort.dir || a.name.localeCompare(b.name));
     }
 
-    document.getElementById('skills-thead').innerHTML = SKILL_COLUMNS.map(c => {
-        if (!c.sort) return '<th class="px-3 py-2.5 w-14"></th>';
-        const arrow = skillSort.key === c.key ? (skillSort.dir === 1 ? ' ▲' : ' ▼') : '';
-        return `<th class="px-3 py-2.5 font-medium cursor-pointer select-none whitespace-nowrap hover:text-gray-800 dark:hover:text-gray-100" onclick="setSkillSort('${c.key}')">${c.label}${arrow}</th>`;
-    }).join('');
+    document.getElementById('skills-thead').innerHTML = tblHeaderHtml(SKILL_COLUMNS, skillSort, 'setSkillSort');
 
-    const loadBadge = { lazy: 'tb-indigo', eager: 'tb-amber' };
-    const statusBadge = { assigned: 'tb-green', available: 'tb-gray' };
-    body.innerHTML = visible.map(r => {
+    const loadMeta = { lazy: { cls: 'tb-indigo', icon: 'timer' }, eager: { cls: 'tb-amber', icon: 'zap' } };
+    const skillRowHtml = (r) => {
         const id = escapeHtml(r.id);
+        const lm = loadMeta[r.load];
+        const sm = STATUS_META[r.status];
         return `<tr class="tool-row skill-row" data-skill-id="${id}">
-            <td class="px-3 py-2.5 align-top">
+            <td class="px-3 py-2.5 align-middle">
                 <label class="relative inline-block cursor-pointer" title="${r.checked ? 'Remove from agent' : 'Add to agent'}">
                     <input type="checkbox" ${r.checked ? 'checked' : ''} onchange="toggleSkill('${id}')" class="sr-only peer" aria-label="Toggle ${escapeHtml(r.name)}">
                     <span class="dyn-toggle"></span>
                 </label>
             </td>
-            <td class="px-3 py-2.5 align-top font-medium whitespace-nowrap tool-name">${escapeHtml(r.name)}</td>
-            <td class="px-3 py-2.5 align-top font-mono text-xs whitespace-nowrap tool-id">${id}</td>
-            <td class="px-3 py-2.5 align-top"><span class="tool-badge ${loadBadge[r.load]}" title="${r.load === 'lazy' ? 'Loaded on demand via use_skill' : 'Eager: all its tools are injected automatically'}">${r.load}</span></td>
-            <td class="px-3 py-2.5 align-top text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">${r.tools || '—'}</td>
-            <td class="px-3 py-2.5 align-top text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">${escapeHtml(r.author)}</td>
-            <td class="px-3 py-2.5 align-top"><span class="tool-badge ${statusBadge[r.status]}">${r.status}</span></td>
-            <td class="px-3 py-2.5 align-top text-xs text-gray-500 dark:text-gray-400 tools-desc-col">${escapeHtml(r.description)}</td>
+            <td class="px-3 py-2.5 align-middle font-medium whitespace-nowrap tool-name">${tblNameCell(r, 'skill', false)}</td>
+            <td class="px-3 py-2.5 align-middle font-mono text-xs whitespace-nowrap tool-id">${id}</td>
+            <td class="px-3 py-2.5 align-middle"><span class="tool-badge ${lm.cls}" title="${r.load === 'lazy' ? 'Loaded on demand via use_skill' : 'Eager: all its tools are injected automatically'}">${TBL_ICON[lm.icon]}${r.load}</span></td>
+            <td class="px-3 py-2.5 align-middle text-xs whitespace-nowrap tbl-src">${r.tools ? `<span class="tbl-src-in">${TBL_ICON.wrench}${r.tools}</span>` : '<span class="tbl-dash">—</span>'}</td>
+            <td class="px-3 py-2.5 align-middle text-xs whitespace-nowrap tbl-src">${r.author ? `<span class="tbl-src-in">${TBL_ICON.user}${escapeHtml(r.author)}</span>` : '<span class="tbl-dash">—</span>'}</td>
+            <td class="px-3 py-2.5 align-middle"><span class="tool-badge ${sm.cls}">${TBL_ICON[sm.icon]}${r.status}</span></td>
+            <td class="px-3 py-2.5 align-middle text-xs text-gray-500 dark:text-gray-400 tools-desc-col">${escapeHtml(r.description)}</td>
         </tr>`;
-    }).join('');
+    };
+    body.innerHTML = tblGroupedBody('skills', visible, SKILL_COLUMNS.length, skillRowHtml);
+    syncGroupSelect('skills', 'skill-group-by');
 
     empty.classList.toggle('hidden', visible.length > 0);
     empty.textContent = allSkillsDefs.length ? 'No skills found.' : 'No enabled skills found.';
@@ -5938,6 +6242,12 @@ let chatCommands = [];
 let chatCommandIndex = -1;
 let BASH_EXEC_ENABLED = {{ 'true' if agent.bash_exec_enabled else 'false' }};
 
+function setChatBashMode(on) {
+    window._chatBash = !!on && BASH_EXEC_ENABLED;
+    const input = document.getElementById('chat-input');
+    if (input) chatInputChanged(input);
+}
+
 function chatInputChanged(input) {
     const toggled = updateComposerLayout(input);
     if (!toggled) resizeChatInput(input);
@@ -5979,7 +6289,7 @@ function chatInputWouldWrapInCompact(input, card) {
         document.body.appendChild(_composerMirror);
     }
     const cs = getComputedStyle(input);
-    const attach = document.getElementById('chat-attach-btn');
+    const attach = document.getElementById(card.classList.contains('is-bash') ? 'chat-bash-btn' : 'chat-attach-btn');
     const send = document.getElementById('chat-send-btn');
     // Width the textarea would have in compact layout: card minus compact padding, buttons and gaps
     const fs = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -6008,7 +6318,7 @@ function setComposerExpanded(expanded) {
     const card = document.getElementById('chat-composer');
     const input = document.getElementById('chat-input');
     if (!card || card.classList.contains('is-expanded') === expanded) return false;
-    const moving = ['chat-attach-btn', 'chat-send-btn', 'chat-input'].map(id => document.getElementById(id)).filter(Boolean);
+    const moving = ['chat-attach-btn', 'chat-bash-btn', 'chat-send-btn', 'chat-input'].map(id => document.getElementById(id)).filter(Boolean);
     const visible = card.offsetParent !== null && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const first = visible ? new Map(moving.map(el => [el, el.getBoundingClientRect()])) : null;
     const h0 = visible ? card.getBoundingClientRect().height : 0;
@@ -6082,11 +6392,16 @@ function loadChatCommands() {
 
 function closeChatCommandMenu() {
     const menu = document.getElementById('chat-command-menu');
-    if (menu) {
-        menu.classList.add('hidden');
-        menu.replaceChildren();
-    }
     chatCommandIndex = -1;
+    if (!menu || menu.classList.contains('hidden') || menu.classList.contains('cm-leave')) return;
+    // Animate out, then hide + clear (render cancels this if the menu is reopened meanwhile)
+    menu.classList.add('cm-leave');
+    clearTimeout(menu._leaveT);
+    menu._leaveT = setTimeout(() => {
+        menu.classList.remove('cm-leave');
+        menu.classList.add('hidden');
+        document.getElementById('chat-command-list').replaceChildren();
+    }, 170);
 }
 
 function commandInputContext(value) {
@@ -6135,14 +6450,32 @@ function renderChatCommandHint(ctx) {
 
 function updateChatComposer(input) {
     if (!input) return;
+    // Typing (or pasting / restoring) a leading "!" enters bash mode; the "!" itself lives on the chip, not in the text.
+    if (BASH_EXEC_ENABLED && !window._chatBash && input.value.trimStart().startsWith('!')) {
+        input.value = input.value.trimStart().slice(1);
+        window._chatBash = true;
+        resizeChatInput(input, false);
+    }
+    if (!BASH_EXEC_ENABLED) window._chatBash = false;
+    const bashMode = !!window._chatBash;
     const value = input.value;
-    renderChatCommandHint(commandInputContext(value));
+    renderChatCommandHint(bashMode ? null : commandInputContext(value));
     const trimmed = value.trimStart();
-    const bashMode = BASH_EXEC_ENABLED && trimmed.startsWith('!');
     input.classList.toggle('chat-bash-input', bashMode);
+    const card = document.getElementById('chat-composer');
+    if (card) {
+        const wasBash = card.classList.contains('is-bash');
+        card.classList.toggle('is-bash', bashMode);
+        if (wasBash && !bashMode) {
+            card.classList.add('bash-exit');
+            clearTimeout(card._bashExitT);
+            card._bashExitT = setTimeout(() => card.classList.remove('bash-exit'), 320);
+        }
+    }
     const bashHint = document.getElementById('chat-bash-hint');
     if (bashHint) bashHint.classList.toggle('hidden', !bashMode);
     input.classList.toggle('font-mono', bashMode);
+    if (bashMode) { closeChatCommandMenu(); return; }
 
     // No commands available (all disabled) — don't show suggestions
     if (!chatCommands.length) return;
@@ -6164,27 +6497,40 @@ function renderChatCommandMenu(choices) {
         return;
     }
     if (chatCommandIndex < 0 || chatCommandIndex >= choices.length) chatCommandIndex = 0;
-    menu.replaceChildren();
+    clearTimeout(menu._leaveT);
+    menu.classList.remove('cm-leave');
+    const list = document.getElementById('chat-command-list');
+    list.replaceChildren();
     choices.forEach((command, index) => {
         const option = document.createElement('button');
         option.type = 'button';
         option.role = 'option';
-        option.className = 'flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-indigo-50 dark:hover:bg-gray-700';
-        option.classList.toggle('bg-indigo-50', index === chatCommandIndex);
-        option.classList.toggle('dark:bg-gray-700', index === chatCommandIndex);
+        option.className = 'cmd-opt';
         option.setAttribute('aria-selected', String(index === chatCommandIndex));
         const name = document.createElement('span');
-        name.className = 'font-mono font-medium text-indigo-600 dark:text-indigo-300';
+        name.className = 'cmd-name';
         name.textContent = '/' + command.name;
         const description = document.createElement('span');
-        description.className = 'min-w-0 truncate text-xs text-gray-500 dark:text-gray-400';
+        description.className = 'cmd-desc';
         description.textContent = command.description || '';
         option.append(name, description);
+        if (command.accepts_args) {
+            const args = document.createElement('span');
+            args.className = 'cmd-args';
+            args.textContent = 'args';
+            option.append(args);
+        }
+        const enter = document.createElement('span');
+        enter.className = 'cmd-enter';
+        enter.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 4v7a4 4 0 0 1-4 4H4"/><path d="m9 10-5 5 5 5"/></svg>';
+        option.append(enter);
         option.addEventListener('mousedown', event => event.preventDefault());
         option.addEventListener('click', () => selectChatCommand(command));
-        menu.appendChild(option);
+        list.appendChild(option);
     });
     menu.classList.remove('hidden');
+    const active = list.querySelector('[aria-selected="true"]');
+    if (active) active.scrollIntoView({ block: 'nearest' });
 }
 
 function getVisibleChatCommands() {
@@ -6209,6 +6555,14 @@ function selectChatCommand(command, showHint) {
 }
 
 function chatInputKeydown(event) {
+    if (window._chatBash && event.key === 'Backspace') {
+        const el = event.target;
+        if (!el.value || (el.selectionStart === 0 && el.selectionEnd === 0)) {
+            event.preventDefault();
+            setChatBashMode(false);
+            return;
+        }
+    }
     const choices = getVisibleChatCommands();
     if (choices.length) {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -6600,7 +6954,10 @@ function stopChat() {
 
 async function sendChat() {
     const input = document.getElementById('chat-input');
-    const msg = input.value.trim();
+    const bashSend = !!window._chatBash;
+    const typed = input.value.trim();
+    if (bashSend && !typed) return;                 // nothing to run
+    const msg = bashSend ? '!' + typed : typed;
     const files = _chatPendingFiles.map(attachment => attachment.file);
     if (!msg && !files.length) return;
     // Unknown slash command (typo): silently refuse to submit
@@ -6610,6 +6967,7 @@ async function sendChat() {
         filename: file.name, mime_type: file.type, is_image: file.type.startsWith('image/'), size_bytes: file.size,
     }));
     input.value = '';
+    window._chatBash = false;                       // leave bash mode after sending, as before
     chatInputChanged(input);
     // Re-apply after the async input event (queued by value='') fires, in case
     // the browser had not yet reflowed the now-empty textarea.
