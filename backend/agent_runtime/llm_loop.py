@@ -403,6 +403,42 @@ def _extract_command(tool_name: str, args: dict) -> str:
     return extract_command(tool_name, args)
 
 
+def _tool_survives_pruning(fn_name: str,
+                           *,
+                           essential: set,
+                           builtin_fns: set,
+                           assigned_fns: set,
+                           loaded_skill_fns: set,
+                           eager_skill_fns: set,
+                           call_counts: Dict[str, int]) -> bool:
+    """Return True if a tool must remain in the schema sent to the LLM.
+
+    Mid-turn tool pruning removes zero-call tools after a few iterations to save
+    tokens, but only tools that are *not* already exempt. A tool stays when it is:
+
+    * ``essential`` -- core I/O plus workflow/control-plane tools that are
+      characteristically needed late in a turn (or at the very start of the next
+      one), so pruning them would strand the agent.
+    * ``builtin_fns`` -- any platform built-in tool. Built-ins back documented,
+      prompt-mandated capabilities (``remember``/``recall``, CMP path navigation,
+      the state-machine gate, ``reset_active_model``, ...). Because the agent's
+      SYSTEM.md tells it to use these, silently dropping them from the schema
+      makes the agent believe the tool does not exist.
+    * ``assigned_fns`` -- tools explicitly assigned to this agent.
+    * ``loaded_skill_fns`` / ``eager_skill_fns`` -- tools advertised by enabled
+      or eagerly loaded skills.
+    * anything already called this turn (``call_counts > 0``).
+    """
+    return bool(
+        fn_name in essential
+        or fn_name in builtin_fns
+        or fn_name in assigned_fns
+        or fn_name in loaded_skill_fns
+        or fn_name in eager_skill_fns
+        or call_counts.get(fn_name, 0) > 0
+    )
+
+
 def run_tool_loop(agent: Dict[str, Any],
                   agent_context: dict,
                   messages: List[dict],
@@ -656,6 +692,22 @@ def run_tool_loop(agent: Dict[str, Any],
     except Exception:
         pass
 
+    # Platform built-in tools are never pruned. They are a small, bounded set of
+    # control-plane capabilities referenced directly by the system prompt
+    # (remember/recall, CMP path navigation, the state-machine gate,
+    # reset_active_model, ...). Mid-turn pruning previously dropped them whenever
+    # they went uncalled past the threshold, silently removing the tool from the
+    # schema so the agent could no longer "find" a tool its SYSTEM.md mandates.
+    _builtin_tool_fns: set = set()
+    try:
+        _builtin_tool_fns = {
+            d.get('name', '')
+            for d in tool_registry.get_builtin_tool_defs()
+        }
+        _builtin_tool_fns.discard('')
+    except Exception:
+        pass
+
     # Add restored skill tool IDs to assigned_tool_ids for authorization guard.
     # Keep a corresponding set of function names so tools explicitly assigned to
     # the agent remain available for the entire turn, even before first use.
@@ -674,15 +726,18 @@ def run_tool_loop(agent: Dict[str, Any],
     }
 
     def _prune_tools(tools_list: List[dict], iteration: int) -> List[dict]:
-        """Prune uncalled tools after the threshold while retaining assigned tools.
+        """Prune uncalled tools after the threshold while retaining exempt ones.
 
         After _TOOL_PRUNE_THRESHOLD iterations, tools that have never been called
         (call count == 0) are removed from the list sent to the LLM, except for
         essential tools (including the workflow/control-plane tools ``state``,
-        ``use_skill`` and ``unload_skill``), tools explicitly assigned to the
-        agent, and tools provided by enabled skills. Assigned tools include
-        vision and media tools such as ``describe_image`` and ``transcribe_audio``
-        that may be needed only after the agent discovers a relevant attachment.
+        ``use_skill`` and ``unload_skill``), platform built-in tools (e.g.
+        ``remember``/``recall``, CMP path navigation, ``reset_active_model``),
+        tools explicitly assigned to the agent, and tools provided by enabled
+        skills. Assigned tools include vision and media tools such as
+        ``describe_image`` and ``transcribe_audio`` that may be needed only after
+        the agent discovers a relevant attachment. The keep-decision lives in the
+        module-level ``_tool_survives_pruning`` helper so it is unit-testable.
         """
         if iteration < _TOOL_PRUNE_THRESHOLD:
             return tools_list
@@ -694,11 +749,14 @@ def run_tool_loop(agent: Dict[str, Any],
         pruned = []
         for t in tools_list:
             fn_name = t.get('function', {}).get('name', '')
-            if (fn_name in _ESSENTIAL_TOOLS
-                    or fn_name in _assigned_tool_fns
-                    or fn_name in _loaded_skill_fns
-                    or fn_name in _eager_skill_fns
-                    or _tool_call_counts.get(fn_name, 0) > 0):
+            if _tool_survives_pruning(
+                    fn_name,
+                    essential=_ESSENTIAL_TOOLS,
+                    builtin_fns=_builtin_tool_fns,
+                    assigned_fns=_assigned_tool_fns,
+                    loaded_skill_fns=_loaded_skill_fns,
+                    eager_skill_fns=_eager_skill_fns,
+                    call_counts=_tool_call_counts):
                 pruned.append(t)
         if len(pruned) < len(tools_list):
             _logger.debug(
