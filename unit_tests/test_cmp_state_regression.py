@@ -152,20 +152,20 @@ def test_cmp_model_setting_resolution():
     with patch('models.db.db', _db({'cmp_model_id': 'm-cmp'}, {'m-cmp': model})), \
          patch('backend.task_classifier.LLMClient') as llm:
         _get_classifier_client('cmp_model_id')
-        llm.assert_called_once_with(model_config=model, fallback_model_config=None)
+        llm.assert_called_once_with(model_config=model)
 
     # unset cmp model → task classifier model
     with patch('models.db.db',
                _db({'task_classifier_model_id': 'm-cls'}, {'m-cls': fallback_model})), \
          patch('backend.task_classifier.LLMClient') as llm:
         _get_classifier_client('cmp_model_id')
-        llm.assert_called_once_with(model_config=fallback_model, fallback_model_config=None)
+        llm.assert_called_once_with(model_config=fallback_model)
 
     # nothing configured → default client
     with patch('models.db.db', _db({}, {})), \
          patch('backend.task_classifier.LLMClient') as llm:
         _get_classifier_client('cmp_model_id')
-        llm.assert_called_once_with(fallback_model_config=None)
+        llm.assert_called_once_with()
 
 
 def test_classifier_chat_retries_generation_timeout_with_doubled_budget():
