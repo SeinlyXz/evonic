@@ -13,6 +13,7 @@
 - LLM clients now retry once on their configured fallback model when the primary call fails. Shared callers (task and CMP classifiers, plugin helpers, dashboard enhancements) previously received the raw primary error whenever they did not run through the agent runtime.
 - Set the global default model fallback (`default_model_fallback_id`) to `deepseek/deepseek-v4-flash` so the default model has somewhere to fail over to.
 - Kanban comment follow-up: a failed classifier LLM call no longer counts as "no follow-up needed". The comment stays unconsumed and is retried on the next scan instead of being silently dropped, which used to lose user comments whenever the classifier model was unavailable.
+- The root filesystem scan guard (`find /`, `tree /`) is now switchable: flip *Root Filesystem Scan Guard* in System → Settings, or set `RFS_GUARD_DISABLED=1` (`config.ROOT_FS_SCAN_GUARD_ENABLED`) to force-disable it process-wide, to run root scans without the approval prompt. It was hardcoded outside the safety pipeline, so the per-agent *Safety Checker* toggle could not silence it. The Safety Checker tooltip used to claim that disabling it meant “full autopilot — agent runs all code without approval prompts”; it now names the two system-level guards that still apply and how to control them.
 
 ## [1.2.0] - 2026-08-14
 

@@ -3714,6 +3714,9 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False, verbose=Fals
         "long_running_guard_enabled": (
             "1" if getattr(_cfg, "LONG_RUNNING_GUARD_ENABLED", True) else "0"
         ),
+        "root_fs_scan_guard_enabled": (
+            "1" if getattr(_cfg, "ROOT_FS_SCAN_GUARD_ENABLED", True) else "0"
+        ),
         "message_wrapper_enabled": "1",
         "events_dispatch_enabled": "1",
     }

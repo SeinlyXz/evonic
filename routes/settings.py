@@ -611,6 +611,22 @@ def api_long_running_guard():
     return jsonify({'success': True, 'enabled': enabled == '1'})
 
 
+@settings_bp.route('/api/settings/root-fs-scan-guard', methods=['GET', 'PUT'])
+def api_root_fs_scan_guard():
+    """Toggle the root filesystem scan guard (`find /`, `tree /` approval prompt)."""
+    from models.db import db
+    default = '1' if config.ROOT_FS_SCAN_GUARD_ENABLED else '0'
+    if request.method == 'PUT':
+        data = request.get_json() or {}
+        enabled = '1' if data.get('enabled', True) else '0'
+        old_val = db.get_setting('root_fs_scan_guard_enabled', default)
+        db.set_setting('root_fs_scan_guard_enabled', enabled)
+        _audit_setting_change('root_fs_scan_guard_enabled', old_val, enabled)
+        return jsonify({'success': True, 'enabled': enabled == '1'})
+    val = db.get_setting('root_fs_scan_guard_enabled', default)
+    return jsonify({'enabled': val == '1'})
+
+
 @settings_bp.route('/api/settings/message-wrapper', methods=['PUT'])
 def api_message_wrapper():
     """Toggle the message wrapper globally."""
@@ -860,6 +876,8 @@ def api_get_general_settings():
         'public_history': db.get_setting('public_history', '0') == '1',
         'long_running_guard_enabled': db.get_setting('long_running_guard_enabled',
                                                      '1' if config.LONG_RUNNING_GUARD_ENABLED else '0') == '1',
+        'root_fs_scan_guard_enabled': db.get_setting('root_fs_scan_guard_enabled',
+                                                     '1' if config.ROOT_FS_SCAN_GUARD_ENABLED else '0') == '1',
         'message_wrapper_enabled': db.get_setting('message_wrapper_enabled', '1') == '1',
         'agent_timeout_retries': int(db.get_setting('agent_timeout_retries', str(config.AGENT_TIMEOUT_RETRIES))),
         'llm_max_retries': int(db.get_setting('llm_max_retries', '5')),
@@ -1027,6 +1045,18 @@ def api_batch_save():
             results['long_running_guard_enabled'] = enabled == '1'
         except (ValueError, TypeError) as e:
             errors.append(f'long_running_guard_enabled: {e}')
+
+    # Root Filesystem Scan Guard
+    if 'root_fs_scan_guard_enabled' in settings:
+        try:
+            enabled = '1' if settings['root_fs_scan_guard_enabled'] else '0'
+            old_val = db.get_setting('root_fs_scan_guard_enabled',
+                                     '1' if config.ROOT_FS_SCAN_GUARD_ENABLED else '0')
+            db.set_setting('root_fs_scan_guard_enabled', enabled)
+            _audit_setting_change('root_fs_scan_guard_enabled', old_val, enabled)
+            results['root_fs_scan_guard_enabled'] = enabled == '1'
+        except (ValueError, TypeError) as e:
+            errors.append(f'root_fs_scan_guard_enabled: {e}')
 
     # Message Wrapper
     if 'message_wrapper_enabled' in settings:

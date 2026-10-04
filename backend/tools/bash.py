@@ -47,6 +47,28 @@ def _get_long_running_setting() -> bool:
         return True
 
 
+def _root_fs_scan_guard_enabled() -> bool:
+    """Check whether the root filesystem scan guard is enabled.
+
+    Priority: env var RFS_GUARD_DISABLED=1 force-disables it (config.py).
+    Otherwise, falls back to the 'root_fs_scan_guard_enabled' DB setting
+    (defaults to '1' = enabled; toggled in System > Settings UI).
+    Fails safe to True when config or the database cannot be read.
+    """
+    try:
+        import config as _cfg
+        if not _cfg.ROOT_FS_SCAN_GUARD_ENABLED:
+            return False
+    except Exception:
+        return True
+    try:
+        from models.db import db
+        val = db.get_setting('root_fs_scan_guard_enabled', '1')
+        return val == '1'
+    except Exception:
+        return True
+
+
 def execute(agent: dict, args: dict) -> dict:
     action = args.get('action', 'run')
     session_id = (agent or {}).get('session_id') or 'default'
@@ -98,11 +120,13 @@ def execute(agent: dict, args: dict) -> dict:
     # Root filesystem scan guard (performance concern, e.g. `find /`, `tree /`).
     # Independent of the safety pipeline on purpose: it fires for ALL agents —
     # including super agents and agents with safety_checker_enabled=0 — because a
-    # full-root scan is a performance hazard regardless of trust. We still honour
-    # `_skip_safety` (set on the post-approval re-execution) so an approved scan
-    # runs instead of re-prompting forever.
+    # full-root scan is a performance hazard regardless of trust. It therefore has its
+    # own switch (RFS_GUARD_DISABLED=1 env var force-disables it; otherwise the
+    # root_fs_scan_guard_enabled DB setting toggled in System > Settings applies),
+    # NOT the per-agent safety checker toggle. We still honour `_skip_safety` (set on
+    # the post-approval re-execution) so an approved scan runs without re-prompting.
     # ------------------------------------------------------------------
-    if not should_skip_safety(agent):
+    if _root_fs_scan_guard_enabled() and not should_skip_safety(agent):
         _rfs = check_root_filesystem_scan(script)
         if _rfs:
             return {

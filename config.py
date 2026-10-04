@@ -261,6 +261,16 @@ TOOL_COMPRESSION_VERBOSE = _get_env_bool("RTK_VERBOSE", False)
 # override this at runtime via the system settings UI.
 LONG_RUNNING_GUARD_ENABLED = _get_env_bool("LR_GUARD_DISABLED", False, invert=True)
 
+# Root filesystem scan guard -- True unless RFS_GUARD_DISABLED=1 (env var force-disables).
+# When enabled, root scans (`find /`, `tree /`) return requires_approval instead of
+# running immediately, because a full-root scan is a performance hazard that can stall
+# the turn. This guard lives OUTSIDE the safety pipeline (see backend/tools/bash.py) --
+# it is a performance control, not a trust decision -- so the per-agent "Safety Checker"
+# toggle (safety_checker_enabled) does NOT affect it. In addition to the env var, the
+# DB setting root_fs_scan_guard_enabled can override this at runtime via the
+# System > Settings UI (like the long-running guard).
+ROOT_FS_SCAN_GUARD_ENABLED = _get_env_bool("RFS_GUARD_DISABLED", False, invert=True)
+
 # ---- WhatsApp safe outbound delivery (global, system-wide) ----
 # These settings apply to ALL agents using WhatsApp channels.
 # They can be overridden at runtime via the System Settings UI (app_settings table).

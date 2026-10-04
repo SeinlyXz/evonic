@@ -736,7 +736,7 @@ html.dark .agent-tab.active {
                             {{ toggle_widget(id='agent-safety-checker', checked=(agent.safety_checker_enabled is none or agent.safety_checker_enabled)) }}
                             <div>
                                 <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Safety Checker</span>
-                                <p class="text-xs text-gray-400 mt-0.5">Heuristic safety check on Bash/Python scripts. Disable for full autopilot — agent runs all code without approval prompts.</p>
+                                <p class="text-xs text-gray-400 mt-0.5">Heuristic safety check on Bash/Python scripts. Disable to skip its approval prompts (destructive-command and custom-rule checks). Two system-level guards are separate and still apply regardless: the root filesystem scan guard (<code>find /</code>, <code>tree /</code>) and the long-running build command guard — disable those with the <code>RFS_GUARD_DISABLED</code> / <code>LR_GUARD_DISABLED</code> env vars or System &rarr; Settings.</p>
                             </div>
                         </label>
                     </div>
