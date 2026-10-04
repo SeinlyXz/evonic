@@ -22,8 +22,21 @@ Templates are read from two roots, relative to ``base_dir`` (``config.BASE_DIR``
 by default):
 
 ``agent_templates/<id>.json``
-    The canonical, writable location.  ``create_template``,
+    The canonical, writable location (single-file form).  ``create_template``,
     ``update_template`` and ``delete_template`` only ever touch this root.
+``agent_templates/<id>/``
+    The additive, opt-in **directory form**: ``meta.json`` (metadata plus the
+    discovery marker), a prompt file (``system.md`` by default, overridable
+    with ``prompt_file`` in ``meta.json``) and ``kb/<name>.md|.txt`` files.
+    The loader re-inlines the prompt and the knowledge base into the exact
+    same dict the single-file loader returns, so the HTTP wire format,
+    rendering, the placeholder audit and instantiation are all shared.
+    ``system_prompt`` and ``kb_files`` are forbidden inside a directory
+    template's ``meta.json`` (exactly one source of truth) and knowledge-base
+    content is copied **verbatim** (no placeholder rendering).  When both
+    ``<id>.json`` and ``<id>/`` exist the id is a hard validation error on
+    both entries and :func:`list_collisions` reports it, so precedence is
+    never silent.
 ``skillsets/<id>.json``
     The legacy, **READ-ONLY** location (see :mod:`backend.skillsets`).  Legacy
     files are adapted on read (``model`` becomes ``defaults.model_id``,
@@ -112,6 +125,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import tempfile
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -142,6 +156,12 @@ __all__ = [
     "MAX_PARAM_COUNT",
     "MAX_TEMPLATE_ITEMS",
     "MAX_TEMPLATE_BYTES",
+    "MAX_TEMPLATE_DIR_BYTES",
+    "SHAPE_FILE",
+    "SHAPE_DIR",
+    "DIR_TEMPLATE_META",
+    "DIR_TEMPLATE_PROMPT",
+    "DIR_TEMPLATE_KB",
     "OVERRIDE_KEYS",
     # Errors
     "TemplateError",
@@ -218,6 +238,50 @@ MAX_TEMPLATE_ITEMS = 256
 
 #: Upper bound for the serialized template file.
 MAX_TEMPLATE_BYTES = 4 * 1024 * 1024
+
+#: Upper bound for the *total* bytes of every file inside a directory-form
+#: template (prompt + ``meta.json`` + every ``kb/**`` file).  Guards against a
+#: template tree with thousands of small files or a single huge blob that would
+#: otherwise only be bounded by the per-file caps.
+MAX_TEMPLATE_DIR_BYTES = 4 * 1024 * 1024
+
+# --- Directory-form template layout -----------------------------------------
+#
+# Additive, opt-in alternative to the single-file ``<id>.json`` form.  The
+# prompt and knowledge base live as real files so diffs stay readable:
+#
+#     agent_templates/<id>/
+#         meta.json            discovery marker + metadata (no prompt/kb inline)
+#         system.md            the system prompt, real markdown
+#         kb/<name>.md         one file per knowledge-base entry
+#
+# ``meta.json`` is the discovery marker: a directory without it is reported as
+# an invalid entry (never a hard failure).  ``system_prompt`` and ``kb_files``
+# are forbidden inside ``meta.json`` so there is exactly one source of truth.
+
+#: Discovery marker file name inside a directory-form template.
+DIR_TEMPLATE_META = "meta.json"
+
+#: Default prompt file name inside a directory-form template.
+DIR_TEMPLATE_PROMPT = "system.md"
+
+#: Knowledge-base sub-directory inside a directory-form template.
+DIR_TEMPLATE_KB = "kb"
+
+#: Keys that a directory-form ``meta.json`` must NOT carry inline.
+_DIR_META_FORBIDDEN_KEYS = frozenset({"system_prompt", "kb_files"})
+
+#: Extra keys accepted inside a directory-form ``meta.json`` (beyond
+#: :data:`_TEMPLATE_KEYS` minus the forbidden inline content keys).
+_DIR_META_EXTRA_KEYS = frozenset({"prompt_file"})
+
+#: File extensions allowed for knowledge-base files in a directory template.
+_DIR_KB_EXTENSIONS = frozenset({".md", ".txt"})
+
+#: Marker for the collision report produced when ``<id>.json`` and ``<id>/``
+#: both exist (never silent precedence).
+SHAPE_FILE = "file"
+SHAPE_DIR = "dir"
 
 #: Keys accepted at the top level of a canonical template.
 _TEMPLATE_KEYS = frozenset({
@@ -465,6 +529,41 @@ def _template_path(root: str, template_id: str) -> str:
     return path
 
 
+def _template_dir_path(root: str, template_id: str) -> str:
+    """Return the canonical directory path for *template_id*, or raise.
+
+    Sibling of :func:`_template_path` with the same guards: the id is validated
+    against :data:`SLUG_RE`, the directory itself must not be a symlink and its
+    resolved parent must stay directly inside *root*.
+    """
+    cleaned = _validate_template_id(template_id)
+    root_real = os.path.realpath(root)
+    path = os.path.join(root_real, cleaned)
+    if os.path.islink(path):
+        raise TemplateValidationError(
+            "Template directory '%s/' must not be a symbolic link." % cleaned
+        )
+    resolved = os.path.realpath(path)
+    if os.path.dirname(resolved) != root_real:
+        raise TemplateValidationError(
+            "Template id '%s' resolves outside the template directory." % cleaned
+        )
+    return path
+
+
+def _safe_relative_file(path: Any, *, field: str) -> str:
+    """Validate a relative file path inside a template directory.
+
+    Reuses :func:`backend.agent_portability._safe_kb_path` (never re-implemented)
+    so a ``prompt_file`` or a ``kb/**`` path cannot be absolute, use backslashes
+    or escape its base directory.
+    """
+    try:
+        return _safe_kb_path(path)
+    except AgentPortabilityError as exc:
+        raise TemplateValidationError("%s is invalid: %s" % (field, exc)) from exc
+
+
 def _atomic_write_template(path: str, payload: Mapping[str, Any]) -> None:
     """Write JSON atomically: temp file in the same dir, fsync, then replace."""
     directory = os.path.dirname(path)
@@ -508,6 +607,359 @@ def _atomic_write_template(path: str, payload: Mapping[str, Any]) -> None:
                 os.unlink(temp_path)
             except OSError:  # pragma: no cover - defensive
                 pass
+
+
+def _atomic_write_text(path: str, text: str) -> None:
+    """Write *text* atomically: temp file in the same dir, fsync, then replace."""
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    data = text.encode("utf-8")
+    descriptor: Optional[int] = None
+    temp_path: Optional[str] = None
+    try:
+        descriptor, temp_path = tempfile.mkstemp(
+            prefix=".tmp-", suffix=".tmp", dir=directory
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, 0o644)
+        os.replace(temp_path, path)
+        temp_path = None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:  # pragma: no cover - defensive
+                pass
+        if temp_path is not None:
+            try:
+                os.unlink(temp_path)
+            except OSError:  # pragma: no cover - defensive
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Directory-form templates (additive: meta.json + prompt file + kb/**)
+# ---------------------------------------------------------------------------
+
+def _read_text_file(path: str, *, field: str, max_bytes: int) -> str:
+    """Read a UTF-8 text file with a size guard, mapping errors to template ones."""
+    try:
+        if os.path.getsize(path) > max_bytes:
+            raise TemplateValidationError(
+                "%s is too large (max %d bytes)." % (field, max_bytes)
+            )
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read()
+    except UnicodeDecodeError as exc:
+        raise TemplateValidationError("%s is not valid UTF-8 text." % field) from exc
+    except OSError as exc:
+        raise TemplateValidationError(
+            "%s could not be read (%s)." % (field, exc.__class__.__name__)
+        ) from exc
+
+
+def _check_dir_kb_extension(relative: str) -> None:
+    """Refuse a knowledge-base file whose extension is not in the allowlist."""
+    extension = os.path.splitext(relative)[1].lower()
+    if extension not in _DIR_KB_EXTENSIONS:
+        raise TemplateValidationError(
+            "Knowledge-base file '%s' in a directory template must end in %s."
+            % (relative, " or ".join(sorted(_DIR_KB_EXTENSIONS)))
+        )
+
+
+def _read_dir_kb(kb_root: str, template_id: str) -> Tuple[Dict[str, str], int]:
+    """Walk ``kb/**`` into ``{relative_path: content}`` plus a running byte total.
+
+    Content is copied **verbatim** (no placeholder rendering, no placeholder
+    audit).  Dotfiles/dot-directories are skipped, symlinks are refused, only
+    ``.md`` / ``.txt`` files are accepted and the walk order is deterministic
+    (sorted).
+    """
+    files: Dict[str, str] = {}
+    total = 0
+    if os.path.islink(kb_root):
+        raise TemplateValidationError(
+            "Template knowledge-base directory 'kb' must not be a symbolic link."
+        )
+    if not os.path.isdir(kb_root):
+        return files, total
+    for dirpath, dirnames, names in os.walk(kb_root):
+        dirnames[:] = sorted(name for name in dirnames if not name.startswith("."))
+        for name in dirnames:
+            if os.path.islink(os.path.join(dirpath, name)):
+                raise TemplateValidationError(
+                    "Knowledge-base directories in a directory template must not be "
+                    "symbolic links."
+                )
+        for name in sorted(names):
+            if name.startswith("."):
+                continue
+            absolute = os.path.join(dirpath, name)
+            relative = os.path.relpath(absolute, kb_root).replace(os.sep, "/")
+            if os.path.islink(absolute):
+                raise TemplateValidationError(
+                    "Knowledge-base file '%s' must not be a symbolic link." % relative
+                )
+            safe_path = _safe_relative_file(relative, field="Knowledge-base path")
+            _check_dir_kb_extension(safe_path)
+            try:
+                if os.path.getsize(absolute) > MAX_KB_FILE_LENGTH:
+                    raise TemplateValidationError(
+                        "Knowledge-base file '%s' is too large (max %d bytes)."
+                        % (safe_path, MAX_KB_FILE_LENGTH)
+                    )
+                with open(absolute, "r", encoding="utf-8") as handle:
+                    content = handle.read()
+            except UnicodeDecodeError as exc:
+                raise TemplateValidationError(
+                    "Knowledge-base file '%s' is not valid UTF-8 text." % safe_path
+                ) from exc
+            except OSError as exc:
+                raise TemplateValidationError(
+                    "Knowledge-base file '%s' could not be read (%s)."
+                    % (safe_path, exc.__class__.__name__)
+                ) from exc
+            if len(files) >= MAX_TEMPLATE_ITEMS:
+                raise TemplateValidationError(
+                    "Template declares too many knowledge-base files (max %d)."
+                    % MAX_TEMPLATE_ITEMS
+                )
+            total += len(content.encode("utf-8"))
+            if total > MAX_TEMPLATE_DIR_BYTES:
+                raise TemplateValidationError(
+                    "Directory template '%s' exceeds the total size budget (%d bytes)."
+                    % (template_id, MAX_TEMPLATE_DIR_BYTES)
+                )
+            files[safe_path] = content
+    return files, total
+
+
+def _read_dir_template(dir_path: str, template_id: str) -> Dict[str, Any]:
+    """Load a directory-form template into the JSON loader's dict shape.
+
+    ``meta.json`` is the discovery marker; the system prompt is read from
+    ``prompt_file`` (default :data:`DIR_TEMPLATE_PROMPT`) and ``kb/**`` is walked
+    into ``kb_files``.  ``system_prompt`` / ``kb_files`` are forbidden inside
+    ``meta.json`` so there is exactly one source of truth.  The returned mapping
+    feeds :func:`validate_template` unchanged, so rendering, the placeholder
+    audit, resolution and instantiation are all shared with the single-file form.
+    """
+    if os.path.islink(dir_path):
+        raise TemplateValidationError(
+            "Template directory '%s/' must not be a symbolic link." % template_id
+        )
+    dir_real = os.path.realpath(dir_path)
+    meta_path = os.path.join(dir_path, DIR_TEMPLATE_META)
+    meta = _read_json_object(meta_path)
+
+    forbidden = sorted(_DIR_META_FORBIDDEN_KEYS & set(meta))
+    if forbidden:
+        raise TemplateValidationError(
+            "Directory template '%s' must not declare %s in %s: the prompt and the "
+            "knowledge base live in the template directory itself."
+            % (template_id, ", ".join(forbidden), DIR_TEMPLATE_META)
+        )
+
+    unknown = sorted(set(meta) - _TEMPLATE_KEYS - _DIR_META_EXTRA_KEYS)
+    if unknown:
+        raise TemplateValidationError(
+            "Directory template '%s' %s contains unsupported key(s): %s."
+            % (template_id, DIR_TEMPLATE_META, ", ".join(unknown))
+        )
+
+    declared_id = meta.get("id")
+    if declared_id is not None and declared_id != template_id:
+        raise TemplateValidationError(
+            "Directory template '%s' declares id '%s' which does not match its "
+            "directory name." % (template_id, declared_id)
+        )
+
+    prompt_file = meta.pop("prompt_file", None) or DIR_TEMPLATE_PROMPT
+    prompt_file = _safe_relative_file(prompt_file, field="Template prompt_file")
+    prompt_path = os.path.join(dir_path, *prompt_file.split("/"))
+    if os.path.islink(prompt_path):
+        raise TemplateValidationError(
+            "Template prompt file '%s' must not be a symbolic link." % prompt_file
+        )
+    if not os.path.isfile(prompt_path):
+        raise TemplateNotFoundError(
+            "Template prompt file '%s' does not exist in '%s/'."
+            % (prompt_file, template_id)
+        )
+    resolved_prompt = os.path.realpath(prompt_path)
+    if resolved_prompt != dir_real and not resolved_prompt.startswith(dir_real + os.sep):
+        raise TemplateValidationError(
+            "Template prompt file '%s' resolves outside the template directory."
+            % prompt_file
+        )
+    system_prompt = _read_text_file(
+        prompt_path,
+        field="Template prompt file '%s'" % prompt_file,
+        max_bytes=MAX_TEMPLATE_BYTES,
+    )
+
+    kb_files, kb_bytes = _read_dir_kb(
+        os.path.join(dir_path, DIR_TEMPLATE_KB), template_id
+    )
+    total = kb_bytes + len(system_prompt.encode("utf-8"))
+    try:
+        total += os.path.getsize(meta_path)
+    except OSError:  # pragma: no cover - defensive
+        pass
+    if total > MAX_TEMPLATE_DIR_BYTES:
+        raise TemplateValidationError(
+            "Directory template '%s' is too large (%d bytes; max %d)."
+            % (template_id, total, MAX_TEMPLATE_DIR_BYTES)
+        )
+
+    data: Dict[str, Any] = dict(meta)
+    data["system_prompt"] = system_prompt
+    data["kb_files"] = kb_files
+    return data
+
+
+def _dir_meta_payload(template: Mapping[str, Any], *, prompt_file: str) -> Dict[str, Any]:
+    """Split a canonical template into its ``meta.json`` payload.
+
+    The inline ``system_prompt`` / ``kb_files`` are dropped (they become real
+    files) and ``prompt_file`` is only recorded when it differs from the default.
+    """
+    meta = {
+        key: value
+        for key, value in template.items()
+        if key != _META_KEY and key not in _DIR_META_FORBIDDEN_KEYS
+    }
+    if prompt_file and prompt_file != DIR_TEMPLATE_PROMPT:
+        meta["prompt_file"] = prompt_file
+    return meta
+
+
+def _populate_dir_template(
+    base: str,
+    *,
+    prompt_file: str,
+    prompt_text: str,
+    kb_files: Mapping[str, str],
+    meta_serialized: str,
+) -> None:
+    """Write the prompt and every ``kb/**`` file first, ``meta.json`` LAST.
+
+    ``meta.json`` is the discovery marker, so writing it last means a crash can
+    never leave a *discoverable* half-built template behind.  Each file is
+    replaced atomically.
+    """
+    _atomic_write_text(os.path.join(base, *prompt_file.split("/")), prompt_text)
+    for relative, content in sorted(kb_files.items()):
+        target = os.path.join(base, DIR_TEMPLATE_KB, *relative.split("/"))
+        _atomic_write_text(target, content)
+    _atomic_write_text(os.path.join(base, DIR_TEMPLATE_META), meta_serialized)
+
+
+def _prune_dir_kb(base: str, keep: List[str]) -> None:
+    """Delete ``kb/**`` files the payload dropped and any directories left empty.
+
+    Only called when the update payload actually carried ``kb_files``, so a
+    partial edit never removes a knowledge-base file by omission.
+    """
+    kb_root = os.path.join(base, DIR_TEMPLATE_KB)
+    if os.path.islink(kb_root) or not os.path.isdir(kb_root):
+        return
+    keep_set = set(keep)
+    for dirpath, dirnames, names in os.walk(kb_root, topdown=False):
+        for name in names:
+            if name.startswith("."):
+                continue
+            absolute = os.path.join(dirpath, name)
+            relative = os.path.relpath(absolute, kb_root).replace(os.sep, "/")
+            if relative in keep_set:
+                continue
+            try:
+                os.unlink(absolute)
+            except FileNotFoundError:
+                pass
+        for name in sorted(dirnames, reverse=True):
+            try:
+                os.rmdir(os.path.join(dirpath, name))
+            except OSError:
+                pass
+
+
+def _write_dir_template(
+    root: str,
+    template_id: str,
+    template: Mapping[str, Any],
+    *,
+    prompt_file: str = DIR_TEMPLATE_PROMPT,
+) -> str:
+    """Persist a canonical template as a directory-form template.
+
+    A brand-new template is built inside a hidden staging directory and renamed
+    into place (atomic); an existing template is updated file by file with
+    ``meta.json`` written last.  All content is serialized before anything
+    touches the disk, so a rejected payload leaves the directory byte-identical.
+    """
+    dir_path = _template_dir_path(root, template_id)
+    prompt_file = _safe_relative_file(prompt_file, field="Template prompt_file")
+    prompt_text = template.get("system_prompt")
+    if not isinstance(prompt_text, str):
+        raise TemplateValidationError(
+            "Template field 'system_prompt' is required and must be a string."
+        )
+    kb_files = _normalize_kb_files(template.get("kb_files"))
+    for _relative in kb_files:
+        _check_dir_kb_extension(_relative)
+    meta = _dir_meta_payload(template, prompt_file=prompt_file)
+    try:
+        meta_serialized = json.dumps(meta, indent=2, ensure_ascii=False) + "\n"
+    except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+        raise TemplateValidationError(
+            "Template metadata is not JSON serializable: %s." % exc.__class__.__name__
+        ) from exc
+
+    total = len(prompt_text.encode("utf-8")) + len(meta_serialized.encode("utf-8"))
+    total += sum(len(content.encode("utf-8")) for content in kb_files.values())
+    if total > MAX_TEMPLATE_DIR_BYTES:
+        raise TemplateValidationError(
+            "Directory template '%s' is too large (%d bytes; max %d)."
+            % (template_id, total, MAX_TEMPLATE_DIR_BYTES)
+        )
+
+    os.makedirs(root, exist_ok=True)
+    if os.path.lexists(dir_path) and not os.path.isdir(dir_path):
+        raise TemplateExistsError(
+            "A file named '%s' already exists where the template directory would go."
+            % template_id
+        )
+
+    if os.path.isdir(dir_path):
+        _populate_dir_template(
+            dir_path,
+            prompt_file=prompt_file,
+            prompt_text=prompt_text,
+            kb_files=kb_files,
+            meta_serialized=meta_serialized,
+        )
+    else:
+        staging = tempfile.mkdtemp(prefix=".%s.stage-" % template_id, dir=root)
+        try:
+            _populate_dir_template(
+                staging,
+                prompt_file=prompt_file,
+                prompt_text=prompt_text,
+                kb_files=kb_files,
+                meta_serialized=meta_serialized,
+            )
+            os.replace(staging, dir_path)
+            staging = None
+        finally:
+            if staging is not None:
+                shutil.rmtree(staging, ignore_errors=True)
+    return dir_path
 
 
 def _read_json_object(path: str) -> Dict[str, Any]:
@@ -1238,30 +1690,54 @@ def _adapt_legacy(raw: Mapping[str, Any], template_id: str) -> Dict[str, Any]:
     }
 
 
-def _scan_dir(root: str) -> List[str]:
-    """Return the sorted ``*.json`` file names directly inside *root*."""
+def _scan_dir(root: str) -> Tuple[List[str], List[str]]:
+    """Return ``(json file names, candidate directory names)`` inside *root*.
+
+    Dotfiles, dot-directories and symlinks are ignored.  A directory name is a
+    *candidate* for the directory-based template form; it becomes a template only
+    when it carries a ``meta.json`` discovery marker.
+    """
     if not os.path.isdir(root):
-        return []
-    names: List[str] = []
+        return [], []
+    files: List[str] = []
+    directories: List[str] = []
     for name in sorted(os.listdir(root)):
-        if name.startswith(".") or not name.endswith(".json"):
+        if name.startswith("."):
             continue
         path = os.path.join(root, name)
-        if os.path.islink(path) or not os.path.isfile(path):
+        if os.path.islink(path):
             continue
-        names.append(name)
-    return names
+        if os.path.isfile(path):
+            if name.endswith(".json"):
+                files.append(name)
+        elif os.path.isdir(path):
+            directories.append(name)
+    return files, directories
 
 
-def _scan_canonical(root: str) -> Dict[str, Dict[str, Any]]:
-    """Map id -> entry for every canonical template file."""
+def _scan_canonical(
+    root: str,
+) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+    """Map id -> entry for every canonical template, plus shape collisions.
+
+    Two entry shapes are recognised: the classic single-file form (``<id>.json``)
+    and the additive directory form (``<id>/meta.json`` + prompt + ``kb/**``).
+    When *both* shapes exist for the same id the id is a hard validation error on
+    the surviving entry and a collision record is emitted, so precedence is never
+    silent.
+    """
     entries: Dict[str, Dict[str, Any]] = {}
-    for file_name in _scan_dir(root):
+    collisions: List[Dict[str, Any]] = []
+    files, directories = _scan_dir(root)
+
+    for file_name in files:
         stem = file_name[: -len(".json")]
         entry: Dict[str, Any] = {
             "id": stem,
             "source": "agent_templates",
+            "shape": SHAPE_FILE,
             "file": file_name,
+            "dir": None,
             "valid": False,
             "error": None,
             "template": None,
@@ -1289,14 +1765,65 @@ def _scan_canonical(root: str) -> Dict[str, Dict[str, Any]]:
         except (TemplateValidationError, AgentFactoryError) as exc:
             entry["error"] = str(exc)
         entries[stem] = entry
-    return entries
+
+    for dir_name in directories:
+        existing = entries.get(dir_name)
+        if existing is not None:
+            message = (
+                "Template id '%s' is provided both as '%s.json' and as a directory "
+                "'%s/'; remove one of them." % (dir_name, dir_name, dir_name)
+            )
+            existing["error"] = message
+            existing["valid"] = False
+            existing["template"] = None
+            existing["collision"] = "both_shapes"
+            collisions.append({
+                "id": dir_name,
+                "kind": "canonical_shape",
+                "chosen": None,
+                "shadowed": None,
+                "canonical_file": existing.get("file"),
+                "canonical_dir": dir_name,
+                "legacy_file": None,
+                "duplicate_file": None,
+                "message": message,
+            })
+            continue
+        entry = {
+            "id": dir_name,
+            "source": "agent_templates",
+            "shape": SHAPE_DIR,
+            "file": None,
+            "dir": dir_name,
+            "valid": False,
+            "error": None,
+            "template": None,
+            "raw": None,
+        }
+        try:
+            raw = _read_dir_template(os.path.join(root, dir_name), dir_name)
+        except TemplateError as exc:
+            entry["error"] = str(exc)
+            entry["raw"] = None
+            entries[dir_name] = entry
+            continue
+        entry["raw"] = raw
+        try:
+            entry["template"] = validate_template({**raw, "id": dir_name})
+            entry["valid"] = True
+        except (TemplateValidationError, AgentFactoryError) as exc:
+            entry["error"] = str(exc)
+        entries[dir_name] = entry
+
+    return entries, collisions
 
 
 def _scan_legacy(root: str) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
     """Map id -> entry for legacy skillset files, plus duplicate reports."""
     entries: Dict[str, Dict[str, Any]] = {}
     duplicates: List[Dict[str, Any]] = []
-    for file_name in _scan_dir(root):
+    files, _directories = _scan_dir(root)
+    for file_name in files:
         stem = file_name[: -len(".json")]
         entry: Dict[str, Any] = {
             "id": stem,
@@ -1347,8 +1874,9 @@ def _scan_legacy(root: str) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, A
 # ---------------------------------------------------------------------------
 
 def _entry_summary(entry: Mapping[str, Any], *, shadowed: bool, shadows: bool) -> Dict[str, Any]:
+    """Project a scan entry onto the public list-summary shape."""
+    legacy = bool(entry.get("legacy")) or entry.get("source") == "skillsets"
     template = entry.get("template")
-    legacy = entry.get("source") == "skillsets"
     if template is not None:
         summary = {
             "id": template["id"],
@@ -1380,6 +1908,7 @@ def _entry_summary(entry: Mapping[str, Any], *, shadowed: bool, shadows: bool) -
         }
     summary.update({
         "source": entry.get("source"),
+        "shape": entry.get("shape") or SHAPE_FILE,
         "file": entry.get("file"),
         "legacy": legacy,
         "writable": not legacy,
@@ -1399,11 +1928,12 @@ def list_templates(
 ) -> List[Dict[str, Any]]:
     """List template summaries from both storage roots.
 
-    The canonical entry wins; the legacy entry (if any) is still listed with
+    Both canonical shapes are listed (``shape`` is ``"file"`` or ``"dir"``).  The
+    canonical entry wins; the legacy entry (if any) is still listed with
     ``shadowed=True`` so the UI can surface the collision explicitly.
     """
     canonical_root, legacy_root = _roots(base_dir)
-    canonical = _scan_canonical(canonical_root)
+    canonical, _shape_collisions = _scan_canonical(canonical_root)
     legacy, _duplicates = _scan_legacy(legacy_root) if include_legacy else ({}, [])
 
     summaries: List[Dict[str, Any]] = []
@@ -1422,10 +1952,10 @@ def list_templates(
 
 
 def has_template(template_id: str, *, base_dir: Optional[str] = None) -> bool:
-    """Return whether *template_id* exists in any storage root."""
+    """Return whether *template_id* exists in any storage root (either shape)."""
     canonical_root, legacy_root = _roots(base_dir)
     cleaned = _validate_template_id(template_id)
-    canonical_map = _scan_canonical(canonical_root)
+    canonical_map, _shape_collisions = _scan_canonical(canonical_root)
     if cleaned in canonical_map:
         return True
     legacy_map, _duplicates = _scan_legacy(legacy_root)
@@ -1435,12 +1965,14 @@ def has_template(template_id: str, *, base_dir: Optional[str] = None) -> bool:
 def list_collisions(*, base_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """Report every id that exists in more than one place.
 
-    Collisions are never resolved silently: ``agent_templates/`` always wins.
+    Covers two same-root collisions (``<id>.json`` + ``<id>/``; duplicate legacy
+    files) and the cross-root ``agent_templates/`` vs ``skillsets/`` shadowing.
+    Collisions are never resolved silently.
     """
     canonical_root, legacy_root = _roots(base_dir)
-    canonical = _scan_canonical(canonical_root)
+    canonical, shape_collisions = _scan_canonical(canonical_root)
     legacy, duplicates = _scan_legacy(legacy_root)
-    collisions: List[Dict[str, Any]] = []
+    collisions: List[Dict[str, Any]] = list(shape_collisions)
     for template_id in sorted(set(canonical) & set(legacy)):
         collisions.append({
             "id": template_id,
@@ -1464,6 +1996,10 @@ def list_collisions(*, base_dir: Optional[str] = None) -> List[Dict[str, Any]]:
 def get_template(template_id: str, *, base_dir: Optional[str] = None) -> Dict[str, Any]:
     """Load a template (canonical first, then legacy) as a canonical mapping.
 
+    Both canonical shapes are supported: the single-file ``<id>.json`` form and
+    the directory form (``<id>/meta.json`` + prompt + ``kb/**``), which is
+    re-inlined into the exact same shape.
+
     The returned mapping carries a read-only ``_meta`` block describing where
     the template came from and whether it is writable.
     """
@@ -1471,7 +2007,15 @@ def get_template(template_id: str, *, base_dir: Optional[str] = None) -> Dict[st
     cleaned = _validate_template_id(template_id)
 
     canonical_path = _template_path(canonical_root, cleaned)
-    if os.path.isfile(canonical_path):
+    dir_path = _template_dir_path(canonical_root, cleaned)
+    is_file = os.path.isfile(canonical_path)
+    is_dir = os.path.isdir(dir_path) and not os.path.islink(dir_path)
+    if is_file and is_dir:
+        raise TemplateValidationError(
+            "Template id '%s' exists both as '%s.json' and as a directory '%s/'; "
+            "remove one of them." % (cleaned, cleaned, cleaned)
+        )
+    if is_file:
         raw = _read_json_object(canonical_path)
         declared_id = raw.get("id")
         if declared_id is not None and declared_id != cleaned:
@@ -1485,6 +2029,17 @@ def get_template(template_id: str, *, base_dir: Optional[str] = None) -> Dict[st
             "legacy": False,
             "writable": True,
             "file": os.path.basename(canonical_path),
+        }
+        return template
+
+    if is_dir:
+        raw = _read_dir_template(dir_path, cleaned)
+        template = validate_template({**raw, "id": cleaned})
+        template[_META_KEY] = {
+            "source": "agent_templates",
+            "legacy": False,
+            "writable": True,
+            "file": None,
         }
         return template
 
@@ -1515,20 +2070,32 @@ def create_template(
     *,
     base_dir: Optional[str] = None,
     allow_shadow: bool = False,
+    shape: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Validate, then atomically write a new canonical template.
 
-    Refuses to overwrite an existing canonical file, and refuses to shadow a
-    legacy skillset unless ``allow_shadow=True`` is passed explicitly.
+    ``shape`` selects the storage form: the default ``"file"`` writes
+    ``agent_templates/<id>.json``; ``"dir"`` opts into the directory form
+    (``<id>/meta.json`` + prompt + ``kb/**``).  Refuses to overwrite an existing
+    canonical template in either shape, and refuses to shadow a legacy skillset
+    unless ``allow_shadow=True`` is passed explicitly.
     """
     if not isinstance(data, Mapping):
         raise TemplateValidationError("Template must be a JSON object.")
+    requested_shape = shape
+    if requested_shape is None:
+        requested_shape = SHAPE_FILE
+    if not isinstance(requested_shape, str) or requested_shape not in (SHAPE_FILE, SHAPE_DIR):
+        raise TemplateValidationError(
+            "Template shape must be '%s' or '%s'." % (SHAPE_FILE, SHAPE_DIR)
+        )
     cleaned = _validate_template_id(_strip_meta(data).get("id"))
     template = validate_template({**_strip_meta(data), "id": cleaned})
 
     canonical_root, legacy_root = _roots(base_dir)
     path = _template_path(canonical_root, cleaned)
-    if os.path.exists(path):
+    dir_path = _template_dir_path(canonical_root, cleaned)
+    if os.path.lexists(path) or os.path.lexists(dir_path):
         raise TemplateExistsError(
             "A template with id '%s' already exists in agent_templates/." % cleaned
         )
@@ -1540,8 +2107,12 @@ def create_template(
             "allow_shadow=True to shadow it explicitly." % (cleaned, shadowed["file"])
         )
 
-    _atomic_write_template(path, template)
-    logger.info("agent_templates: created template '%s'", cleaned)
+    if requested_shape == SHAPE_DIR:
+        _write_dir_template(canonical_root, cleaned, template)
+        logger.info("agent_templates: created directory template '%s'", cleaned)
+    else:
+        _atomic_write_template(path, template)
+        logger.info("agent_templates: created template '%s'", cleaned)
     return get_template(cleaned, base_dir=base_dir)
 
 
@@ -1553,7 +2124,10 @@ def update_template(
 ) -> Dict[str, Any]:
     """Update a canonical template (top-level shallow merge) and rewrite it.
 
-    Legacy-only templates are read-only: create a canonical copy first.
+    The payload is persisted into whichever shape the template already has.  A
+    dropped knowledge-base file is only pruned when the payload actually carries
+    ``kb_files``.  Legacy-only templates are read-only: create a canonical copy
+    first.
     """
     cleaned = _validate_template_id(template_id)
     if not isinstance(data, Mapping):
@@ -1562,7 +2136,15 @@ def update_template(
 
     canonical_root, legacy_root = _roots(base_dir)
     path = _template_path(canonical_root, cleaned)
-    if not os.path.isfile(path):
+    dir_path = _template_dir_path(canonical_root, cleaned)
+    is_file = os.path.isfile(path)
+    is_dir = os.path.isdir(dir_path) and not os.path.islink(dir_path)
+    if is_file and is_dir:
+        raise TemplateValidationError(
+            "Template id '%s' exists both as '%s.json' and as a directory '%s/'; "
+            "remove one of them before editing." % (cleaned, cleaned, cleaned)
+        )
+    if not is_file and not is_dir:
         legacy_entries, _duplicates = _scan_legacy(legacy_root)
         if cleaned in legacy_entries:
             raise TemplateError(
@@ -1579,23 +2161,41 @@ def update_template(
             % (cleaned, declared_id)
         )
 
-    existing = _strip_meta(_read_json_object(path))
+    if is_file:
+        existing = _strip_meta(_read_json_object(path))
+        merged = {**existing, **payload}
+        merged["id"] = cleaned
+        template = validate_template(merged)
+        _atomic_write_template(path, template)
+        logger.info("agent_templates: updated template '%s'", cleaned)
+        return get_template(cleaned, base_dir=base_dir)
+
+    existing_meta = _read_json_object(os.path.join(dir_path, DIR_TEMPLATE_META))
+    prompt_file = existing_meta.get("prompt_file") or DIR_TEMPLATE_PROMPT
+    existing = _strip_meta(_read_dir_template(dir_path, cleaned))
     merged = {**existing, **payload}
     merged["id"] = cleaned
     template = validate_template(merged)
-    _atomic_write_template(path, template)
-    logger.info("agent_templates: updated template '%s'", cleaned)
+    _write_dir_template(canonical_root, cleaned, template, prompt_file=prompt_file)
+    if "kb_files" in payload:
+        _prune_dir_kb(dir_path, sorted(template["kb_files"]))
+    logger.info("agent_templates: updated directory template '%s'", cleaned)
     return get_template(cleaned, base_dir=base_dir)
 
 
 def delete_template(template_id: str, *, base_dir: Optional[str] = None) -> bool:
-    """Delete a canonical template file.  Legacy files are never touched."""
+    """Delete a canonical template (either shape).  Legacy files are never touched."""
     cleaned = _validate_template_id(template_id)
     canonical_root, legacy_root = _roots(base_dir)
     path = _template_path(canonical_root, cleaned)
     if os.path.isfile(path):
         os.unlink(path)
         logger.info("agent_templates: deleted template '%s'", cleaned)
+        return True
+    dir_path = _template_dir_path(canonical_root, cleaned)
+    if os.path.isdir(dir_path) and not os.path.islink(dir_path):
+        shutil.rmtree(dir_path)
+        logger.info("agent_templates: deleted directory template '%s'", cleaned)
         return True
     legacy_entries, _duplicates = _scan_legacy(legacy_root)
     if cleaned in legacy_entries:
@@ -2038,7 +2638,8 @@ def legacy_skillsets(*, base_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     _canonical_root, legacy_root = _roots(base_dir)
     payloads: List[Dict[str, Any]] = []
-    for file_name in _scan_dir(legacy_root):
+    files, _directories = _scan_dir(legacy_root)
+    for file_name in files:
         try:
             payloads.append(_read_json_object(os.path.join(legacy_root, file_name)))
         except TemplateError:

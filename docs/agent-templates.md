@@ -2,8 +2,9 @@
 
 An **agent template** is a JSON blueprint for a complete agent: identity, a parameterized system prompt, configuration defaults (basic *and* advanced settings), tools, skills, variables and knowledge-base files. Templates are the supported way to hand out a repeatable agent — from the **Templates** tab on `/agents`, from the template editor, or programmatically from a plugin or skill.
 
-- Canonical (writable) templates live in `agent_templates/<id>.json`.
+- Canonical (writable) templates live in `agent_templates/` in one of **two equivalent storage shapes**: a single JSON file `agent_templates/<id>.json`, or a directory `agent_templates/<id>/` with `meta.json` + a real prompt file + `kb/**` (see [Directory form](#directory-form-optional)).
 - `skillsets/` is the **legacy, read-only** root. Both are listed, `agent_templates/` wins an id collision, and a collision is always reported (never silent shadowing).
+- The storage shape is an authoring detail only: the API, the editor, the renderer and the resolver always see the same single document (`system_prompt` + `kb_files`), so reads re-inline a directory template on the fly.
 - Templates store **declarations only**. Secret variable *values* are supplied when an agent is created and are never written into a template file.
 
 ## 1. Authoring a template
@@ -65,13 +66,32 @@ Typical advanced keys: `sandbox_enabled`, `bash_exec_enabled`, `disable_turn_pre
 
 `kb_files` maps a **relative** path to its content. Paths are validated with the same guard as agent import/export (no absolute paths, no `..`, no backslashes), and size is capped. The factory additionally copies its standard KB files when `defaults/` exists in the deployment.
 
+### Directory form (optional)
+
+A template whose prompt or knowledge base is large — or which is reviewed in a pull request — is easier to author as real files than as one JSON-escaped string. The **directory form** stores the same template on disk as:
+
+```
+agent_templates/<id>/
+  meta.json      metadata (id, name, description, category, icon, schema_version,
+                 parameters, defaults, tools, skills, variables) + the discovery marker
+  system.md      the system prompt, real markdown (placeholders still render)
+  kb/<name>.md   one file per knowledge-base entry
+```
+
+- The directory name must equal the `meta.json` `id`; `meta.json` is the discovery marker (a directory without one is reported invalid, never fatal).
+- `system_prompt` and `kb_files` are **forbidden** inside `meta.json` — there is exactly one source of truth. An optional `prompt_file` key overrides the default prompt file name (`system.md`).
+- Knowledge-base paths are relative to `kb/`, go through the same guard as the JSON `kb_files` map, must end in `.md` or `.txt`, and dotfiles/dot-directories are skipped. Content is copied **verbatim**: `{{ placeholders }}` inside a KB file stay literal and are never audited.
+- No symlinks are followed anywhere in the tree, and a new directory template is built in a hidden staging directory then renamed into place, with `meta.json` written last.
+- If both `<id>.json` and `<id>/` exist the id is a **hard validation error** on both entries (never a silent precedence) and it shows up in the `collisions` list of `GET /api/templates`.
+- The plain `POST` / `PUT` API writes the single-file shape for a new template; the directory form is opt-in (`create_template(..., shape="dir")` in Python). An existing template is always updated in the shape it already has.
+
 ## 2. Shipped examples
 
-| Template | Shows |
-| --- | --- |
-| `support_triage_bot` | required text param **with default**, select, boolean and number params, 16 `defaults` keys spanning basic + advanced, 4 tools, 2 skills, 3 variables (**one secret**) and 2 KB files. |
-| `data_analyst` | sandboxed analyst: number/select/boolean params, `runpy`/`read_file`/`write_file` tooling, `explorer` + `subagent` skills, a secret DSN variable and a metrics glossary. |
-| `hello_world_showcase` | smallest walkthrough: one parameter of every type, two tools, one skill, two variables and one KB file. |
+| Template | Shape | Shows |
+| --- | --- | --- |
+| `support_triage_bot` | **directory** (`meta.json` + `system.md` + `kb/`) | required text param **with default**, select, boolean and number params, 16 `defaults` keys spanning basic + advanced, 4 tools, 2 skills, 3 variables (**one secret**) and 2 KB files. |
+| `data_analyst` | single JSON file | sandboxed analyst: number/select/boolean params, `runpy`/`read_file`/`write_file` tooling, `explorer` + `subagent` skills, a secret DSN variable and a metrics glossary. |
+| `hello_world_showcase` | single JSON file | smallest walkthrough: one parameter of every type, two tools, one skill, two variables and one KB file. |
 
 Copy one, change the `id`, then edit it in `/template/<id>` and use the simulation panel before creating real agents.
 

@@ -284,6 +284,41 @@ def test_template_crud_roundtrip(client, repo_root):
         "/api/templates/%s" % TEMPLATE_ID).status_code == 404
 
 
+def test_directory_form_template_round_trips_over_http(client, repo_root):
+    """The wire format is identical for both storage shapes (re-inlined on read)."""
+    login(client)
+    tpl.create_template(
+        template_payload(id="dir_shape_bot",
+                         system_prompt="You support {{company}}.",
+                         kb_files={"guide/start.md": "# Start\n"}),
+        base_dir=repo_root, shape="dir",
+    )
+    assert os.path.isdir(os.path.join(repo_root, "agent_templates", "dir_shape_bot"))
+
+    detail = client.get("/api/templates/dir_shape_bot")
+    assert detail.status_code == 200
+    body = detail.get_json()
+    assert body["ok"] is True
+    template = body["template"]
+    # One JSON doc with system_prompt + kb_files, exactly like the file shape.
+    assert template["system_prompt"] == "You support {{company}}."
+    assert template["kb_files"] == {"guide/start.md": "# Start\n"}
+    assert template["_meta"]["file"] is None
+    assert template["_meta"]["writable"] is True
+    assert template["_meta"]["legacy"] is False
+
+    listing = client.get("/api/templates").get_json()
+    entry = {item["id"]: item for item in listing["templates"]}["dir_shape_bot"]
+    assert entry["shape"] == "dir"
+    assert entry["file"] is None
+    assert listing["collisions"] == []
+
+    assert client.delete(
+        "/api/templates/dir_shape_bot").status_code == 200
+    assert not os.path.exists(os.path.join(repo_root, "agent_templates",
+                                           "dir_shape_bot"))
+
+
 def test_invalid_template_is_rejected(client, repo_root):
     login(client)
     response = client.post("/api/templates", json={
