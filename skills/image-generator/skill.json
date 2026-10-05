@@ -22,6 +22,10 @@
           "label": "Google Gemini"
         },
         {
+          "value": "openrouter",
+          "label": "OpenRouter"
+        },
+        {
           "value": "automatic1111",
           "label": "AUTOMATIC1111"
         },
@@ -159,6 +163,40 @@
       "advanced": true
     },
     {
+      "name": "openrouter_api_key",
+      "label": "OpenRouter API Key",
+      "type": "secret",
+      "default": "",
+      "description": "Write-only OpenRouter API key used only by the OpenRouter provider.",
+      "provider": "openrouter"
+    },
+    {
+      "name": "openrouter_model",
+      "label": "OpenRouter Model",
+      "type": "string",
+      "default": "google/gemini-2.5-flash-image",
+      "description": "Image model used when the agent does not pick one, e.g. google/gemini-2.5-flash-image, openai/gpt-image-1, black-forest-labs/flux.2-pro.",
+      "provider": "openrouter"
+    },
+    {
+      "name": "openrouter_allowed_models",
+      "label": "Other Allowed OpenRouter Models",
+      "type": "string",
+      "default": "",
+      "description": "Comma-separated model IDs an agent may request besides the default. Leave empty to allow only the default model.",
+      "provider": "openrouter",
+      "advanced": true
+    },
+    {
+      "name": "openrouter_timeout_seconds",
+      "label": "OpenRouter Timeout (seconds)",
+      "type": "number",
+      "default": 90,
+      "description": "Bounded request timeout for OpenRouter, from 1 through 120 seconds.",
+      "provider": "openrouter",
+      "advanced": true
+    },
+    {
       "name": "max_images_per_request",
       "label": "Maximum Images Per Request",
       "type": "number",
@@ -222,6 +260,11 @@
           "id": "google-gemini",
           "label": "Google Gemini",
           "description": "Cloud image generation through the configured Google Gemini model."
+        },
+        {
+          "id": "openrouter",
+          "label": "OpenRouter",
+          "description": "Cloud image generation through OpenRouter (Gemini, GPT Image, FLUX, Seedream and more) with an administrator-approved model."
         },
         {
           "id": "automatic1111",
