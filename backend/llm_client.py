@@ -33,7 +33,53 @@ _LLM_ERROR_MESSAGES = {
     "provider_error": "The LLM provider is experiencing issues. Please try again shortly.",
     "llm_error": "The LLM returned an error. Please try again.",
     "unknown_error": "An unexpected error occurred with the LLM service.",
+    "parse_error": "The LLM provider returned an invalid response. Check the provider configuration.",
 }
+
+
+def _normalize_system_messages(
+    messages: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Return a provider-safe message snapshot with system instructions first.
+
+    Strict chat templates, including Qwen templates used by llama.cpp, reject
+    any system-role message after the conversation begins. Consolidate every
+    system message at index 0 while preserving the exact order and fields of
+    all non-system messages. Caller-owned dictionaries and the input list are
+    never mutated.
+    """
+    copied_messages = [message.copy() for message in messages]
+    system_messages = [
+        message for message in copied_messages
+        if message.get("role") == "system"
+    ]
+    if not system_messages:
+        return copied_messages
+
+    non_system_messages = [
+        message for message in copied_messages
+        if message.get("role") != "system"
+    ]
+    merged_system = system_messages[0].copy()
+    if len(system_messages) > 1:
+        def _content_text(content: Any) -> str:
+            if isinstance(content, str):
+                return content
+            if content is None:
+                return ""
+            return json.dumps(
+                content,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+
+        merged_system["content"] = "\n\n".join(
+            _content_text(message.get("content", ""))
+            for message in system_messages
+        )
+
+    return [merged_system, *non_system_messages]
 
 
 def _format_llm_error(error_type: str, context: Optional[Dict[str, Any]] = None) -> str:
@@ -51,6 +97,46 @@ def _format_llm_error(error_type: str, context: Optional[Dict[str, Any]] = None)
         if context.get("session_id"):
             user_msg += f" (Session: {context['session_id']})"
     return user_msg
+
+
+def _parse_sse_error_frame(raw_text: str) -> Optional[Dict[str, str]]:
+    """Extract the error type/message from an SSE ``event: error`` frame.
+
+    Some OpenAI-compatible gateways (e.g. cavoti) return transient failures as
+    Server-Sent-Events even for non-streaming requests (``"stream": false``)::
+
+        event: error
+        data: {"error": {"type": "service_unavailable",
+                         "message": "Service temporarily unavailable, please retry later"}}
+
+    Returns ``{"type": ..., "message": ...}`` when the body is an SSE error
+    frame, otherwise ``None``.
+    """
+    if not raw_text or "event:" not in raw_text or "data:" not in raw_text:
+        return None
+    event_name = None
+    data_chunks = []
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("event:"):
+            event_name = stripped[len("event:"):].strip()
+        elif stripped.startswith("data:"):
+            data_chunks.append(stripped[len("data:"):].strip())
+    if event_name != "error" or not data_chunks:
+        return None
+    try:
+        payload = json.loads("\n".join(data_chunks))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    error_obj = payload.get("error", payload)
+    if isinstance(error_obj, dict):
+        return {
+            "type": str(error_obj.get("type", "")),
+            "message": str(error_obj.get("message", "")),
+        }
+    return {"type": "", "message": str(error_obj)}
 
 
 def _split_trailing_think_close(text: str) -> Tuple[str, Optional[str]]:
@@ -202,20 +288,35 @@ class LLMClient:
     Supports llama.cpp, OpenAI, and other OpenAI-compatible backends.
     """
 
-    def __init__(self, model_config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        model_config: Optional[Dict[str, Any]] = None,
+        fallback_model_config: Optional[Dict[str, Any]] = None,
+        _allow_fallback: bool = True,
+    ):
         """Initialize LLMClient with optional model_config.
 
         Args:
             model_config: Dict with keys: base_url, api_key, model_name, timeout,
-                         thinking (bool), thinking_budget (int), max_tokens, temperature.
+                         thinking (bool), thinking_budget (int), max_tokens, temperature,
+                         and optional service_tier.
                          If None, uses the default model from DB or config.py defaults.
+            fallback_model_config: Optional model config retried once when the
+                         primary call fails.  Explicitly passed by shared
+                         callers (classifiers, plugins); None means no implicit
+                         fallback unless this client uses the global default.
         """
+        self.provider = None
+        self.service_tier = model_config.get("service_tier") if model_config else None
+        self._model_api_key_override = False
         if model_config:
+            self._model_api_key_override = bool(model_config.get("api_key"))
             try:
                 from models.db import db
                 model_config = db.resolve_model_config(model_config)
             except Exception:
                 pass
+            self.provider = model_config.get("provider")
             self.base_url = model_config.get("base_url")
             self.api_key = model_config.get("api_key")
             self.model = model_config.get("model_name")
@@ -231,7 +332,9 @@ class LLMClient:
 
                 dm = db.get_default_model()
                 if dm:
+                    self._model_api_key_override = bool(dm.get("api_key"))
                     dm = db.resolve_model_config(dm)
+                    self.provider = dm.get("provider")
                     self.base_url = dm.get("base_url")
                     self.api_key = dm.get("api_key")
                     self.model = dm.get("model_name")
@@ -262,9 +365,22 @@ class LLMClient:
                 self.temperature = None
                 self.api_format = "openai"
         self._cached_model_name = None
-        self._codex_provider_id = model_config.get("provider", "codex") if model_config else "codex"
+        self._codex_provider_id = self.provider or "codex"
+        # Fallback model support: retried once when the primary call fails.
+        # An explicit model_config means the caller chose this model, so no
+        # fallback is added implicitly; a client built with the global default
+        # (model_config=None) resolves `default_model_fallback_id` instead.
+        self._explicit_model_config = model_config
+        self._fallback_config = fallback_model_config
+        self._allow_fallback = _allow_fallback
+        self._fallback_client: Optional["LLMClient"] = None
         # Cache for global LLM settings (avoids repeated DB reads in hot path).
         # TTL-based, simple dict — intentionally lock-free (worst case: 1 extra DB read).
+        # Optional per-call retry override. When set (not None), it takes
+        # precedence over the global llm_max_retries setting. Callers that
+        # need bounded latency (e.g. photo validation fallback chains) set
+        # this to 0 so one slow provider cannot stall the whole request.
+        self.max_retries: Optional[int] = None
         self._settings_cache = {}
         self._settings_cache_time = 0
 
@@ -357,6 +473,7 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         log_file: Optional[str] = None,
+        tool_choice: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Delegate chat completion to CodexClient (Responses API)."""
         from models.db import db as _db
@@ -385,6 +502,8 @@ class LLMClient:
             tools=tools,
             reasoning=bool(self.thinking),
             timeout=self.timeout or 120,
+            tool_choice=tool_choice,
+            service_tier=getattr(self, "service_tier", None),
         )
         duration_ms = int((time.time() - start_time) * 1000)
 
@@ -416,6 +535,29 @@ class LLMClient:
         usage = result["response"].get("usage") or {}
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", prompt_tokens + completion_tokens)
+        prompt_details = usage.get("prompt_tokens_details") or {}
+        completion_details = usage.get("completion_tokens_details") or {}
+        cached_tokens = prompt_details.get("cached_tokens", 0) or 0
+        reasoning_tokens = completion_details.get("reasoning_tokens", 0) or 0
+        usage_details_available = bool(prompt_details or completion_details)
+
+        # Codex bypasses the standard completion path below, so emit the same
+        # generic usage event here for consumers such as the Token Monitor.
+        from backend.llm_usage_events import record_llm_usage
+        record_llm_usage(
+            model=result["response"].get("model") or self.model,
+            provider=self.provider or self._codex_provider_id,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cached_tokens=cached_tokens,
+            reasoning_tokens=reasoning_tokens,
+            usage_details_available=usage_details_available,
+            duration_ms=duration_ms,
+            messages=messages,
+            response_text=response_text,
+        )
 
         return {
             "response": result["response"],
@@ -424,8 +566,7 @@ class LLMClient:
             "duration_ms": duration_ms,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
-            "total_tokens": usage.get("total_tokens",
-                                      prompt_tokens + completion_tokens),
+            "total_tokens": total_tokens,
             "success": True,
         }
 
@@ -455,6 +596,96 @@ class LLMClient:
         enable_thinking: bool = True,
         max_tokens: Optional[int] = None,
         log_file: Optional[str] = None,
+        tool_choice: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send a chat completion, retrying once on the fallback model.
+
+        Runs the primary model via :meth:`_chat_completion_once`.  When that
+        fails and a fallback model applies, the same request is retried once
+        on the fallback client.  This keeps callers that never touch the agent
+        runtime (classifiers, plugins, dashboards) failing over exactly like
+        agents do, instead of silently returning the primary error.
+
+        A successful fallback result is tagged with ``fallback_used``,
+        ``primary_model`` and ``primary_error_type``.  When the fallback also
+        fails, the primary result is returned so callers keep the original
+        error semantics.
+        """
+        result = self._chat_completion_once(
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+            enable_thinking=enable_thinking,
+            max_tokens=max_tokens,
+            log_file=log_file,
+            tool_choice=tool_choice,
+        )
+        if result.get("success") or not self._allow_fallback:
+            return result
+
+        fallback = self._get_fallback_client()
+        if fallback is None:
+            return result
+
+        fallback_result = fallback._chat_completion_once(
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+            enable_thinking=enable_thinking,
+            max_tokens=max_tokens,
+            log_file=log_file,
+            tool_choice=tool_choice,
+        )
+        if not fallback_result.get("success"):
+            return result
+
+        fallback_result["fallback_used"] = True
+        fallback_result["primary_model"] = self.model
+        fallback_result["primary_error_type"] = result.get("error_type")
+        return fallback_result
+
+    def _get_fallback_client(self) -> Optional["LLMClient"]:
+        """Return a client for the fallback model, or None when none applies.
+
+        An explicitly configured fallback wins.  A client created without an
+        explicit model config (the global default model) resolves the
+        ``default_model_fallback_id`` setting instead, so shared callers get
+        the same failover agents have.  A model identical to the primary is
+        skipped to avoid retrying the same endpoint.  Positive resolutions are
+        cached; the None case is recomputed so a later setting change applies.
+        """
+        if self._fallback_client is not None:
+            return self._fallback_client
+        try:
+            config = self._fallback_config
+            if config is None and self._explicit_model_config is None:
+                from models.db import db
+                fallback_id = db.get_setting("default_model_fallback_id", "")
+                config = db.get_model_by_id(fallback_id) if fallback_id else None
+            if not config or not config.get("enabled", True):
+                return None
+            same_target = (
+                config.get("model_name") == self.model
+                and (config.get("base_url") or "") == (self.base_url or "")
+            )
+            if same_target:
+                return None
+            self._fallback_client = LLMClient(
+                model_config=config, _allow_fallback=False)
+        except Exception as exc:
+            print(f"[llm_client] could not build fallback client: {exc}")
+            return None
+        return self._fallback_client
+
+    def _chat_completion_once(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        temperature: Optional[float] = None,
+        enable_thinking: bool = True,
+        max_tokens: Optional[int] = None,
+        log_file: Optional[str] = None,
+        tool_choice: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Send chat completion request to OpenAI-compatible endpoint.
 
@@ -472,6 +703,7 @@ class LLMClient:
             max_tokens: Optional override for max output tokens. If None,
                 uses self.max_tokens (doubled when thinking is active).
             log_file: Optional path for API call logging.
+            tool_choice: Optional function name that the provider must call.
 
         Returns:
             Dict with response, duration_ms, token counts, success flag,
@@ -482,8 +714,11 @@ class LLMClient:
             exponential backoff (max 60s between retries). Configurable
             retry count via llm_max_retries setting (DB default: 5).
         """
+        provider_messages = _normalize_system_messages(messages)
         if self.api_format == "codex":
-            return self._codex_chat_completion(messages, tools, temperature, max_tokens, log_file)
+            return self._codex_chat_completion(
+                provider_messages, tools, temperature, max_tokens, log_file,
+                tool_choice)
 
         is_ollama_fmt = self.api_format == "ollama" or (
             self.base_url and "ollama.com" in self.base_url
@@ -492,6 +727,17 @@ class LLMClient:
             self.base_url and "anthropic.com" in self.base_url
         )
         is_anthropic = self.api_format == "anthropic"
+        anthropic_token = self.api_key
+        anthropic_oauth = False
+        if is_anthropic:
+            from backend.provider.claude_code import is_oauth_token, resolve_credential
+            if getattr(self, "_model_api_key_override", False):
+                anthropic_oauth = is_oauth_token(anthropic_token or "")
+            else:
+                from models.db import db as _provider_db
+                anthropic_token, anthropic_oauth = resolve_credential(
+                    _provider_db, self.provider or "anthropic"
+                )
         # Cerebras is a strict OpenAI-compatible validator: it rejects the
         # non-standard reasoning_content field on input messages (unlike
         # OpenCode Go / MiniMax / DeepSeek, which require it round-tripped).
@@ -539,7 +785,7 @@ class LLMClient:
             or "gemma-4-base" in model_lower
         )
 
-        for msg in messages:
+        for msg in provider_messages:
             new_msg = msg.copy()
             if isinstance(new_msg.get("content"), str):
                 new_msg["content"] = normalize_llm_text(new_msg["content"])
@@ -550,22 +796,6 @@ class LLMClient:
                     new_msg["content"] = "<|think|>\n" + new_msg["content"]
                     thinking_injected = True
             processed_messages.append(new_msg)
-
-        # Merge multiple leading system messages into one to satisfy strict chat
-        # templates (e.g. Llama 3.x) that only allow a single system message.
-        n_sys = 0
-        for m in processed_messages:
-            if m.get("role") == "system":
-                n_sys += 1
-            else:
-                break
-        if n_sys > 1:
-            combined_content = "\n\n".join(
-                m.get("content", "") for m in processed_messages[:n_sys]
-            )
-            merged = processed_messages[0].copy()
-            merged["content"] = combined_content
-            processed_messages = [merged] + processed_messages[n_sys:]
 
         # Handle reasoning_content field based on thinking mode.
         # Some models (e.g. DeepSeek-v4) produce reasoning_content automatically
@@ -611,6 +841,9 @@ class LLMClient:
                 payload["options"]["temperature"] = effective_temperature
             if tools:
                 payload["tools"] = tools
+                if tool_choice:
+                    payload["tool_choice"] = {
+                        "type": "function", "function": {"name": tool_choice}}
         elif is_anthropic:
             # Anthropic API uses /messages endpoint with different payload structure.
             # Extract system messages into top-level "system" field.
@@ -623,6 +856,11 @@ class LLMClient:
             }
             if system_msgs:
                 payload["system"] = "\n\n".join(system_msgs) if len(system_msgs) > 1 else system_msgs[0]
+            if anthropic_oauth:
+                from backend.provider.claude_code import SYSTEM_PREFIX
+                payload["system"] = SYSTEM_PREFIX + (
+                    "\n\n" + payload["system"] if payload.get("system") else ""
+                )
             if effective_temperature is not None:
                 payload["temperature"] = effective_temperature
             # Transform OpenAI tools -> Anthropic tools format
@@ -636,7 +874,9 @@ class LLMClient:
                         "input_schema": fn.get("parameters", {}),
                     })
                 payload["tools"] = anthropic_tools
-                payload["tool_choice"] = {"type": "auto"}
+                payload["tool_choice"] = (
+                    {"type": "tool", "name": tool_choice}
+                    if tool_choice else {"type": "auto"})
         else:
             payload = {
                 "model": self.model,
@@ -648,16 +888,18 @@ class LLMClient:
                 payload["temperature"] = effective_temperature
             if tools:
                 payload["tools"] = tools
+                if tool_choice:
+                    payload["tool_choice"] = {
+                        "type": "function", "function": {"name": tool_choice}}
 
         if is_anthropic:
+            from backend.provider.claude_code import auth_headers
+            headers = auth_headers(anthropic_token or "", anthropic_oauth)
+        else:
             headers = {
                 "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01",
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
             }
-            if self.api_key:
-                headers["x-api-key"] = self.api_key
-        else:
-            headers = {"Content-Type": "application/json"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
 
@@ -665,9 +907,9 @@ class LLMClient:
             from models.db import db as _db
 
             _val = self._get_cached_setting("llm_max_retries", _db.get_setting, "llm_max_retries", None)
-            max_retries = int(_val) if _val is not None else 5
+            max_retries = self.max_retries if self.max_retries is not None else (int(_val) if _val is not None else 5)
         except Exception:
-            max_retries = 5
+            max_retries = self.max_retries if self.max_retries is not None else 5
         last_error_result = None
 
         for attempt in range(1 + max_retries):
@@ -845,6 +1087,7 @@ class LLMClient:
                     # Map usage from Anthropic to OpenAI field names
                     anthropic_input = anthropic_usage.get("input_tokens", 0)
                     anthropic_output = anthropic_usage.get("output_tokens", 0)
+                    anthropic_cached = anthropic_usage.get("cache_read_input_tokens", 0) or 0
                     result = {
                         "choices": [
                             {
@@ -856,6 +1099,9 @@ class LLMClient:
                             "prompt_tokens": anthropic_input,
                             "completion_tokens": anthropic_output,
                             "total_tokens": anthropic_input + anthropic_output,
+                            "prompt_tokens_details": {
+                                "cached_tokens": anthropic_cached,
+                            },
                         },
                     }
 
@@ -935,6 +1181,11 @@ class LLMClient:
                 total_tokens = usage.get(
                     "total_tokens", prompt_tokens + completion_tokens
                 )
+                prompt_details = usage.get("prompt_tokens_details") or {}
+                completion_details = usage.get("completion_tokens_details") or {}
+                cached_tokens = prompt_details.get("cached_tokens", 0) or 0
+                reasoning_tokens = completion_details.get("reasoning_tokens", 0) or 0
+                usage_details_available = bool(prompt_details or completion_details)
 
                 response_text = ""
                 thinking_text = ""
@@ -962,9 +1213,13 @@ class LLMClient:
                 from backend.llm_usage_events import record_llm_usage
                 record_llm_usage(
                     model=self._cached_model_name or self.model,
+                    provider=self.provider,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     total_tokens=total_tokens,
+                    cached_tokens=cached_tokens,
+                    reasoning_tokens=reasoning_tokens,
+                    usage_details_available=usage_details_available,
                     duration_ms=duration_ms,
                     messages=messages,
                     response_text=response_text,
@@ -1024,6 +1279,82 @@ class LLMClient:
                     time.sleep(2)
                     continue
                 return last_error_result
+
+            except json.JSONDecodeError:
+                elapsed_ms = (
+                    int((time.time() - start_time) * 1000)
+                    if "start_time" in locals()
+                    else 0
+                )
+                raw_text = getattr(response, "text", "(no response)")
+                raw_snippet = raw_text[:500]
+
+                # Some gateways return transient failures as SSE error frames
+                # (`event: error` / `data: {...}`) even when the request is
+                # non-streaming. Extract the embedded error and classify
+                # transient upstream errors as provider_error so callers can
+                # retry or fall back to the next configured model.
+                sse_error = _parse_sse_error_frame(raw_text)
+                if sse_error is not None:
+                    err_type = (sse_error.get("type") or "").lower()
+                    err_message = sse_error.get("message") or ""
+                    err_blob = (err_type + ": " + err_message).strip(": ")
+                    is_transient = (
+                        "unavailable" in err_type
+                        or "overloaded" in err_type
+                        or "internal" in err_type
+                        or "rate_limit" in err_type
+                        or "timeout" in err_type
+                        or "server_error" in err_type
+                        or "unavailable" in err_message.lower()
+                        or "overloaded" in err_message.lower()
+                        or "retry later" in err_message.lower()
+                    )
+                    error_type = "provider_error" if is_transient else "parse_error"
+                    error_detail = (
+                        f"LLM provider returned SSE error event: "
+                        f"{err_blob or '(unknown error)'}. "
+                        f"Raw response: {raw_snippet}"
+                    )
+                    log_api_call(
+                        messages,
+                        None,
+                        elapsed_ms,
+                        error=(
+                            f"[attempt {attempt + 1}/{1 + max_retries}] "
+                            f"SSE error event: {err_blob or raw_snippet}"
+                        ),
+                        log_file=log_file,
+                    )
+                    last_error_result = {
+                        "response": {"error": _format_llm_error(error_type)},
+                        "duration_ms": elapsed_ms,
+                        "success": False,
+                        "error_type": error_type,
+                        "error_detail": error_detail,
+                    }
+                    # Transient upstream error — retry once with a short wait,
+                    # then return so the caller (llm_loop / describe_image) can
+                    # move to its own retry/fallback path quickly.
+                    if is_transient and attempt < min(max_retries, 1):
+                        time.sleep(2)
+                        continue
+                    return last_error_result
+
+                log_api_call(
+                    messages,
+                    None,
+                    elapsed_ms,
+                    error=f"JSON decode failed. Raw response: {raw_snippet}",
+                    log_file=log_file,
+                )
+                return {
+                    "response": {"error": _format_llm_error("parse_error")},
+                    "duration_ms": elapsed_ms,
+                    "success": False,
+                    "error_type": "parse_error",
+                    "error_detail": f"Received invalid (non-JSON) response from LLM server. Raw response: {raw_snippet}",
+                }
 
             except Exception as e:
                 elapsed_ms = (

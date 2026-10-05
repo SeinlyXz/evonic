@@ -1,12 +1,16 @@
+import json
 import logging
+import math
 import os
+import queue
 import re
 from typing import Dict, Any
 
-from flask import Blueprint, render_template, jsonify, request
+from flask import Blueprint, render_template, jsonify, request, Response, stream_with_context
 
 from backend.audit_logger import audit
 import config
+from models.boolean import FALSE_VALUES, TRUE_VALUES
 from models.db import db
 
 _logger = logging.getLogger(__name__)
@@ -30,6 +34,19 @@ def _sanitize_model(model: Dict[str, Any]) -> Dict[str, Any]:
     for key in _SENSITIVE_MODEL_KEYS:
         model.pop(key, None)
     return model
+
+
+def _coerce_boolean(value: Any) -> bool:
+    """Convert an API boolean value, rejecting ambiguous input."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in TRUE_VALUES:
+            return True
+        if normalized in FALSE_VALUES:
+            return False
+    raise ValueError('must be a boolean')
 
 
 @settings_bp.route('/system')
@@ -266,8 +283,22 @@ def api_list_tools():
     from backend.skills_manager import skills_manager
     from backend.tools import tool_registry
     from backend.tools.agent_messaging import get_agent_messaging_tool_defs
-    # Built-in tools always appear first
-    tools = tool_registry.get_builtin_tool_defs()
+
+    agent_context = None
+    agent_id = request.args.get('agent_id')
+    if agent_id:
+        agent = db.get_agent(agent_id)
+        if not agent:
+            return jsonify({'error': 'Agent not found'}), 404
+        agent_context = {
+            'id': agent['id'],
+            'enable_atg': bool(agent.get('enable_atg')) and bool(agent.get('enable_agent_state')),
+            'enable_cmp': bool(agent.get('enable_cmp')) and bool(agent.get('enable_agent_state')),
+            'always_execute': bool(agent.get('always_execute')),
+        }
+
+    # Built-ins are filtered by the selected agent's feature settings when supplied.
+    tools = tool_registry.get_builtin_tool_defs(agent_context)
     tools += test_manager.list_tools()
     # Append agent messaging tools (auto-loaded when agent_messaging_enabled)
     for tool_def in get_agent_messaging_tool_defs():
@@ -580,6 +611,22 @@ def api_long_running_guard():
     return jsonify({'success': True, 'enabled': enabled == '1'})
 
 
+@settings_bp.route('/api/settings/root-fs-scan-guard', methods=['GET', 'PUT'])
+def api_root_fs_scan_guard():
+    """Toggle the root filesystem scan guard (`find /`, `tree /` approval prompt)."""
+    from models.db import db
+    default = '1' if config.ROOT_FS_SCAN_GUARD_ENABLED else '0'
+    if request.method == 'PUT':
+        data = request.get_json() or {}
+        enabled = '1' if data.get('enabled', True) else '0'
+        old_val = db.get_setting('root_fs_scan_guard_enabled', default)
+        db.set_setting('root_fs_scan_guard_enabled', enabled)
+        _audit_setting_change('root_fs_scan_guard_enabled', old_val, enabled)
+        return jsonify({'success': True, 'enabled': enabled == '1'})
+    val = db.get_setting('root_fs_scan_guard_enabled', default)
+    return jsonify({'enabled': val == '1'})
+
+
 @settings_bp.route('/api/settings/message-wrapper', methods=['PUT'])
 def api_message_wrapper():
     """Toggle the message wrapper globally."""
@@ -829,6 +876,8 @@ def api_get_general_settings():
         'public_history': db.get_setting('public_history', '0') == '1',
         'long_running_guard_enabled': db.get_setting('long_running_guard_enabled',
                                                      '1' if config.LONG_RUNNING_GUARD_ENABLED else '0') == '1',
+        'root_fs_scan_guard_enabled': db.get_setting('root_fs_scan_guard_enabled',
+                                                     '1' if config.ROOT_FS_SCAN_GUARD_ENABLED else '0') == '1',
         'message_wrapper_enabled': db.get_setting('message_wrapper_enabled', '1') == '1',
         'agent_timeout_retries': int(db.get_setting('agent_timeout_retries', str(config.AGENT_TIMEOUT_RETRIES))),
         'llm_max_retries': int(db.get_setting('llm_max_retries', '5')),
@@ -839,8 +888,32 @@ def api_get_general_settings():
         'max_tool_iterations': int(db.get_setting('max_tool_iterations', str(config.AGENT_MAX_TOOL_ITERATIONS))),
         'agent_sidebar_limit': int(db.get_setting('agent_sidebar_limit', str(config.AGENT_SIDEBAR_LIMIT))),
         'theme': db.get_setting('theme', 'system'),
+        'default_model_fallback_id': db.get_setting('default_model_fallback_id', ''),
         'vision_model_id': db.get_setting('vision_model_id', ''),
+        'vision_fallback_model_id': db.get_setting('vision_fallback_model_id', ''),
+        'vision_fallback_model_2_id': db.get_setting('vision_fallback_model_2_id', ''),
         'kb_organizer_model_id': db.get_setting('kb_organizer_model_id', ''),
+        'kb_organizer_nightly_time': db.get_setting(
+            'kb_organizer_nightly_time',
+            os.getenv('EVOMEM_KB_ORGANIZER_NIGHTLY_TIME', '03:00'),
+        ),
+        # ── WhatsApp Safe Delivery (global) ──
+        'whatsapp_safe_delivery_enabled': db.get_setting('whatsapp_safe_delivery_enabled',
+                                                         '1' if config.WHATSAPP_SAFE_DELIVERY_ENABLED else '0') == '1',
+        'whatsapp_pool_window_seconds': float(db.get_setting('whatsapp_pool_window_seconds',
+                                                             str(config.WHATSAPP_POOL_WINDOW_SECONDS))),
+        'whatsapp_min_send_interval_seconds': float(db.get_setting('whatsapp_min_send_interval_seconds',
+                                                                    str(config.WHATSAPP_MIN_SEND_INTERVAL_SECONDS))),
+        'whatsapp_typing_chars_per_second': float(db.get_setting('whatsapp_typing_chars_per_second',
+                                                                  str(config.WHATSAPP_TYPING_CHARS_PER_SECOND))),
+        'whatsapp_max_typing_delay_seconds': float(db.get_setting('whatsapp_max_typing_delay_seconds',
+                                                                   str(config.WHATSAPP_MAX_TYPING_DELAY_SECONDS))),
+        'whatsapp_delay_jitter_ratio': float(db.get_setting('whatsapp_delay_jitter_ratio',
+                                                            str(config.WHATSAPP_DELAY_JITTER_RATIO))),
+        'whatsapp_max_outbound_per_minute': int(db.get_setting('whatsapp_max_outbound_per_minute',
+                                                               str(config.WHATSAPP_MAX_OUTBOUND_PER_MINUTE))),
+        'whatsapp_natural_formatting_enabled': db.get_setting('whatsapp_natural_formatting_enabled',
+                                                               '1' if config.WHATSAPP_NATURAL_FORMATTING_ENABLED else '0') == '1',
     })
 
 
@@ -973,6 +1046,18 @@ def api_batch_save():
         except (ValueError, TypeError) as e:
             errors.append(f'long_running_guard_enabled: {e}')
 
+    # Root Filesystem Scan Guard
+    if 'root_fs_scan_guard_enabled' in settings:
+        try:
+            enabled = '1' if settings['root_fs_scan_guard_enabled'] else '0'
+            old_val = db.get_setting('root_fs_scan_guard_enabled',
+                                     '1' if config.ROOT_FS_SCAN_GUARD_ENABLED else '0')
+            db.set_setting('root_fs_scan_guard_enabled', enabled)
+            _audit_setting_change('root_fs_scan_guard_enabled', old_val, enabled)
+            results['root_fs_scan_guard_enabled'] = enabled == '1'
+        except (ValueError, TypeError) as e:
+            errors.append(f'root_fs_scan_guard_enabled: {e}')
+
     # Message Wrapper
     if 'message_wrapper_enabled' in settings:
         try:
@@ -981,6 +1066,44 @@ def api_batch_save():
             results['message_wrapper_enabled'] = enabled == '1'
         except (ValueError, TypeError) as e:
             errors.append(f'message_wrapper_enabled: {e}')
+
+    # ── WhatsApp Safe Delivery (global) ──
+    _whatsapp_bool_keys = ('whatsapp_safe_delivery_enabled', 'whatsapp_natural_formatting_enabled')
+    for key in _whatsapp_bool_keys:
+        if key in settings:
+            try:
+                enabled = '1' if _coerce_boolean(settings[key]) else '0'
+                db.set_setting(key, enabled)
+                results[key] = enabled == '1'
+            except (ValueError, TypeError) as e:
+                errors.append(f'{key}: {e}')
+
+    _whatsapp_float_keys = (
+        ('whatsapp_pool_window_seconds', 0.1, 30.0),
+        ('whatsapp_min_send_interval_seconds', 0.1, 60.0),
+        ('whatsapp_typing_chars_per_second', 1.0, 100.0),
+        ('whatsapp_max_typing_delay_seconds', 1.0, 120.0),
+        ('whatsapp_delay_jitter_ratio', 0.0, 0.5),
+    )
+    for key, lo, hi in _whatsapp_float_keys:
+        if key in settings:
+            try:
+                value = float(settings[key])
+                if not math.isfinite(value):
+                    raise ValueError('must be a finite number')
+                value = max(lo, min(hi, value))
+                db.set_setting(key, str(value))
+                results[key] = value
+            except (ValueError, TypeError) as e:
+                errors.append(f'{key}: {e}')
+
+    if 'whatsapp_max_outbound_per_minute' in settings:
+        try:
+            value = max(1, min(600, int(settings['whatsapp_max_outbound_per_minute'])))
+            db.set_setting('whatsapp_max_outbound_per_minute', str(value))
+            results['whatsapp_max_outbound_per_minute'] = value
+        except (ValueError, TypeError) as e:
+            errors.append(f'whatsapp_max_outbound_per_minute: {e}')
 
     # Default Model
     if 'default_model_id' in settings:
@@ -996,22 +1119,54 @@ def api_batch_save():
             else:
                 errors.append('default_model_id: Model not found')
 
-    # Vision Model
-    if 'vision_model_id' in settings:
-        vision_model_id = settings['vision_model_id']
-        if vision_model_id:
-            model = db.get_model_by_id(vision_model_id)
-            if model and model.get('vision_supported'):
-                db.set_setting('vision_model_id', model['id'])
-                results['vision_model_id'] = model['id']
-            elif model:
-                errors.append('vision_model_id: Model does not support vision')
+    # Global default-model fallback. An empty value disables the fallback.
+    if 'default_model_fallback_id' in settings:
+        model_id = settings['default_model_fallback_id'] or ''
+        if model_id:
+            model = db.get_model_by_id(model_id)
+            if model:
+                db.set_setting('default_model_fallback_id', model['id'])
+                results['default_model_fallback_id'] = model['id']
             else:
-                errors.append('vision_model_id: Model not found')
+                errors.append('default_model_fallback_id: Model not found')
         else:
-            # Allow clearing the setting
-            db.set_setting('vision_model_id', '')
-            results['vision_model_id'] = ''
+            db.set_setting('default_model_fallback_id', '')
+            results['default_model_fallback_id'] = ''
+
+    # Vision routing chain (primary + two fallbacks)
+    vision_setting_keys = (
+        'vision_model_id',
+        'vision_fallback_model_id',
+        'vision_fallback_model_2_id',
+    )
+    if any(key in settings for key in vision_setting_keys):
+        vision_ids = {
+            key: settings.get(key, db.get_setting(key, ''))
+            for key in vision_setting_keys
+        }
+        duplicate_vision_ids = {
+            model_id for model_id in vision_ids.values() if model_id
+            and list(vision_ids.values()).count(model_id) > 1
+        }
+        for key in vision_setting_keys:
+            if key not in settings:
+                continue
+            model_id = vision_ids[key]
+            if model_id in duplicate_vision_ids:
+                errors.append(f'{key}: Must differ from the other configured vision models')
+                continue
+            if model_id:
+                model = db.get_model_by_id(model_id)
+                if model and model.get('vision_supported'):
+                    db.set_setting(key, model['id'])
+                    results[key] = model['id']
+                elif model:
+                    errors.append(f'{key}: Model does not support vision')
+                else:
+                    errors.append(f'{key}: Model not found')
+            else:
+                db.set_setting(key, '')
+                results[key] = ''
 
     # KB Organizer Model — global default for the KB organizer background sub-agent
     if 'kb_organizer_model_id' in settings:
@@ -1027,6 +1182,19 @@ def api_batch_save():
             # Allow clearing the setting (falls back to env / agent default)
             db.set_setting('kb_organizer_model_id', '')
             results['kb_organizer_model_id'] = ''
+
+    # KB Organizer nightly schedule — global time for the Vault Janitor.
+    if 'kb_organizer_nightly_time' in settings:
+        value = str(settings['kb_organizer_nightly_time']).strip()
+        try:
+            from backend.scheduler import scheduler
+            scheduler.refresh_kb_organizer_schedule(value)
+            old_value = db.get_setting('kb_organizer_nightly_time', '')
+            db.set_setting('kb_organizer_nightly_time', value)
+            _audit_setting_change('kb_organizer_nightly_time', old_value, value)
+            results['kb_organizer_nightly_time'] = value
+        except ValueError as e:
+            errors.append(f'kb_organizer_nightly_time: {e}')
 
     if errors:
         return jsonify({
@@ -1147,6 +1315,44 @@ def api_user_audit(user_id):
 # inbound senders are routed per-user/group via config.routes and unknown
 # senders land in shared_channel_inbox for capture-and-assign.
 
+_SHARED_INBOX_RETENTION_KEY = 'shared_channel_inbox_retention_hours'
+_SHARED_INBOX_RETENTION_DEFAULT_HOURS = 24
+_SHARED_INBOX_RETENTION_MIN_HOURS = 1
+_SHARED_INBOX_RETENTION_MAX_HOURS = 24 * 365
+
+
+def _shared_inbox_retention_hours() -> int:
+    """Return the configured inbox retention, falling back safely to 24 hours."""
+    try:
+        value = int(db.get_setting(
+            _SHARED_INBOX_RETENTION_KEY,
+            str(_SHARED_INBOX_RETENTION_DEFAULT_HOURS),
+        ))
+        return max(_SHARED_INBOX_RETENTION_MIN_HOURS,
+                   min(_SHARED_INBOX_RETENTION_MAX_HOURS, value))
+    except (TypeError, ValueError):
+        return _SHARED_INBOX_RETENTION_DEFAULT_HOURS
+
+
+_SHARED_ACCESS_MODES = {'assigned_only', 'unrestricted'}
+
+
+def _validate_shared_access_config(channel, data):
+    """Return validated access settings, or an API error response tuple."""
+    config = dict(channel.get('config') or {})
+    mode = data.get('access_mode', config.get('access_mode', 'assigned_only'))
+    default_agent_id = data.get(
+        'default_agent_id', config.get('default_agent_id') or '')
+    if mode not in _SHARED_ACCESS_MODES:
+        return None, (jsonify({
+            'error': 'access_mode must be assigned_only or unrestricted'}), 400)
+    if mode == 'unrestricted':
+        agent = db.get_agent(default_agent_id)
+        if not agent or not agent.get('enabled'):
+            return None, (jsonify({
+                'error': 'default_agent_id must identify an enabled agent'}), 400)
+    return {'access_mode': mode, 'default_agent_id': default_agent_id}, None
+
 def _shared_channel_or_404(channel_id):
     channel = db.get_channel(channel_id)
     if not channel or channel.get('agent_id') is not None:
@@ -1154,9 +1360,38 @@ def _shared_channel_or_404(channel_id):
     return channel
 
 
+@settings_bp.route('/api/shared-channels/settings', methods=['GET'])
+def api_get_shared_channel_settings():
+    """Return global settings that apply to every shared channel."""
+    return jsonify({
+        'unassigned_sender_retention_hours': _shared_inbox_retention_hours(),
+    })
+
+
+@settings_bp.route('/api/shared-channels/settings', methods=['PUT'])
+def api_update_shared_channel_settings():
+    """Persist validated global unassigned-sender retention."""
+    data = request.get_json() or {}
+    if 'unassigned_sender_retention_hours' not in data:
+        return jsonify({'error': 'unassigned_sender_retention_hours is required'}), 400
+    try:
+        hours = int(data['unassigned_sender_retention_hours'])
+    except (TypeError, ValueError):
+        return jsonify({'error': 'unassigned_sender_retention_hours must be an integer'}), 400
+    if not _SHARED_INBOX_RETENTION_MIN_HOURS <= hours <= _SHARED_INBOX_RETENTION_MAX_HOURS:
+        return jsonify({'error': 'unassigned_sender_retention_hours must be between 1 and 8760'}), 400
+    old_value = db.get_setting(
+        _SHARED_INBOX_RETENTION_KEY, str(_SHARED_INBOX_RETENTION_DEFAULT_HOURS))
+    db.set_setting(_SHARED_INBOX_RETENTION_KEY, str(hours))
+    _audit_setting_change(_SHARED_INBOX_RETENTION_KEY, old_value, hours)
+    db.cleanup_expired_inbox_entries(hours)
+    return jsonify({'success': True, 'unassigned_sender_retention_hours': hours})
+
+
 @settings_bp.route('/api/shared-channels', methods=['GET'])
 def api_list_shared_channels():
     from backend.channels.registry import channel_manager
+    db.cleanup_expired_inbox_entries(_shared_inbox_retention_hours())
     channels = db.get_shared_channels()
     for ch in channels:
         ch['running'] = channel_manager.is_running(ch['id'])
@@ -1184,7 +1419,8 @@ def api_create_shared_channel():
         'agent_id': None,
         'type': 'whatsapp_shared',
         'name': name,
-        'config': {'mode': 'open', 'routes': {}},
+        'config': {'mode': 'open', 'access_mode': 'assigned_only',
+                   'default_agent_id': '', 'routes': {}},
     })
     try:
         channel_manager.start_channel(chan_id)
@@ -1200,10 +1436,20 @@ def api_create_shared_channel():
 @settings_bp.route('/api/shared-channels/<channel_id>', methods=['PUT'])
 def api_update_shared_channel(channel_id):
     from backend.channels.registry import channel_manager
-    if not _shared_channel_or_404(channel_id):
+    channel = _shared_channel_or_404(channel_id)
+    if not channel:
         return jsonify({'error': 'Shared channel not found'}), 404
     data = request.get_json() or {}
-    db.update_channel(channel_id, {k: v for k, v in data.items() if k in ('name', 'enabled')})
+    access, error = _validate_shared_access_config(channel, data)
+    if error:
+        return error
+    updates = {k: v for k, v in data.items() if k in ('name', 'enabled')}
+    if 'access_mode' in data or 'default_agent_id' in data:
+        config = dict(channel.get('config') or {})
+        config.update(access)
+        updates['config'] = config
+    if updates:
+        db.update_channel(channel_id, updates)
     if 'enabled' in data:
         try:
             if data['enabled']:
@@ -1297,6 +1543,17 @@ def api_delete_shared_route(channel_id, user_id):
         return jsonify({'error': 'Route not found'}), 404
     del routes[user_id]
     config['routes'] = routes
+
+    # Names annotate active routes only. Remove the selected name plus any
+    # historical/orphaned metadata so stale contacts cannot reappear later.
+    names = config.get('user_names')
+    if isinstance(names, dict):
+        config['user_names'] = {
+            route_id: display_name
+            for route_id, display_name in names.items()
+            if route_id in routes
+        }
+
     db.update_channel(channel_id, {'config': config})
     return jsonify({'success': True})
 
@@ -1305,6 +1562,7 @@ def api_delete_shared_route(channel_id, user_id):
 def api_shared_channel_inbox(channel_id):
     if not _shared_channel_or_404(channel_id):
         return jsonify({'error': 'Shared channel not found'}), 404
+    db.cleanup_expired_inbox_entries(_shared_inbox_retention_hours())
     return jsonify({'inbox': db.get_inbox(channel_id)})
 
 
@@ -1334,3 +1592,53 @@ def api_dismiss_inbox_entry(channel_id, entry_id):
     if not db.delete_inbox_entry(entry_id):
         return jsonify({'error': 'Inbox entry not found'}), 404
     return jsonify({'success': True})
+
+
+# ---------------------------------------------------------------------------
+# Debug Listener — SSE endpoint for real-time WhatsApp inbound monitoring
+# ---------------------------------------------------------------------------
+
+@settings_bp.route('/api/shared-channels/debug/listen', methods=['GET'])
+def api_shared_channel_debug_listen():
+    """SSE endpoint: push all whatsapp_inbound events to the client in real-time."""
+    from backend.event_stream import event_stream
+
+    q = queue.Queue(maxsize=500)
+
+    def handler(data):
+        try:
+            q.put_nowait(('whatsapp_inbound', data, None))
+        except queue.Full:
+            pass  # drop oldest; queue bounded at 500
+
+    event_stream.on('whatsapp_inbound', handler)
+
+    def generate():
+        # Send initial connected event so the client knows it's live
+        yield (
+            f"event: connected\n"
+            f"data: {json.dumps({'type': 'connected', 'message': 'Listening for WhatsApp inbound messages...'})}\n\n"
+        )
+        try:
+            while True:
+                try:
+                    item = q.get(timeout=30)
+                except queue.Empty:
+                    yield ": heartbeat\n\n"
+                    continue
+                sse_event, payload, _seq = item
+                yield f"event: {sse_event}\ndata: {json.dumps(payload)}\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            event_stream.off('whatsapp_inbound', handler)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        },
+    )

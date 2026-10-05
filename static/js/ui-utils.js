@@ -225,11 +225,159 @@
     };
 
     /* ====================================================================
+     *  COPY CODE BLOCK BUTTONS
+     * ==================================================================== */
+
+    var _COPY_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    var _CHECK_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+    function _copyText(text, onDone) {
+        var fallback = function() {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); onDone(); } catch (_) {}
+            document.body.removeChild(ta);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(onDone).catch(fallback);
+        } else {
+            fallback();
+        }
+    }
+
+    // Adds hover-revealed copy buttons to <pre> and <blockquote> elements
+    // inside the given container. Reuses pre-existing data attribute to
+    // avoid attaching duplicate buttons to the same element.
+    function addCopyButtons(container) {
+        var $container = $(container);
+        if (!$container.length) return;
+
+        $container.find('pre, blockquote').each(function () {
+            var $el = $(this);
+            if ($el.data('copyAttached')) return;
+            $el.data('copyAttached', true);
+
+            // Wrap so the button stays pinned even when a <pre> scrolls horizontally.
+            $el.wrap($('<div>').css({ position: 'relative' }));
+            var $wrapper = $el.parent();
+
+            var $btn = $('<button type="button">')
+                .attr('title', 'Copy')
+                .attr('aria-label', 'Copy to clipboard')
+                .css({
+                    position: 'absolute',
+                    bottom: '6px',
+                    right: '6px',
+                    zIndex: 5,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '28px',
+                    height: '28px',
+                    padding: '0',
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'currentColor',
+                    backgroundColor: 'rgba(128,128,128,0.25)',
+                    opacity: 0,
+                    transition: 'opacity 150ms ease',
+                })
+                .html(_COPY_ICON)
+                .on('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var text = $el.is('pre') ? ($el.find('code').text() || $el.text()) : $el.text();
+                    _copyText(text, function () {
+                        $btn.html(_CHECK_ICON).css('color', '#22c55e');
+                        setTimeout(function () { $btn.html(_COPY_ICON).css('color', 'currentColor'); }, 1500);
+                    });
+                });
+            $wrapper.append($btn);
+
+            $wrapper.on('mouseenter', function () { $btn.css('opacity', 1); });
+            $wrapper.on('mouseleave', function () { if (!$btn.is(':focus')) $btn.css('opacity', 0); });
+            $btn.on('mouseenter', function () { $(this).css('backgroundColor', 'rgba(128,128,128,0.4)'); });
+            $btn.on('mouseleave', function () { $(this).css('backgroundColor', 'rgba(128,128,128,0.25)'); });
+            $btn.on('focus', function () { $(this).css({ opacity: 1, outline: '2px solid rgba(128,128,128,0.7)', outlineOffset: '1px' }); });
+            $btn.on('blur', function () {
+                $(this).css({ outline: 'none', outlineOffset: '0' });
+                if (!$wrapper.is(':hover')) $btn.css('opacity', 0);
+            });
+        });
+    }
+
+    function populateModelSelect(select, models, options) {
+        if (!select) return;
+        options = options || {};
+        var valueFor = options.valueFor || function (model) { return model.id; };
+        var labelFor = options.labelFor || function (model) {
+            return model.name + (model.model_name ? ' (' + model.model_name + ')' : '');
+        };
+        var providerFor = options.providerFor || function (model) { return model.provider || 'Other'; };
+        var selectedValue = options.selectedValue == null ? select.value : String(options.selectedValue);
+        var fragment = document.createDocumentFragment();
+
+        // Preserve the first empty option already present in the markup (e.g.
+        // "-- Use global default --", "-- None (no fallback) --", "— Default —").
+        // Pass emptyLabel: null explicitly to drop an existing placeholder
+        // (e.g. "Loading models...") instead of keeping it as a selectable row.
+        var emptyValue = options.emptyValue == null ? '' : String(options.emptyValue);
+        var emptyLabel = options.emptyLabel;
+        if (emptyLabel === undefined) {
+            var first = select.options[0];
+            emptyLabel = (first && first.value === '') ? first.textContent : null;
+        }
+
+        select.replaceChildren();
+        if (emptyLabel != null) {
+            var emptyOption = document.createElement('option');
+            emptyOption.value = emptyValue;
+            emptyOption.textContent = emptyLabel;
+            emptyOption.disabled = !!options.emptyDisabled;
+            fragment.appendChild(emptyOption);
+        }
+
+        var groups = new Map();
+        (models || []).forEach(function (model) {
+            var provider = providerFor(model) || 'Other';
+            if (!groups.has(provider)) groups.set(provider, []);
+            groups.get(provider).push(model);
+        });
+        groups.forEach(function (providerModels, provider) {
+            var group = document.createElement('optgroup');
+            group.label = provider;
+            providerModels.forEach(function (model) {
+                var option = document.createElement('option');
+                option.value = valueFor(model);
+                option.textContent = labelFor(model);
+                group.appendChild(option);
+            });
+            fragment.appendChild(group);
+        });
+        select.appendChild(fragment);
+
+        if (selectedValue && Array.from(select.options).some(function (option) {
+            return option.value === selectedValue;
+        })) {
+            select.value = selectedValue;
+        } else if (!selectedValue && emptyLabel != null) {
+            select.value = emptyValue;
+        }
+    }
+
+    /* ====================================================================
      *  PUBLIC API
      * ==================================================================== */
     window.ui = {
         toast: toastApi,
-        confirm: confirmApi
+        confirm: confirmApi,
+        addCopyButtons: addCopyButtons,
+        populateModelSelect: populateModelSelect
     };
 
     // Backward compatibility

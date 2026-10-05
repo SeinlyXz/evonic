@@ -18,6 +18,7 @@ import types
 import zipfile
 import tempfile
 import importlib.util
+import inspect
 import traceback
 from collections import deque
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from backend.plugin_sdk import PluginSDK
 from backend.plugin_hooks import (
     _tool_guards, _message_interceptors, _builtin_suppressors,
+    _turn_gates, _tool_result_gates,
     _state_handlers, _unload_plugin_state_handlers,
 )
 
@@ -39,7 +41,7 @@ PLUGINS_DIR = os.path.join(BASE_DIR, 'plugins')
 VALID_EVENTS = {
     'turn_complete', 'message_received', 'session_created', 'summary_updated',
     'processing_started', 'llm_thinking', 'llm_response_chunk',
-    'tool_executed', 'final_answer', 'message_sent',
+    'tool_call_started', 'tool_executed', 'final_answer', 'message_sent',
     'kanban_task_created', 'kanban_task_updated',
     'schedule_fired', 'schedule_created', 'schedule_cancelled',
     'state_transition', 'llm_usage',
@@ -49,7 +51,14 @@ VALID_EVENTS = {
 class PluginManager:
     MAX_LOG_ENTRIES = 500
 
-    def __init__(self):
+    def __init__(self, load_plugins: bool = True):
+        """Create a plugin manager.
+
+        Pass load_plugins=False for metadata-only callers (CLI plugin list,
+        requirements checks): importing a plugin handler executes its module
+        level code, which in a short-lived process can mutate shared state
+        the live server owns.
+        """
         os.makedirs(PLUGINS_DIR, exist_ok=True)
         self._handlers: Dict[str, List[Tuple[str, Callable]]] = {}  # event -> [(plugin_id, fn)]
         self._modules: Dict[str, Any] = {}  # plugin_id -> loaded module
@@ -63,7 +72,8 @@ class PluginManager:
         # Parsed-JSON cache keyed by path with mtime invalidation (tool-def
         # files are read on every agent context build via get_all_plugin_tool_defs).
         self._json_file_cache: Dict[str, tuple] = {}
-        self._load_all()
+        if load_plugins:
+            self._load_all()
 
     def _is_plugin_enabled(self, plugin_id: str) -> bool:
         """Check if a plugin is enabled. DB is authoritative; absent = disabled."""
@@ -119,6 +129,8 @@ class PluginManager:
                 sys.modules[module_name] = module
                 spec.loader.exec_module(module)
                 self._modules[plugin_id] = module
+
+                self._call_lifecycle_hook(plugin_id, module, 'on_enable', manifest)
 
                 # Register handler functions and bridge them to the event stream
                 from backend.event_stream import event_stream
@@ -202,11 +214,40 @@ class PluginManager:
             if self._dashboard_cards.get(plugin_id):
                 self.add_log(plugin_id, 'info', f"Registered {len(self._dashboard_cards[plugin_id])} dashboard card(s)")
 
+    def _call_lifecycle_hook(self, plugin_id: str, module: Any,
+                             hook_name: str, manifest: dict = None) -> None:
+        """Invoke an optional lifecycle hook with backward-compatible arity."""
+        hook = getattr(module, hook_name, None)
+        if not callable(hook):
+            return
+
+        try:
+            parameters = inspect.signature(hook).parameters.values()
+            accepts_sdk = any(
+                p.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                           inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                           inspect.Parameter.VAR_POSITIONAL)
+                for p in parameters
+            )
+            if accepts_sdk:
+                sdk = PluginSDK(plugin_id, self.get_plugin_config(plugin_id), {},
+                                log_callback=self.add_log)
+                hook(sdk)
+            else:
+                hook()
+            self.add_log(plugin_id, 'info', f"Lifecycle hook completed: {hook_name}")
+        except Exception as e:
+            self.add_log(plugin_id, 'error', f"Lifecycle hook {hook_name} failed: {e}")
+            _logger.error("Lifecycle hook %s failed for '%s': %s",
+                          hook_name, plugin_id, e, exc_info=True)
+
     def _unload_plugin(self, plugin_id: str):
         """Remove all handler registrations for a plugin."""
         self._nav_cache = None  # covers reload (install/enable/disable) and uninstall
         self._agent_tabs_cache.clear()
-        self._modules.pop(plugin_id, None)
+        module = self._modules.pop(plugin_id, None)
+        if module is not None:
+            self._call_lifecycle_hook(plugin_id, module, 'on_disable')
         prefix = f'plugin_pkg_{plugin_id}_'
         for key in [k for k in sys.modules if k == prefix[:-1] or k.startswith(prefix)]:
             sys.modules.pop(key, None)
@@ -222,8 +263,9 @@ class PluginManager:
         for event_name, bridge in self._event_bridges.pop(plugin_id, []):
             event_stream.off(event_name, bridge)
 
-        # Unregister side-channel hooks
-        for registry in (_tool_guards, _message_interceptors, _builtin_suppressors):
+        # Unregister side-channel and synchronous lifecycle hooks
+        for registry in (_tool_guards, _message_interceptors, _builtin_suppressors,
+                         _turn_gates, _tool_result_gates):
             registry[:] = [fn for fn in registry
                            if not getattr(fn, '__module__', '').startswith(prefix)]
 
@@ -335,6 +377,26 @@ class PluginManager:
     def get_blueprint_names(self) -> List[str]:
         """Return list of registered blueprint names."""
         return list(self._blueprints.keys())
+
+    def get_plugin_endpoints(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """Return HTTP routes registered by a plugin's runtime Flask blueprint."""
+        blueprint = self._blueprints.get(plugin_id)
+        if blueprint is None:
+            return []
+
+        from flask import current_app
+        endpoint_prefix = f'{blueprint.name}.'
+        endpoints = []
+        for rule in current_app.url_map.iter_rules():
+            if not rule.endpoint.startswith(endpoint_prefix):
+                continue
+            methods = sorted(method for method in rule.methods if method not in {'HEAD', 'OPTIONS'})
+            endpoints.append({
+                'path': rule.rule,
+                'methods': methods,
+                'endpoint': rule.endpoint,
+            })
+        return sorted(endpoints, key=lambda item: (item['path'], item['methods'], item['endpoint']))
 
     def dispatch(self, event_name: str, event_data: dict):
         """Dispatch an event via the event stream (non-blocking). Backward compat."""
@@ -558,6 +620,8 @@ class PluginManager:
         manifest['enabled'] = self._is_plugin_enabled(plugin_id)
         manifest['events'] = manifest.get('events', [])
         manifest['event_count'] = len(manifest['events'])
+        manifest['endpoints'] = self.get_plugin_endpoints(plugin_id)
+        manifest['endpoint_count'] = len(manifest['endpoints'])
         manifest['variables'] = manifest.get('variables', [])
         manifest['config'] = self.get_plugin_config(plugin_id)
 
@@ -699,7 +763,7 @@ class PluginManager:
         return manifest.get('variables', [])
 
     def get_plugin_config(self, plugin_id: str) -> Dict[str, Any]:
-        """Load config from DB merged with defaults from variables schema."""
+        """Load raw configuration from DB merged with defaults from variables schema."""
         variables = self.get_plugin_variables(plugin_id)
         config = {}
         for v in variables:
@@ -729,20 +793,16 @@ class PluginManager:
             key = f'plugin_config:{plugin_id}:{v["name"]}'
             stored = db.get_setting(key)
             if stored is not None:
-                # Mask secret values in API responses
-                if v.get('secret', False):
-                    config[v['name']] = '••••••••'
+                var_type = v.get('type', 'string')
+                if var_type == 'boolean':
+                    config[v['name']] = stored in ('1', 'true', 'True')
+                elif var_type == 'number':
+                    try:
+                        config[v['name']] = float(stored) if '.' in stored else int(stored)
+                    except ValueError:
+                        pass
                 else:
-                    var_type = v.get('type', 'string')
-                    if var_type == 'boolean':
-                        config[v['name']] = stored in ('1', 'true', 'True')
-                    elif var_type == 'number':
-                        try:
-                            config[v['name']] = float(stored) if '.' in stored else int(stored)
-                        except ValueError:
-                            pass
-                    else:
-                        config[v['name']] = stored
+                    config[v['name']] = stored
 
         return config
 

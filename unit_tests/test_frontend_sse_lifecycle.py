@@ -54,3 +54,129 @@ def test_state_changed_sse_reaches_agent_state_listener():
         assert "new CustomEvent('evonic:agent-state-changed'" in src
     agent_detail = read_repo_file("templates/agent_detail.html")
     assert "document.addEventListener('evonic:agent-state-changed'" in agent_detail
+
+
+def test_sessions_refresh_restores_active_turn_from_durable_stream():
+    sessions = read_repo_file("templates/sessions.html")
+
+    history_cursor = sessions.index("X-Evonic-Realtime-Cursor")
+    connect = sessions.index("connectSessionStream(sessionId, realtimeCursor)")
+    assert history_cursor < connect
+    assert "/chat/events" not in sessions
+    assert "`/api/agents/${encodeURIComponent(selectedAgentId)}/busy`" not in sessions
+    assert "function _beginSessionTurn(startTs = null, anchor = null)" in sessions
+    assert "evtName === 'turn_queued'" in sessions
+    assert "showStopBtn(true);" in sessions
+    assert "_completeSessionTurn(seq, data.thinking_duration);" in sessions
+    assert "_completeSessionTurn(doneSeq, payload.thinking_duration)" in sessions
+    assert "afterSeq = Math.max(afterSeq, _sessionTurn.lastSeq, _sessionTurn.terminalSeq);" in sessions
+    assert "es.addEventListener('history_resync_required'" in sessions
+    assert "selectSession(sessionId).finally" in sessions
+
+    error_handler = sessions[
+        sessions.index("es.onerror = () =>"):
+        sessions.index("function disconnectSessionStream()")
+    ]
+    assert "Last-Event-ID" in error_handler
+    assert "es.close()" not in error_handler
+
+
+def test_agent_detail_refresh_uses_one_persistent_session_stream():
+    detail = read_repo_file("templates/agent_detail.html")
+    restore = detail[
+        detail.index("async function restoreActiveReasoning()"):
+        detail.index("let _chatBusy = false")
+    ]
+
+    assert "X-Evonic-Realtime-Cursor" in detail
+    assert "new EventSource(url)" in restore
+    assert "if (_agentChatEs && _agentChatSessionId === sessionId) return;" in restore
+    assert "'agent_busy_changed'" in restore
+    assert "turn_queued" in restore
+    assert "message_received" in restore
+    assert "Last-Event-ID" in restore
+    assert "/chat/events" not in restore
+    assert "/busy" not in restore
+    assert "pollForResponse" not in detail
+    assert "if (data.agent_id && data.agent_id !== AGENT_ID) return;" in detail
+    assert "es.addEventListener('history_resync_required'" in detail
+    assert "loadChatHistory().finally" in detail
+
+    soft_switch_start = detail.index("window.softSwitchAgent = async function")
+    soft_switch = detail[soft_switch_start:detail.index("window.addEventListener('popstate'", soft_switch_start)]
+    assert "resyncBusyBadge" not in soft_switch
+    assert "showTab('chat')" in soft_switch
+
+
+def test_chat_messages_sync_across_tabs_without_content_polling():
+    sessions = read_repo_file("templates/sessions.html")
+    detail = read_repo_file("templates/agent_detail.html")
+    for source in (sessions, detail):
+        assert "crypto.randomUUID" in source
+        assert "client_message_id" in source
+        assert "message_received" in source
+        assert "_seenRealtimeMessages" in source
+        assert "pollNewMessages" not in source
+        assert "pollForResponse" not in source
+        assert "data.turn_id" in source
+        assert "markLastUserBubbleQueued($message)" in source
+
+
+def test_turn_split_duration_survives_durable_replay():
+    turn = read_repo_file("static/js/chat-ui/turn.js")
+    index = read_repo_file("static/js/chat-ui/index.js")
+
+    assert "(data.timestamp - this._startTime) / 1000" in turn
+    assert "timestamp: data.timestamp" in turn
+    assert "newTurn._startTime = data.timestamp" in index
+
+    realtime = read_repo_file("static/js/realtime.js")
+    assert "this._after = Math.max" in realtime
+    assert "if (this._after) params.push('after=' + this._after);" in realtime
+    assert "params.push('cursor_version=2');" in realtime
+    assert "params.push('snapshot=' + (this._after ? '0' : '1'));" in realtime
+    assert "this._disconnect();" in realtime
+    assert "if (this._started) this._connect();" in realtime
+    assert "_pauseBuffer" not in realtime
+
+
+def test_realtime_regression_guards_cover_long_turns_badges_and_panels():
+    realtime = read_repo_file("static/js/realtime.js")
+    transport = read_repo_file("static/js/chat-ui/transport.js")
+    turn = read_repo_file("static/js/chat-ui/turn.js")
+    bundle = read_repo_file("static/js/chat-ui.js")
+    detail = read_repo_file("templates/agent_detail.html")
+
+    assert realtime.count("'panel_updated'") >= 2
+    for source in (transport, bundle):
+        assert "cursor_version=2&snapshot=1" in source
+        assert "cursor_version=2&snapshot=' +" in source
+        assert "(this._lastSeq > 0 ? '0' : '1')" in source
+    for source in (turn, bundle):
+        assert "STALE_TIMEOUT_MS" not in source
+        assert "_staleTimeout" not in source
+
+    assert "let _agentBusy = false;" in detail
+    assert "updateBusyBadge(_chatBusy || _agentBusy);" in detail
+    assert "updateBusyBadge(_agentBusy);" in detail
+    assert "cursor_version=2&snapshot=1" in detail
+
+
+def test_realtime_assets_are_cache_busted_and_legacy_buffers_are_gone():
+    base = read_repo_file("templates/base.html")
+    detail = read_repo_file("templates/agent_detail.html")
+    sessions = read_repo_file("templates/sessions.html")
+    event_stream = read_repo_file("backend/event_stream.py")
+    agents = read_repo_file("routes/agents.py")
+    update_manager = read_repo_file("backend/update_manager.py")
+    runtime = read_repo_file("backend/agent_runtime/runtime.py")
+
+    assert "realtime.js') }}?v=3" in base
+    assert "chat-ui.js') }}?v=64" in detail
+    assert "chat-ui.js') }}?v=64" in sessions
+    assert "get_session_events" not in agents
+    assert "register_web_listener" not in event_stream
+    assert "_session_chat_seq" not in event_stream
+    assert "register_listener" not in update_manager
+    assert "_start_listener_cleanup" not in update_manager
+    assert "result['response_message_id'] = response_message_id" in runtime

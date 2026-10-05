@@ -1,9 +1,13 @@
+import json
+import logging
 from typing import Any, Dict, List
 
 import requests
 from flask import Blueprint, jsonify, request
 
 from models.db import db
+
+_logger = logging.getLogger(__name__)
 
 models_bp = Blueprint("models", __name__)
 
@@ -86,6 +90,7 @@ def api_create_model():
                 "enabled": data.get("enabled", 1),
                 "is_default": data.get("is_default", 0),
                 "model_max_concurrent": data.get("model_max_concurrent", 3),
+                "vision_supported": data.get("vision_supported", 0),
                 "context_window": data.get("context_window", 0),
             }
         )
@@ -242,7 +247,24 @@ def api_test_model(model_id):
         response = requests.get(models_url, headers=headers, timeout=10)
 
         if response.status_code == 200:
-            data = response.json()
+            try:
+                data = response.json()
+            except json.JSONDecodeError:
+                raw_snippet = response.text[:500]
+                _logger.error(
+                    "Failed to parse JSON from %s (HTTP 200). Raw response: %s",
+                    models_url,
+                    raw_snippet,
+                )
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"Received invalid (non-JSON) response from {base_url}. "
+                        f"The provider returned HTTP 200 but the body is not valid JSON. "
+                        f"Raw response snippet: {raw_snippet}",
+                        "status_code": 200,
+                    }
+                ), 502
             if api_format == "ollama":
                 models_list = data.get("models") or []
             else:

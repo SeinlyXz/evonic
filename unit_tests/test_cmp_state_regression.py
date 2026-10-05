@@ -74,7 +74,7 @@ def test_chat_state_api_exposes_cmp_map():
     assert set(cmp['paths'][0]) == {'id', 'title', 'status', 'action', 'goal',
                                     'outcome', 'key_facts', 'artifacts',
                                     'depends_on', 'last_active', 'state_since',
-                                    'tokens', 'llm_tokens', 'card_tokens'}
+                                    'tokens', 'llm_tokens', 'card_tokens', 'tags'}
     assert all('tokens' in c and 'card_tokens' in c for c in cmp['paths'])
     # dependency child gets the next level letter
     assert cmp['paths'][1]['id'] == 'B1'
@@ -94,6 +94,45 @@ def test_chat_state_api_no_cmp_key_when_absent():
         res = client.get('/api/agents/cmp_api_agent2/chat/state?session_id=sess-api-2')
         assert res.status_code == 200
         assert 'cmp' not in res.get_json()
+
+
+def test_chat_state_api_preserves_session_only_fields_when_cmp_rendering_fails(monkeypatch):
+    from app import app
+    from models.db import db
+    from backend.agent_runtime.llm_loop import _persist_agent_state_split
+    from backend.agent_runtime.cmp import store
+    import backend.agent_runtime.cmp.render as cmp_render
+
+    agent_id, session_id = 'cmp_api_agent3', 'sess-api-3'
+    db.create_agent({'id': agent_id, 'name': 'C', 'system_prompt': ''})
+    state = AgentState(mode='execute', plan_file='plan/session.md')
+    state.update_tasks('set', tasks=['Preserve session state'])
+    state.context_usage = {'prompt_tokens': 100, 'completion_tokens': 25, 'total_tokens': 125}
+    state.cmp = store.new_cmp(state, title='session task', goal='verify state', now_ts=1000)
+    _persist_agent_state_split(state, agent_id, session_id)
+    monkeypatch.setattr(cmp_render, 'render_map', lambda *_: (_ for _ in ()).throw(RuntimeError('render failure')))
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['authenticated'] = True
+        res = client.get(f'/api/agents/{agent_id}/chat/state?session_id={session_id}')
+
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data['mode'] == 'execute'
+    assert data['plan_file'] == 'plan/session.md'
+    assert data['tasks'][0]['text'] == 'Preserve session state'
+    assert data['context_usage']['used'] > 0
+    assert data['cmp_error'] == 'CMP details are temporarily unavailable.'
+    assert 'cmp' not in data
+
+
+def test_agent_state_renderer_accepts_session_only_state():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / 'static/js/agent-state.js').read_text(encoding='utf-8')
+    for expression in ('data.mode', 'data.plan_file', 'data.tasks', 'data.loaded_skills', 'data.context_usage'):
+        assert expression in source
 
 
 def test_cmp_model_setting_resolution():

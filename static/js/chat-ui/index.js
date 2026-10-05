@@ -157,6 +157,9 @@ export class ChatUI {
                     // not migrated to the more specific SSE event name yet.
                     document.dispatchEvent(new CustomEvent('evonic:agent-state-changed', { detail: data }));
                 }
+                if (evtName === 'tasks:auto_transition' || evtName === 'tasks:stale') {
+                    document.dispatchEvent(new CustomEvent('evonic:' + evtName, { detail: data }));
+                }
                 if (evtName === 'approval:required') {
                     document.dispatchEvent(new CustomEvent('evonic:approval-required', { detail: data }));
                 }
@@ -480,6 +483,7 @@ export class ChatUI {
                     const $lastUser = this.$container.find('[data-msg-role="user"]').last();
                     const $anchor = $lastUser.length ? $lastUser : (opts.userMsgEl ? $(opts.userMsgEl) : turn.$anchor);
                     const newTurn = this.beginTurn($anchor);
+                    if (data.timestamp) newTurn._startTime = data.timestamp;
                     this._lastLiveTurnId = newTurn.id;
                     this.markQueuedAsDelivered();
                     // Re-route the SSE adapter to the new turn so subsequent events

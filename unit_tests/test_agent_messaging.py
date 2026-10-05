@@ -12,6 +12,7 @@ import unittest
 import unittest.mock as mock
 import sys
 import os
+from contextlib import nullcontext
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -101,6 +102,7 @@ def setup_module(module):
     sys.modules['backend.agent_runtime.approval'] = _approval_stub
 
     _ar_stub = types.ModuleType('backend.agent_runtime')
+    _ar_stub.__path__ = [os.path.join(_repo_root, 'backend', 'agent_runtime')]
     _ar_stub.agent_runtime = mock.MagicMock()
     _ar_stub.notifier = _notifier_stub
     _ar_stub.approval = _approval_stub
@@ -154,11 +156,13 @@ def teardown_module(module):
 # -------------------------------------------------------
 
 def _make_agent_context(agent_id='agent_a', agent_name='Agent A',
-                        user_id='user_123', depth=0):
+                        user_id='user_123', depth=0, session_id='sender-session'):
     return {
         'id': agent_id,
+        '_db_agent_id': agent_id,
         'name': agent_name,
         'user_id': user_id,
+        'session_id': session_id,
         'agent_message_depth': depth,
     }
 
@@ -261,6 +265,43 @@ class TestExecSendAgentMessage(unittest.TestCase):
         self.assertTrue(meta.get('agent_message'))
         self.assertEqual(meta.get('from_agent_id'), 'agent_a')
         self.assertEqual(meta.get('report_to_id'), 'user_123')
+
+    def test_immediate_reply_wakes_waiter_without_human_route(self):
+        """The waiter exists before notify_agent can synchronously finish the target."""
+        from backend.tools.agent_messaging import _on_final_answer
+
+        concurrency_stub = types.ModuleType('backend.agent_runtime.concurrency')
+        concurrency_stub.paused_model_gate = nullcontext
+
+        def immediate_reply(**kwargs):
+            with mock.patch(
+                'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+                return_value=kwargs['metadata'],
+            ):
+                _on_final_answer({
+                    'external_user_id': '__agent__agent_a',
+                    'agent_id': 'agent_b',
+                    'session_id': 'delegated-session',
+                    'answer': 'Hello immediately',
+                })
+            return {'success': True}
+
+        target = _make_target_agent()
+        with mock.patch('backend.tools.agent_messaging.db.get_agent', return_value=target), \
+             mock.patch('backend.agent_runtime.notifier.notify_agent', side_effect=immediate_reply), \
+             mock.patch.dict(sys.modules, {
+                 'backend.agent_runtime.concurrency': concurrency_stub,
+             }):
+            result = self._call({
+                'target_agent_id': 'agent_b',
+                'message': 'Hello',
+                'wait_for_reply': True,
+                'wait_timeout': 10,
+            }, agent_context=_make_agent_context(user_id='', session_id=''))
+
+        self.assertTrue(result.get('success'))
+        self.assertEqual(result.get('reply'), 'Hello immediately')
+        self.assertFalse(result.get('timed_out', False))
 
     def test_self_messaging_blocked(self):
         """Agent cannot message itself."""
@@ -620,47 +661,117 @@ class TestMetadataInjection(unittest.TestCase):
 # -------------------------------------------------------
 
 class TestExecEscalateToUser(unittest.TestCase):
-    """Test _exec_escalate_to_user with mocked db and notifier."""
+    """Test exact originating-session escalation and result reporting."""
+
+    request_meta = {
+        'from_agent_id': 'agent_a',
+        'report_to_id': 'user_123',
+        'report_to_channel_id': 'ch1',
+        'session_id': 'human-session',
+        'agent_message_depth': 1,
+        'reply_to_id': 'reply-1',
+    }
+    human_session = {
+        'id': 'human-session', 'agent_id': 'agent_a',
+        'external_user_id': 'user_123', 'channel_id': 'ch1',
+    }
 
     def _call(self, args, agent_context=None):
         from backend.tools.agent_messaging import _exec_escalate_to_user
         ctx = agent_context or _make_agent_context(
-            user_id='__agent__agent_a'  # inter-agent session
+            agent_id='agent_b', agent_name='Agent B',
+            user_id='__agent__agent_a', session_id='delegated-session',
         )
         return _exec_escalate_to_user(args, ctx)
 
-    def test_success(self):
-        """Escalate in inter-agent session with valid human session."""
-        human_session = {'external_user_id': 'user_123', 'channel_id': 'ch1'}
-        with mock.patch('backend.tools.agent_messaging.db.get_latest_human_session',
-                        return_value=human_session), \
-             mock.patch('backend.tools.agent_messaging.db.get_web_fallback_session',
-                        return_value=None), \
-             mock.patch('backend.agent_runtime.notifier.notify_agent',
-                       return_value={'success': True}) as mock_notify:
-            result = self._call({'message': 'User, I need your approval.'})
-        self.assertTrue(result.get('success'))
-        self.assertIn('forwarded', result.get('message', ''))
-        mock_notify.assert_called_once()
-        self.assertEqual(
-            mock_notify.call_args.kwargs.get('external_user_id'),
-            'user_123',
+    def _patch_origin(self):
+        return mock.patch.multiple(
+            'backend.tools.agent_messaging.db',
+            get_latest_agent_request_metadata=mock.DEFAULT,
+            get_session_with_details=mock.DEFAULT,
+            create_user_escalation=mock.DEFAULT,
+            mark_user_escalation_delivered=mock.DEFAULT,
+            cancel_user_escalation=mock.DEFAULT,
         )
 
+    def test_success_targets_exact_origin_and_registers_correlation(self):
+        with self._patch_origin() as patched, mock.patch(
+            'backend.agent_runtime.notifier.notify_agent',
+            return_value={
+                'success': True, 'session_id': 'human-session',
+                'delivery': 'external_channel',
+            },
+        ) as mock_notify:
+            patched['get_latest_agent_request_metadata'].return_value = self.request_meta
+            patched['get_session_with_details'].return_value = self.human_session
+            patched['mark_user_escalation_delivered'].return_value = True
+            result = self._call({'message': 'User, I need your approval.'})
+
+        self.assertTrue(result.get('success'))
+        self.assertEqual(result['session_id'], 'human-session')
+        self.assertEqual(result['delivery'], 'external_channel')
+        mock_notify.assert_called_once()
+        self.assertEqual(mock_notify.call_args.kwargs['agent_id'], 'agent_a')
+        self.assertEqual(mock_notify.call_args.kwargs['session_id'], 'human-session')
+        self.assertTrue(mock_notify.call_args.kwargs['deliver_external'])
+        create = patched['create_user_escalation'].call_args.kwargs
+        self.assertEqual(create['requesting_session_id'], 'delegated-session')
+        self.assertEqual(create['originating_session_id'], 'human-session')
+
+    def test_delivery_failure_is_reported_and_not_registered(self):
+        with self._patch_origin() as patched, mock.patch(
+            'backend.agent_runtime.notifier.notify_agent',
+            return_value={'success': False, 'reason': 'channel_send_failed'},
+        ):
+            patched['get_latest_agent_request_metadata'].return_value = self.request_meta
+            patched['get_session_with_details'].return_value = self.human_session
+            result = self._call({'message': 'Please choose.'})
+
+        self.assertFalse(result['success'])
+        self.assertIn('channel_send_failed', result['error'])
+        patched['create_user_escalation'].assert_called_once()
+        patched['cancel_user_escalation'].assert_called_once()
+
+    def test_persistence_failure_prevents_delivery(self):
+        with self._patch_origin() as patched, mock.patch(
+            'backend.agent_runtime.notifier.notify_agent',
+            return_value={'success': True, 'session_id': 'human-session'},
+        ):
+            patched['get_latest_agent_request_metadata'].return_value = self.request_meta
+            patched['get_session_with_details'].return_value = self.human_session
+            patched['create_user_escalation'].side_effect = RuntimeError('write failed')
+            result = self._call({'message': 'Please choose.'})
+
+        self.assertFalse(result['success'])
+        self.assertIn('Reply routing', result['error'])
+
+    def test_activation_failure_reports_partial_success(self):
+        with self._patch_origin() as patched, mock.patch(
+            'backend.agent_runtime.notifier.notify_agent',
+            return_value={'success': True, 'session_id': 'human-session'},
+        ):
+            patched['get_latest_agent_request_metadata'].return_value = self.request_meta
+            patched['get_session_with_details'].return_value = self.human_session
+            patched['mark_user_escalation_delivered'].return_value = False
+            result = self._call({'message': 'Please choose.'})
+
+        self.assertFalse(result['success'])
+        self.assertTrue(result['partial_success'])
+
     def test_already_in_user_session(self):
-        """Block escalate when not in inter-agent session."""
-        ctx = _make_agent_context(user_id='user_123')  # normal user session
+        ctx = _make_agent_context(user_id='user_123')
         result = self._call({'message': 'Hello?'}, agent_context=ctx)
         self.assertIn('error', result)
         self.assertIn('user session', result['error'])
 
-    def test_no_human_session(self):
-        """Block escalate when no human session exists."""
-        with mock.patch('backend.tools.agent_messaging.db.get_latest_human_session',
-                        return_value=None):
+    def test_missing_originating_session_metadata(self):
+        with mock.patch(
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=None,
+        ):
             result = self._call({'message': 'Hello?'})
         self.assertIn('error', result)
-        self.assertIn('No active human', result['error'])
+        self.assertIn('originating human', result['error'])
 
 
 # -------------------------------------------------------
@@ -809,11 +920,36 @@ class TestOnFinalAnswer(unittest.TestCase):
             {'metadata': {'from_agent_id': 'agent_a'}},  # no report_to_id
         ]
         with mock.patch(
-            'backend.tools.agent_messaging.db.get_session_messages',
-            return_value=messages,
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=messages[0]['metadata'],
         ), mock.patch('backend.agent_runtime.notifier.notify_agent') as mock_notify:
             self._call(self._build_data())
         mock_notify.assert_not_called()
+
+    def test_no_report_to_id_still_wakes_internal_waiter(self):
+        """Synchronous callers do not depend on browser auto-forward routing."""
+        from backend.tools.agent_messaging import (
+            _WAIT_REGISTRY, _WAIT_REGISTRY_LOCK, Queue,
+        )
+        reply_queue = Queue()
+        with _WAIT_REGISTRY_LOCK:
+            _WAIT_REGISTRY['reply-1'] = reply_queue
+        metadata = {
+            'agent_message': True,
+            'from_agent_id': 'agent_a',
+            'reply_to_id': 'reply-1',
+        }
+        try:
+            with mock.patch(
+                'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+                return_value=metadata,
+            ), mock.patch('backend.agent_runtime.notifier.notify_agent') as mock_notify:
+                self._call(self._build_data(answer='Wait result'))
+            self.assertEqual(reply_queue.get_nowait(), 'Wait result')
+            mock_notify.assert_not_called()
+        finally:
+            with _WAIT_REGISTRY_LOCK:
+                _WAIT_REGISTRY.pop('reply-1', None)
 
     def test_inter_agent_forwards_reply(self):
         """Inter-agent session with valid metadata forwards reply to A."""
@@ -825,9 +961,9 @@ class TestOnFinalAnswer(unittest.TestCase):
         ]
         target_agent = _make_target_agent(agent_id='agent_b', name='Agent B')
         with mock.patch(
-            'backend.tools.agent_messaging.db.get_session_messages',
-            return_value=messages,
-        ), mock.patch(
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=messages[0]['metadata'],
+        ) as mock_lookup, mock.patch(
             'backend.tools.agent_messaging.db.get_agent',
             return_value=target_agent,
         ), mock.patch(
@@ -841,6 +977,37 @@ class TestOnFinalAnswer(unittest.TestCase):
         self.assertEqual(kwargs.get('agent_id'), 'agent_a')
         self.assertEqual(kwargs.get('external_user_id'), 'user_123')
         self.assertTrue(kwargs.get('trigger_llm'))
+        mock_lookup.assert_called_once_with(
+            'sess_001', agent_id='agent_b', sender_agent_id='agent_a',
+        )
+
+    def test_auto_forward_uses_parent_db_for_subagent(self):
+        """Sub-agent replies resolve request metadata from the parent's chat DB."""
+        metadata = {
+            'from_agent_id': 'agent_a',
+            'report_to_id': 'user_123',
+        }
+        target_agent = _make_target_agent(agent_id='child_b', name='Child B')
+        subagent = types.SimpleNamespace(get=lambda key, default=None: {
+            'parent_id': 'parent_b',
+        }.get(key, default))
+        with mock.patch(
+            'backend.subagent_manager.subagent_manager.get',
+            return_value=subagent,
+        ), mock.patch(
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=metadata,
+        ) as mock_lookup, mock.patch(
+            'backend.tools.agent_messaging.db.get_agent',
+            return_value=target_agent,
+        ), mock.patch(
+            'backend.agent_runtime.notifier.notify_agent',
+        ):
+            self._call(self._build_data(agent_id='child_b'))
+
+        mock_lookup.assert_called_once_with(
+            'sess_001', agent_id='parent_b', sender_agent_id='agent_a',
+        )
 
     def test_auto_forward_preserves_exact_origin_session(self):
         """Human-origin replies pass the saved session ID to central validation."""
@@ -854,8 +1021,8 @@ class TestOnFinalAnswer(unittest.TestCase):
         ]
         target_agent = _make_target_agent(agent_id='agent_b', name='Agent B')
         with mock.patch(
-            'backend.tools.agent_messaging.db.get_session_messages',
-            return_value=messages,
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=messages[0]['metadata'],
         ), mock.patch(
             'backend.tools.agent_messaging.db.get_agent',
             return_value=target_agent,
@@ -883,8 +1050,8 @@ class TestOnFinalAnswer(unittest.TestCase):
         ]
         target_agent = _make_target_agent(agent_id='agent_b', name='Agent B')
         with mock.patch(
-            'backend.tools.agent_messaging.db.get_session_messages',
-            return_value=messages,
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=messages[0]['metadata'],
         ), mock.patch(
             'backend.tools.agent_messaging.db.get_agent',
             return_value=target_agent,
@@ -909,8 +1076,8 @@ class TestOnFinalAnswer(unittest.TestCase):
             }},
         ]
         with mock.patch(
-            'backend.tools.agent_messaging.db.get_session_messages',
-            return_value=messages,
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=messages[0]['metadata'],
         ), mock.patch(
             'backend.agent_runtime.notifier.notify_agent',
         ) as mock_notify:
@@ -928,8 +1095,8 @@ class TestOnFinalAnswer(unittest.TestCase):
         ]
         target_agent = _make_target_agent(agent_id='agent_b', name='Agent B')
         with mock.patch(
-            'backend.tools.agent_messaging.db.get_session_messages',
-            return_value=messages,
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=messages[0]['metadata'],
         ), mock.patch(
             'backend.tools.agent_messaging.db.get_agent',
             return_value=target_agent,
@@ -939,23 +1106,20 @@ class TestOnFinalAnswer(unittest.TestCase):
             self._call(self._build_data(answer='Async result'))
         mock_notify.assert_called_once()
 
-    def test_skip_auto_forward_fallback_path(self):
-        """skip_auto_forward is respected in the fallback metadata lookup path."""
-        fallback_meta = {
+    def test_skip_auto_forward_from_targeted_lookup(self):
+        """skip_auto_forward is respected in targeted request metadata."""
+        metadata = {
             'from_agent_id': 'agent_a',
             'report_to_id': 'user_123',
             'skip_auto_forward': True,
         }
         with mock.patch(
-            'backend.tools.agent_messaging.db.get_session_messages',
-            return_value=[],
-        ), mock.patch(
             'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
-            return_value=fallback_meta,
+            return_value=metadata,
         ), mock.patch(
             'backend.agent_runtime.notifier.notify_agent',
         ) as mock_notify:
-            self._call(self._build_data(answer='Sync via fallback'))
+            self._call(self._build_data(answer='Sync via targeted lookup'))
         mock_notify.assert_not_called()
 
     def test_depth_defaults_to_zero_when_missing(self):
@@ -969,8 +1133,8 @@ class TestOnFinalAnswer(unittest.TestCase):
         ]
         target_agent = _make_target_agent(agent_id='agent_b', name='Agent B')
         with mock.patch(
-            'backend.tools.agent_messaging.db.get_session_messages',
-            return_value=messages,
+            'backend.tools.agent_messaging.db.get_latest_agent_request_metadata',
+            return_value=messages[0]['metadata'],
         ), mock.patch(
             'backend.tools.agent_messaging.db.get_agent',
             return_value=target_agent,

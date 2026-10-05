@@ -13,6 +13,12 @@ Public surface:
 """
 
 
+# How many turns a detector-referenced (pinned) path keeps its full card
+# rendered after it was last named — the follow-up window over which a
+# just-referenced offloaded path stays fully in context.
+_PIN_TTL = 3
+
+
 def is_cmp_enabled(agent: dict) -> bool:
     """CMP applies only with agent-state enabled (paths live on AgentState)
     and never for sub-agents (delegated single-task workers)."""
@@ -29,7 +35,8 @@ def render_cmp_section(cmp: dict, agent_name: str = "Agent") -> str:
     return _render(cmp, agent_name)
 
 
-def on_turn_boundary(agent: dict, ms, chatlog, user_text: str):
+def on_turn_boundary(agent: dict, ms, chatlog, user_text: str,
+                     session_id: str = None, agent_id: str = None):
     """Per-turn CMP orchestration: first-path init, boundary detection,
     path ops (switch/branch), lifecycle decay. Called from the runtime at
     the re-arm slot; subsumes maybe_rearm_atg for cmp agents (a new branch
@@ -54,8 +61,9 @@ def on_turn_boundary(agent: dict, ms, chatlog, user_text: str):
         ms.cmp = store.new_cmp(ms, title=title or text[:60] or 'Session start',
                                goal=text[:300], now_ts=user_ts)
         if not title:  # raw message as title reads badly on the map — name it
-            named = detector.detect(ms.cmp, ms, text,
-                                    initializing=True).get('new_path')
+            named = detector.detect(
+                ms.cmp, ms, text, initializing=True,
+                session_id=session_id, agent_id=agent_id).get('new_path')
             _apply_naming(ms.cmp['paths'][ms.cmp['active_id']], named)
         _emit(agent, 'cmp_path_created',
               {'path_id': ms.cmp['active_id'],
@@ -65,7 +73,8 @@ def on_turn_boundary(agent: dict, ms, chatlog, user_text: str):
 
     decision = detector.detect(ms.cmp, ms, text,
                                recent_tail=_last_final_excerpt(chatlog),
-                               recent_dialogue=_recent_dialogue(chatlog))
+                               recent_dialogue=_recent_dialogue(chatlog),
+                               session_id=session_id, agent_id=agent_id)
     d, target = decision['decision'], decision.get('target')
     # The delta describes the just-completed turn on the (still) active path;
     # apply it before any switch/branch suspends that path.
@@ -79,11 +88,12 @@ def on_turn_boundary(agent: dict, ms, chatlog, user_text: str):
             _emit(agent, 'cmp_path_switched',
                   {'to': target, 'initiator': 'detector'})
         elif d in ('dep_branch', 'indep_branch'):
+            from backend.task_classifier import classify_task
             finalize_active_card(chatlog, ms.cmp, ms)
             record = store.create_path(
                 ms.cmp, ms, title=text[:60], goal=text[:300],
                 depends_on=[target] if (d == 'dep_branch' and target) else [],
-                now_ts=user_ts)
+                now_ts=user_ts, trivial=classify_task(text) == 'trivial')
             _apply_naming(record, decision.get('new_path'))
             decision['target'] = record['id']
             _emit(agent, 'cmp_path_created',
@@ -94,6 +104,70 @@ def on_turn_boundary(agent: dict, ms, chatlog, user_text: str):
         logging.getLogger(__name__).exception(
             "CMP path operation failed — continuing on the active path")
         decision = {'decision': 'continue', 'target': None, 'layer': 'error'}
+
+    # Waypoint pinning (paper's load_waypoint, made automatic + STICKY): the
+    # detector flags non-active paths whose stored facts this turn references
+    # (recaps, cross-path summaries). Those paths are (a) pinned for a short
+    # window so their FULL cards stay rendered across follow-up turns — not
+    # only the turn they were named — and (b) promoted archived->preserved so
+    # the card survives lifecycle decay. The count-cap (tick_lifecycle) then
+    # enforces MAX_PRESERVED by archiving the OLDEST preserved, so the 10-cap
+    # holds and the least-recently-referenced card decays out. Active path is
+    # never pinned (its full card is already in context).
+    referenced = [pid for pid in (decision.get('pin') or [])
+                  if pid in ms.cmp['paths'] and pid != ms.cmp['active_id']]
+    # Query-relevant waypoint auto-pinning: lexically match the user's message
+    # against the stored cards (title/tags/key_facts/goal) and pin the top
+    # hits too. The detector names paths it can see on the map, but archived
+    # nodes render as title+tags only — on large graphs the fact the user is
+    # asking about often lives in a card the detector cannot read. The lexical
+    # index sees every card, costs no LLM call, and a wrong pin only costs a
+    # briefly rendered extra card (TTL decays it).
+    excerpts = {}
+    try:
+        # Cards are lossy, so raw transcript matches always participate rather
+        # than only when card search found fewer than two hits. Merge both
+        # retrieval layers under one small pin cap; transcript hits win ties
+        # because they carry the actual user-authored evidence into context.
+        candidates = {}
+        for hit in store.search_cmp_paths(ms.cmp, text, limit=3):
+            if hit.get('score', 0) >= 2:
+                candidates[hit['id']] = (hit['score'], 0, [])
+        for hit in store.search_cmp_transcripts(ms.cmp, chatlog, text, limit=3):
+            if hit.get('score', 0) >= 2:
+                old = candidates.get(hit['id'], (0, 0, []))
+                candidates[hit['id']] = (max(hit['score'], old[0]), 1,
+                                          hit.get('excerpts') or [])
+        ranked = sorted(candidates.items(),
+                        key=lambda item: (-item[1][0], -item[1][1], item[0]))
+        for pid, (_, _, hit_excerpts) in ranked:
+            if pid == ms.cmp['active_id'] or pid in referenced:
+                continue
+            referenced.append(pid)
+            if hit_excerpts:
+                excerpts[pid] = hit_excerpts
+            if len(referenced) >= 3:
+                break
+    except Exception:
+        pass
+    ttl = ms.cmp.setdefault('pin_ttl', {})
+    for pid in list(ttl):                      # decay existing pins
+        ttl[pid] -= 1
+        if ttl[pid] <= 0 or pid not in ms.cmp['paths'] or pid == ms.cmp['active_id']:
+            ttl.pop(pid, None)
+    for pid in referenced:                     # (re)arm referenced pins
+        ttl[pid] = _PIN_TTL
+    ms.cmp['pinned_ids'] = list(ttl)
+    # transcript-recall excerpts ride the pin lifecycle: refreshed for newly
+    # matched paths, dropped when their pin decays.
+    old_ex = ms.cmp.get('pin_excerpts') or {}
+    ms.cmp['pin_excerpts'] = {pid: (excerpts.get(pid) or old_ex.get(pid))
+                              for pid in ttl
+                              if excerpts.get(pid) or old_ex.get(pid)}
+    promoted = store.promote_pinned(ms.cmp, list(ttl), user_ts)
+    if referenced:
+        _emit(agent, 'cmp_waypoints_pinned',
+              {'path_ids': referenced, 'promoted': promoted})
 
     lifecycle = store.tick_lifecycle(ms.cmp, now_ts=user_ts)
     for archived_id in lifecycle['archived']:

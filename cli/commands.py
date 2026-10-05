@@ -1,6 +1,7 @@
 """Evonic CLI commands — start, stop, status, plugin, and skill management."""
 
 import fcntl
+import json
 import os
 import shutil
 import signal
@@ -168,20 +169,6 @@ def start_server(port=None, host=None, debug=None, daemon=False):
     # For daemon mode the child process (app.py) will acquire its own lock.
     pid_lock_fd = _acquire_pid_lock()
 
-    # Check if already running (legacy PID check — redundant with flock but kept
-    # for backward compat and a friendlier error message).
-    existing_pid = _get_pid()
-    if existing_pid and _is_running(existing_pid):
-        print(f"Server is already running (PID: {existing_pid})")
-        try:
-            import config
-
-            print(f"Port: {port or config.PORT}")
-        except Exception:
-            pass
-        os.close(pid_lock_fd)
-        return
-
     # Import config to get defaults
     try:
         import config
@@ -282,8 +269,37 @@ def start_server(port=None, host=None, debug=None, daemon=False):
     app.run(host=host, port=port, debug=debug, use_reloader=False, threaded=True)
 
 
+def _configured_systemd_service():
+    """Return the configured systemd unit, or None when self-managed."""
+    import config
+
+    if config.SERVICE_SYSTEM != "systemd":
+        return None
+    if not config.SYSTEMD_SERVICE_NAME:
+        print("Error: SYSTEMD_SERVICE_NAME is required when SERVICE_SYSTEM=systemd")
+        return ""
+    return config.SYSTEMD_SERVICE_NAME
+
+
+def _run_systemctl(action, service_name):
+    command = ["systemctl", action, service_name]
+    try:
+        subprocess.run(command, check=True)
+    except (OSError, subprocess.CalledProcessError) as e:
+        print(f"Failed to run {' '.join(command)}: {e}")
+        return False
+    print(f"Systemd service {service_name} {action} requested.")
+    return True
+
+
 def stop_server():
     """Stop the running server."""
+    systemd_service = _configured_systemd_service()
+    if systemd_service is not None:
+        if systemd_service:
+            _run_systemctl("stop", systemd_service)
+        return
+
     pid = _get_pid()
 
     if pid is None:
@@ -358,7 +374,13 @@ def status_server():
 
 
 def restart_server():
-    """Stop the running server, then start it again in daemon mode."""
+    """Restart through systemd or use Evonic's self-managed process path."""
+    systemd_service = _configured_systemd_service()
+    if systemd_service is not None:
+        if systemd_service:
+            _run_systemctl("restart", systemd_service)
+        return
+
     print("Stopping server...")
     stop_server()
 
@@ -372,16 +394,21 @@ def restart_server():
 # ─── Plugin Management ────────────────────────────────────────────────────────
 
 
-def _get_plugin_manager():
-    """Lazily create a PluginManager instance."""
+def _get_plugin_manager(load_plugins: bool = True):
+    """Lazily create a PluginManager instance.
+
+    Metadata-only commands pass load_plugins=False: it skips executing
+    plugin handler modules, whose module-level code can mutate state the
+    live server owns (e.g. the kanban scanner schedules).
+    """
     from backend.plugin_manager import PluginManager
 
-    return PluginManager()
+    return PluginManager(load_plugins=load_plugins)
 
 
 def plugin_list():
     """List all installed plugins in a table format."""
-    pm = _get_plugin_manager()
+    pm = _get_plugin_manager(load_plugins=False)
     plugins = pm.list_plugins()
 
     if not plugins:
@@ -1311,6 +1338,62 @@ def agent_get(agent_id):
             print(f"  - {cname}")
 
 
+def agent_export(agent_id, output=None):
+    """Export an agent as portable JSON."""
+    from backend.agent_portability import AgentPortabilityError, export_agent
+
+    try:
+        payload = export_agent(_get_db(), agent_id, ROOT)
+        content = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+        if output:
+            output = os.path.abspath(os.path.expanduser(output))
+            parent = os.path.dirname(output)
+            if parent and not os.path.isdir(parent):
+                raise AgentPortabilityError(f"Output directory does not exist: {parent}.")
+            with open(output, "w", encoding="utf-8") as handle:
+                handle.write(content)
+            print(f"Agent exported: {output}")
+        else:
+            sys.stdout.write(content)
+    except (AgentPortabilityError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def agent_import(source, agent_id=None, name=None, confirm=False):
+    """Import an agent from portable JSON in a file or stdin."""
+    from backend.agent_portability import AgentPortabilityError, import_agent, preflight_import
+
+    try:
+        if source == "-":
+            content = sys.stdin.read()
+        else:
+            with open(os.path.expanduser(source), "r", encoding="utf-8") as handle:
+                content = handle.read()
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise AgentPortabilityError(
+                f"Invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}."
+            ) from exc
+        db = _get_db()
+        preflight = preflight_import(db, payload)
+        warning = preflight["warning"]
+        if warning["skills"] or warning["tools"]:
+            print("Warning: unavailable dependencies will be skipped: " +
+                  ", ".join(warning["skills"] + warning["tools"]))
+            if not confirm and input("Continue with import? [y/N] ").strip().lower() not in ("y", "yes"):
+                print("Import cancelled.")
+                return
+        imported_id = import_agent(
+            db, payload, ROOT, agent_id=agent_id, name=name, confirm_missing=True
+        )
+        print(f"Agent imported: {imported_id}")
+    except (AgentPortabilityError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
 def agent_add(agent_id, name, description=None, model=None, skillset=None):
     """Create a new agent, optionally from a skillset template."""
     if not agent_id:
@@ -1496,6 +1579,11 @@ def agent_remove(agent_id):
         )
         if os.path.isdir(agent_dir):
             shutil.rmtree(agent_dir)
+        try:
+            from models.chat import agent_chat_manager
+            agent_chat_manager.drop(agent_id)
+        except Exception:
+            pass
         print(f"Agent removed: {agent_id}")
     except Exception as e:
         print(f"Error: {e}")
@@ -2163,16 +2251,18 @@ def setup_command(non_interactive=False):
         model_name = inp if inp else default_model
 
     # --- Agent name ---
+    from backend.setup import DEFAULT_SUPER_AGENT_NAME
+
     if non_interactive:
-        agent_name = "Siwa Miwa"
+        agent_name = DEFAULT_SUPER_AGENT_NAME
         print(f"  [non-interactive] Using default agent name: {agent_name}")
     else:
         try:
-            agent_name = input("  Your super agent's name (default: Siwa Miwa): ").strip()
+            agent_name = input(f"  Your super agent's name (default: {DEFAULT_SUPER_AGENT_NAME}): ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n  Setup aborted.")
             return
-        agent_name = agent_name if agent_name else "Siwa Miwa"
+        agent_name = agent_name or DEFAULT_SUPER_AGENT_NAME
 
     # --- Language ---
     if non_interactive:
@@ -2184,6 +2274,25 @@ def setup_command(non_interactive=False):
             print("\n  Setup aborted.")
             return
         language = lang if lang in ("english", "indonesian", "adaptive") else "english"
+
+    # --- Timezone ---
+    from backend.setup import validate_timezone
+    timezone_name = "Asia/Jakarta"
+    if non_interactive:
+        print(f"  [non-interactive] Using default timezone: {timezone_name}")
+    else:
+        while True:
+            try:
+                tz = input(f"  Timezone (default: {timezone_name}): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  Setup aborted.")
+                return
+            tz = tz if tz else timezone_name
+            try:
+                timezone_name = validate_timezone(tz)
+                break
+            except ValueError:
+                print(f"  Invalid timezone: {tz} \u2014 must be a valid IANA name (e.g. Asia/Jakarta, Europe/London)")
 
     # --- Admin password ---
     password = ""
@@ -2213,6 +2322,7 @@ def setup_command(non_interactive=False):
     print(f"    Model       : {model_name}")
     print(f"    Agent Name  : {agent_name}")
     print(f"    Language    : {language}")
+    print(f"    Timezone    : {timezone_name}")
     if password:
         print(f"    Admin Pass  : (set)")
     print()
@@ -2241,6 +2351,7 @@ def setup_command(non_interactive=False):
         language=language,
         sandbox_enabled=False,
         password=password,
+        timezone_name=timezone_name,
     )
 
     if "error" in result:
@@ -2518,15 +2629,18 @@ _PASS = f"{_G}✓{_RESET}"
 _FAIL = f"{_R}✗{_RESET}"
 _WARN = f"{_Y}⚠{_RESET}"
 _INFO = f"{_B}ℹ{_RESET}"
+_DOCTOR_COMPACT = False
 
 
 def _section(title):
-    print(f"\n{_BOLD}{_C}══ {title} ══{_RESET}")
+    if not _DOCTOR_COMPACT:
+        print(f"\n{_BOLD}{_C}══ {title} ══{_RESET}")
 
 
 def _ok(msg=""):
     line = f"  {_PASS}  {msg}" if msg else f"  {_PASS}"
-    print(line)
+    if not _DOCTOR_COMPACT:
+        print(line)
     return "pass"
 
 
@@ -2543,7 +2657,8 @@ def _warn(msg=""):
 
 
 def _info(msg):
-    print(f"  {_INFO}  {msg}")
+    if not _DOCTOR_COMPACT:
+        print(f"  {_INFO}  {msg}")
 
 
 def evomem_install(force=False):
@@ -2557,11 +2672,14 @@ def evomem_install(force=False):
     return 0 if result["ok"] else 1
 
 
-def doctor_command(quick=False, fix=False, with_llm_provider=False):
+def doctor_command(quick=False, fix=False, with_llm_provider=False, verbose=False):
     """Run comprehensive system health diagnostics."""
     import importlib
     import json
     import platform
+
+    global _DOCTOR_COMPACT
+    _DOCTOR_COMPACT = fix and not verbose
 
     if fix:
         print(f"\n{_BOLD}{_C}🩺  Evonic Doctor (fix mode){_RESET}")
@@ -3338,6 +3456,61 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
     except Exception as e:
         results.append(_fail(f"Orphaned tool check failed: {e}"))
 
+    # ── 10b. Super Agent Core Skills Migration ──
+    _section("10b. Super Agent Core Skills Migration")
+
+    try:
+        from models.db import db
+
+        agents = db.get_agents()
+        super_agents = [a for a in agents if a.get("is_super")]
+        core_skills = ["explorer"]
+
+        if not super_agents:
+            results.append(_ok("No super agents found — nothing to migrate"))
+        else:
+            migrated = 0
+            needs_fix = 0
+
+            for a in super_agents:
+                aid = a.get("id", "?")
+                aname = a.get("name", aid)
+                current_skills = db.get_agent_skills(aid)
+                missing = [s for s in core_skills if s not in current_skills]
+
+                if not missing:
+                    continue
+
+                needs_fix += 1
+                if fix:
+                    merged = current_skills + missing
+                    db.set_agent_skills(aid, merged)
+                    results.append(_ok(
+                        f"Super agent '{aname}' ({aid}): added missing "
+                        f"core skills: {', '.join(missing)}"
+                    ))
+                    fixes_applied.append(
+                        f"Added core skills {', '.join(missing)} to "
+                        f"super agent '{aname}' ({aid})"
+                    )
+                    migrated += 1
+                else:
+                    results.append(_warn(
+                        f"Super agent '{aname}' ({aid}) is missing core "
+                        f"skills: {', '.join(missing)}. Run "
+                        f"`evonic doctor --fix` to auto-add them."
+                    ))
+
+            if migrated > 0:
+                results.append(_ok(
+                    f"Migrated {migrated} super agent(s) with missing core skills"
+                ))
+            elif needs_fix == 0:
+                results.append(_ok("All super agents have required core skills"))
+
+    except Exception as e:
+        results.append(_fail(f"Super agent core skills migration check failed: {e}"))
+
     # ── 11. Evomem Memory Engine Check ──────────────────────────────────────
     _section("11. Evomem Memory Engine Check")
 
@@ -3540,6 +3713,9 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
         "public_history": "0",
         "long_running_guard_enabled": (
             "1" if getattr(_cfg, "LONG_RUNNING_GUARD_ENABLED", True) else "0"
+        ),
+        "root_fs_scan_guard_enabled": (
+            "1" if getattr(_cfg, "ROOT_FS_SCAN_GUARD_ENABLED", True) else "0"
         ),
         "message_wrapper_enabled": "1",
         "events_dispatch_enabled": "1",
@@ -4093,6 +4269,7 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False):
         print(f"\n  {_DIM}Tip: run{_RESET} {_BOLD}evonic doctor --fix{_RESET} {_DIM}to auto-fix fixable issues.{_RESET}")
 
     print()
+    _DOCTOR_COMPACT = False
     return 0 if failed == 0 else 1
 
 
@@ -4201,7 +4378,7 @@ except ImportError:
 
 def _build_backup_sources():
     """Return the list of backup sources as (rel_path, label, is_db, is_glob)."""
-    sources = [
+    backup_sources = [
         # 1. Agent runtime data
         ("agents/", "Agent runtime data", False, True),
         # 2. Shared agent KB files
@@ -4234,7 +4411,7 @@ def _build_backup_sources():
         # 14. Plan files
         ("plan/", "Agent plan files", False, True),
     ]
-    return sources
+    return backup_sources
 
 
 # Excluded paths (relative to ROOT)
@@ -4806,11 +4983,11 @@ def backup_command(output=None, fmt="gz", quiet=False, exclude=None, encrypt=Fal
     
     try:
         # Step 3: Collect all sources
-        sources = _build_backup_sources()
+        backup_sources = _build_backup_sources()
         all_files = []  # (rel_path, staging_path, size_bytes)
         db_files_collected = []  # DB files needing snapshot
         
-        for rel_pattern, label, is_db, is_glob in sources:
+        for rel_pattern, label, is_db, is_glob in backup_sources:
             if is_db:
                 # DB files get atomic snapshot
                 abs_src = os.path.join(ROOT, rel_pattern)

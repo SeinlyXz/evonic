@@ -23,6 +23,7 @@ def notify_agent(agent_id: str, tag: str, message: str,
                  dedup: bool = True,
                  dedup_window: int = 5,
                  trigger_llm: bool = True,
+                 deliver_external: bool = False,
                  metadata: dict = None) -> dict:
     """Send a system notification to an agent.
 
@@ -46,6 +47,8 @@ def notify_agent(agent_id: str, tag: str, message: str,
         trigger_llm: If True (default), route through handle_message() to trigger
                      the LLM loop. If False, save directly to DB without LLM processing
                      (use for informational notifications like system errors).
+        deliver_external: When trigger_llm is False and the resolved session has an
+                          active channel, also send the notification through it.
         metadata: Optional extra metadata dict merged into the saved message record.
 
     Returns:
@@ -94,23 +97,17 @@ def notify_agent(agent_id: str, tag: str, message: str,
             target_session_id = session_id
 
             if channel_id and not _is_channel_route_available(channel_id, agent_id):
+                # An explicit, ownership-validated session is a caller's context
+                # contract.  Keep it intact even when its external channel is down;
+                # moving it to an unrelated web session contaminates that conversation.
                 fallback_reason = 'inactive_channel'
-                fallback = _resolve_web_fallback(agent_id, exclude_session_id=session_id)
-                if not fallback:
-                    _logger.warning(
-                        "notify_agent: inactive channel '%s' for session '%s' and agent '%s'; "
-                        "no safe web fallback is available.",
-                        channel_id, session_id, agent_id,
-                    )
-                    return {
-                        "success": False,
-                        "session_id": None,
-                        "reason": "inactive_channel_no_fallback",
-                    }
-                target_session_id = fallback['id']
-                external_user_id = fallback['external_user_id']
-                channel_id = None
-                route_kind = 'web_fallback'
+                _logger.warning(
+                    "notify_agent: channel '%s' for explicit session '%s' and agent '%s' "
+                    "is inactive; preserving the explicit session.",
+                    channel_id, session_id, agent_id,
+                )
+                metadata = dict(metadata) if metadata else {}
+                metadata['notification_channel_unavailable'] = True
         else:
             explicit_route = external_user_id is not None or channel_id is not None
             if not external_user_id:
@@ -178,6 +175,7 @@ def notify_agent(agent_id: str, tag: str, message: str,
             "fallback_reason": fallback_reason,
         }
 
+    delivery = 'runtime' if trigger_llm else 'web'
     try:
         if trigger_llm:
             _logger.info(
@@ -188,14 +186,21 @@ def notify_agent(agent_id: str, tag: str, message: str,
             from backend.agent_runtime import agent_runtime
             agent_runtime.handle_message(
                 agent_id, external_user_id, full_message, channel_id,
-                metadata=metadata,
+                metadata=metadata, session_id=target_session_id,
             )
         else:
             meta = dict(metadata) if metadata else {}
-            db.add_chat_message(
+            message_id = db.add_chat_message(
                 target_session_id, role='user', content=full_message,
                 agent_id=_db_agent_id, metadata=meta if meta else None,
             )
+            message_id = message_id if type(message_id) in (int, str) else None
+            from models.chatlog import chatlog_manager
+            chatlog_manager.get(_db_agent_id, target_session_id).append({
+                'type': 'user', 'session_id': target_session_id,
+                'content': full_message, 'metadata': meta,
+                'message_id': message_id,
+            })
             from backend.event_stream import event_stream
             event_stream.emit('message_received', {
                 'agent_id': agent_id,
@@ -203,7 +208,36 @@ def notify_agent(agent_id: str, tag: str, message: str,
                 'external_user_id': external_user_id,
                 'channel_id': channel_id,
                 'message': full_message,
+                'metadata': meta,
+                'message_id': message_id,
+                'role': 'user',
             })
+            if deliver_external and channel_id:
+                from backend.channels.registry import channel_manager
+                from backend.tools.channel_send_guard import wait_for_send_slot
+                instance = channel_manager.get_channel_instance(channel_id)
+                if not instance or not instance.is_running:
+                    return {
+                        "success": False,
+                        "session_id": target_session_id,
+                        "reason": "channel_unavailable",
+                        "route": route_kind,
+                        "fallback_reason": fallback_reason,
+                        "delivery": "database_only",
+                    }
+                wait_for_send_slot(agent_id)
+                instance.send_message(external_user_id, full_message)
+                if instance.has_send_error(external_user_id):
+                    instance.get_send_error(external_user_id)
+                    return {
+                        "success": False,
+                        "session_id": target_session_id,
+                        "reason": "channel_send_failed",
+                        "route": route_kind,
+                        "fallback_reason": fallback_reason,
+                        "delivery": "database_only",
+                    }
+                delivery = 'external_channel'
     except Exception as e:
         import traceback as _tb
         _logger.error(
@@ -218,6 +252,7 @@ def notify_agent(agent_id: str, tag: str, message: str,
         "reason": None,
         "route": route_kind,
         "fallback_reason": fallback_reason,
+        "delivery": delivery,
     }
 
 

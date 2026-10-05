@@ -197,6 +197,31 @@ class TestSchedulerEngine:
         assert fetched is not None
         assert fetched['owner_id'] == 'my-plugin'
 
+    def test_update_schedule_changes_fields(self, mock_apscheduler):
+        from backend.scheduler import scheduler
+        result = scheduler.create_schedule(
+            name='Before Edit', owner_type='agent', owner_id='agent-1',
+            trigger_type='interval', trigger_config={'minutes': 5},
+            action_type='emit_event', action_config={'event_name': 'x', 'payload': {}},
+        )
+        updated = scheduler.update_schedule(
+            result['id'],
+            name='After Edit',
+            trigger_config={'minutes': 30},
+            action_config={'event_name': 'y', 'payload': {'k': 'v'}},
+        )
+        assert updated is not None
+        assert updated['name'] == 'After Edit'
+        assert updated['trigger_config']['minutes'] == 30
+        assert updated['action_config']['event_name'] == 'y'
+        fetched = db.get_schedule(result['id'])
+        assert fetched['name'] == 'After Edit'
+        assert fetched['trigger_config'] == {'minutes': 30}
+
+    def test_update_schedule_nonexistent(self, mock_apscheduler):
+        from backend.scheduler import scheduler
+        assert scheduler.update_schedule('does-not-exist', name='X') is None
+
     def test_cancel_schedule_success(self, mock_apscheduler):
         from backend.scheduler import scheduler
         result = scheduler.create_schedule(
@@ -279,6 +304,54 @@ class TestSchedulerEngine:
         from backend.scheduler import scheduler
         ok = scheduler.run_now('nonexistent')
         assert ok is False
+
+
+# ---------------------------------------------------------------------------
+# TestKbOrganizerSchedule - global Vault Janitor schedule configuration
+# ---------------------------------------------------------------------------
+
+class TestKbOrganizerSchedule:
+
+    def test_uses_configured_nightly_time(self, monkeypatch):
+        from backend.scheduler import Scheduler
+
+        monkeypatch.setenv('EVOMEM_KB_ORGANIZER_NIGHTLY_TIME', '14:25')
+        scheduler = Scheduler()
+
+        assert (scheduler._kb_organizer_hour, scheduler._kb_organizer_minute) == (14, 25)
+
+    def test_defaults_nightly_time_to_3_am(self, monkeypatch):
+        from backend.scheduler import Scheduler
+
+        monkeypatch.delenv('EVOMEM_KB_ORGANIZER_NIGHTLY_TIME', raising=False)
+        scheduler = Scheduler()
+
+        assert (scheduler._kb_organizer_hour, scheduler._kb_organizer_minute) == (3, 0)
+
+    def test_invalid_nightly_time_falls_back_to_3_am(self, monkeypatch):
+        from backend.scheduler import Scheduler
+
+        monkeypatch.setenv('EVOMEM_KB_ORGANIZER_NIGHTLY_TIME', 'tomorrow')
+        scheduler = Scheduler()
+
+        assert (scheduler._kb_organizer_hour, scheduler._kb_organizer_minute) == (3, 0)
+
+    def test_registers_janitor_at_configured_time(self, monkeypatch):
+        from backend.scheduler import Scheduler
+
+        monkeypatch.setenv('EVOMEM_KB_ORGANIZER_NIGHTLY_TIME', '14:25')
+        scheduler = Scheduler()
+        scheduler._scheduler = MagicMock()
+        scheduler._load_from_db = MagicMock()
+
+        scheduler.start()
+
+        sefton_call = next(
+            call for call in scheduler._scheduler.add_job.call_args_list
+            if call.kwargs['id'] == 'builtin:sefton_tidy'
+        )
+        assert "hour='14'" in str(sefton_call.args[1])
+        assert "minute='25'" in str(sefton_call.args[1])
 
 
 # ---------------------------------------------------------------------------
@@ -491,6 +564,29 @@ class TestSchedulerAPI:
         from app import app
         with app.test_client() as client:
             resp = client.get('/api/schedules/nonexistent')
+            assert resp.status_code == 404
+
+    def test_api_update_schedule(self):
+        from app import app
+        kwargs = _make_schedule_kwargs(name='Before API Edit')
+        db.create_schedule(**kwargs)
+        with app.test_client() as client:
+            resp = client.put(
+                f"/api/schedules/{kwargs['schedule_id']}",
+                json={'name': 'After API Edit',
+                      'action_config': {'event_name': 'updated', 'payload': {}}},
+            )
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data['schedule']['name'] == 'After API Edit'
+        fetched = db.get_schedule(kwargs['schedule_id'])
+        assert fetched['name'] == 'After API Edit'
+        assert fetched['action_config']['event_name'] == 'updated'
+
+    def test_api_update_schedule_not_found(self):
+        from app import app
+        with app.test_client() as client:
+            resp = client.put('/api/schedules/nonexistent', json={'name': 'X'})
             assert resp.status_code == 404
 
     def test_api_cancel_schedule(self):

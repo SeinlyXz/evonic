@@ -53,6 +53,12 @@ class TestSetMode:
         assert "error" in result
         assert ms.mode == "plan"  # unchanged
 
+    def test_explicit_user_bypass_allows_execute_without_plan_file(self):
+        ms = AgentState(mode="plan")
+        result = ms.set_mode("execute", bypass_plan_requirement=True)
+        assert "error" not in result
+        assert ms.mode == "execute"
+
     def test_execute_allowed_with_plan_file(self):
         ms = AgentState(mode="plan", plan_file="plan/test.md")
         result = ms.set_mode("execute")
@@ -84,12 +90,30 @@ class TestUpdateTasks:
         assert ms.tasks[0]["status"] == "pending"
         assert "error" not in result
 
+    def test_set_discards_completed_and_in_progress_tasks(self):
+        ms = AgentState()
+        ms.update_tasks("set", tasks=["Completed", "Active", "Pending"])
+        ms.update_tasks("done", task_id=1)
+        ms.update_tasks("in_progress", task_id=2)
+
+        result = ms.update_tasks("set", tasks=["New A", "New B"])
+
+        assert result["result"] == "Task list replaced with 2 tasks."
+        assert result["tasks"] == [
+            {"id": 1, "text": "New A", "status": "pending"},
+            {"id": 2, "text": "New B", "status": "pending"},
+        ]
+        assert ms.tasks == result["tasks"]
+
     def test_set_resets_ids_from_1(self):
         ms = AgentState()
-        ms.update_tasks("set", tasks=["First"])
+        ms.update_tasks("add", text="First")
+        ms.update_tasks("add", text="Second")
         ms.update_tasks("set", tasks=["New A", "New B"])
         assert ms.tasks[0]["id"] == 1
         assert ms.tasks[1]["id"] == 2
+        ms.update_tasks("add", text="New C")
+        assert ms.tasks[2]["id"] == 3
 
     def test_add_appends_task(self):
         ms = AgentState()
@@ -118,6 +142,32 @@ class TestUpdateTasks:
         ms.update_tasks("in_progress", task_id=1)
         assert ms.tasks[0]["status"] == "in_progress"
 
+    def test_in_progress_replaces_the_previous_active_task(self):
+        ms = AgentState()
+        ms.update_tasks("set", tasks=["Step 1", "Step 2", "Step 3"])
+        ms.update_tasks("done", task_id=3)
+
+        ms.update_tasks("in_progress", task_id=1)
+        result = ms.update_tasks("in_progress", task_id=2)
+
+        assert result["tasks"] == [
+            {"id": 1, "text": "Step 1", "status": "pending"},
+            {"id": 2, "text": "Step 2", "status": "in_progress"},
+            {"id": 3, "text": "Step 3", "status": "done"},
+        ]
+
+    @pytest.mark.parametrize("mode", ["plan", "execute"])
+    def test_task_transitions_remain_available_in_both_modes(self, mode):
+        ms = AgentState(mode=mode)
+        ms.update_tasks("set", tasks=["First"])
+        added = ms.update_tasks("add", text="Second")
+        ms.update_tasks("in_progress", task_id=added["task_id"])
+        ms.update_tasks("done", task_id=added["task_id"])
+        ms.update_tasks("remove", task_id=1)
+
+        assert ms.tasks == [{"id": 2, "text": "Second", "status": "done"}]
+        assert ms.mode == mode
+
     def test_remove_deletes_task(self):
         ms = AgentState()
         ms.update_tasks("set", tasks=["Keep", "Delete me"])
@@ -144,6 +194,197 @@ class TestUpdateTasks:
         ms = AgentState()
         result = ms.update_tasks("explode")
         assert "error" in result
+
+    def test_replace_preserves_id_and_status(self):
+        ms = AgentState(tasks=[{
+            "id": 7, "text": "Original", "status": "done",
+        }])
+
+        result = ms.update_tasks("replace", task_id=7, text="Updated")
+
+        assert "error" not in result
+        assert ms.tasks == [{"id": 7, "text": "Updated", "status": "done"}]
+
+    def test_set_preserves_valid_structured_ids_and_statuses(self):
+        ms = AgentState()
+
+        ms.update_tasks("set", tasks=[
+            {"id": 9, "text": "Done step", "status": "done"},
+            {"id": 4, "text": "Pending step", "status": "pending"},
+        ])
+
+        assert [(task["id"], task["status"]) for task in ms.tasks] == [(9, "done"), (4, "pending")]
+
+
+class TestAutomaticTaskLifecycle:
+    def test_auto_activate_selects_first_pending_task(self):
+        ms = AgentState(mode="execute")
+        ms.update_tasks("set", tasks=["First", "Second"])
+
+        result = ms.auto_activate(now=100.0)
+
+        assert result["transitioned"] is True
+        assert ms.tasks[0]["status"] == "in_progress"
+        assert ms.tasks[0]["in_progress_since"] == 100.0
+
+    def test_auto_activate_does_not_replace_existing_active_task(self):
+        ms = AgentState(tasks=[{"id": 1, "text": "First", "status": "in_progress"},
+                               {"id": 2, "text": "Second", "status": "pending"}])
+
+        result = ms.auto_activate(now=100.0)
+
+        assert result["transitioned"] is False
+        assert result["task_id"] == 1
+        assert ms.tasks[1]["status"] == "pending"
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"tool_errors": True, "mutated": True},
+            {"stopped": True, "mutated": True},
+            {"final_text": "Please confirm before I continue.", "mutated": True},
+            {"mutated": False},
+        ],
+    )
+    def test_completion_eligibility_rejects_unsafe_completion(self, kwargs):
+        ms = AgentState(tasks=[{"id": 1, "text": "Work", "status": "in_progress"}])
+
+        assert ms.completion_eligible(**kwargs)["eligible"] is False
+
+    def test_completion_eligibility_accepts_successful_mutating_turn(self):
+        ms = AgentState(tasks=[{"id": 1, "text": "Work", "status": "in_progress"}])
+
+        result = ms.completion_eligible(mutated=True, final_text="Implemented and tested.")
+
+        assert result == {"eligible": True, "task_id": 1, "reason": None}
+
+    def test_completion_eligibility_rejects_multiple_active_tasks(self):
+        # Direct assignment bypasses the single-active normalizer on purpose:
+        # completion_eligible is a pure query and must never fire when more
+        # than one task claims the active slot.
+        ms = AgentState()
+        ms.tasks = [
+            {"id": 1, "text": "One", "status": "in_progress"},
+            {"id": 2, "text": "Two", "status": "in_progress"},
+        ]
+
+        result = ms.completion_eligible(mutated=True)
+
+        assert result["eligible"] is False
+        assert result["task_id"] is None
+
+    def test_reconcile_tasks_reports_stale_tasks_without_mutating_state(self):
+        ms = AgentState(tasks=[{"id": 1, "text": "Work", "status": "in_progress",
+                                "in_progress_since": 10.0}])
+
+        stale = ms.reconcile_tasks(now=400.0, stale_after=300.0)
+
+        assert stale == [{"id": 1, "text": "Work", "age": 390.0}]
+        assert ms.tasks[0]["status"] == "in_progress"
+
+
+class TestResolveStaleTasks:
+    def test_legacy_active_task_without_timestamp_is_demoted(self):
+        # Pre-#742 states stored plain strings: no in_progress_since ever existed.
+        ms = AgentState(tasks=[{"id": 1, "text": "Old active", "status": "in_progress"}])
+
+        resolved = ms.resolve_stale_tasks(now=1000.0)
+
+        assert resolved == [{
+            "id": 1, "text": "Old active", "age": None,
+            "action": "demote", "reason": "legacy",
+        }]
+        assert ms.tasks[0]["status"] == "pending"
+        assert "in_progress_since" not in ms.tasks[0]
+
+    def test_recent_managed_active_task_is_kept(self):
+        ms = AgentState(tasks=[{
+            "id": 1, "text": "Active work", "status": "in_progress",
+            "in_progress_since": 500.0,
+        }])
+
+        resolved = ms.resolve_stale_tasks(now=1000.0, stale_after=3600.0)
+
+        assert resolved == []
+        assert ms.tasks[0]["status"] == "in_progress"
+        assert ms.tasks[0]["in_progress_since"] == 500.0
+
+    def test_very_old_managed_active_task_is_demoted(self):
+        ms = AgentState(tasks=[{
+            "id": 3, "text": "Abandoned", "status": "in_progress",
+            "in_progress_since": 100.0,
+        }])
+
+        resolved = ms.resolve_stale_tasks(now=1000.0, stale_after=600.0)
+
+        assert resolved == [{
+            "id": 3, "text": "Abandoned", "age": 900.0,
+            "action": "demote", "reason": "stale",
+        }]
+        assert ms.tasks[0]["status"] == "pending"
+        assert "in_progress_since" not in ms.tasks[0]
+
+    def test_pending_and_done_tasks_are_never_touched(self):
+        ms = AgentState(tasks=[
+            {"id": 1, "text": "Pending", "status": "pending"},
+            {"id": 2, "text": "Done", "status": "done"},
+        ])
+
+        resolved = ms.resolve_stale_tasks(now=1000.0, stale_after=0.0)
+
+        assert resolved == []
+        assert ms.tasks[0]["status"] == "pending"
+        assert ms.tasks[1]["status"] == "done"
+
+    def test_default_threshold_demotes_legacy_active_task(self):
+        # Real-world default: a pre-lifecycle active task (no timestamp) is
+        # demoted to pending on session wake.
+        ms = AgentState(tasks=[{"id": 1, "text": "Legacy active",
+                                "status": "in_progress"}])
+
+        resolved = ms.resolve_stale_tasks()
+
+        assert [r["id"] for r in resolved] == [1]
+        assert ms.tasks[0]["status"] == "pending"
+
+    def test_default_threshold_keeps_fresh_managed_active_task(self):
+        # A managed active task stamped moments ago is younger than the 6h
+        # default threshold and must survive reconciliation untouched.
+        ms = AgentState(tasks=[{
+            "id": 1, "text": "Fresh active", "status": "in_progress",
+            "in_progress_since": __import__("time").time(),
+        }])
+
+        resolved = ms.resolve_stale_tasks()
+
+        assert resolved == []
+        assert ms.tasks[0]["status"] == "in_progress"
+
+
+class TestLosslessTaskUpdates:
+    def test_structured_set_preserves_ids_statuses_and_timestamp(self):
+        ms = AgentState()
+        result = ms.update_tasks(
+            "set",
+            tasks=[
+                {"id": 4, "text": "Done work", "status": "done"},
+                {"id": 9, "text": "Active work", "status": "in_progress", "in_progress_since": 12.0},
+            ],
+        )
+
+        assert result["tasks"] == [
+            {"id": 4, "text": "Done work", "status": "done"},
+            {"id": 9, "text": "Active work", "status": "in_progress"},
+        ]
+        assert ms.tasks[1]["in_progress_since"] == 12.0
+        assert ms._next_task_id == 10
+
+    def test_replace_preserves_task_id_and_status(self):
+        ms = AgentState(tasks=[{"id": 7, "text": "Old", "status": "done"}])
+
+        result = ms.update_tasks("replace", task_id=7, text="New")
+
+        assert result["tasks"] == [{"id": 7, "text": "New", "status": "done"}]
 
 
 class TestRender:
@@ -197,6 +438,31 @@ class TestSerializeDeserialize:
         assert restored.mode == "execute"
         assert len(restored.tasks) == 3
         assert restored.tasks[1]["status"] == "done"
+
+    def test_roundtrip_preserves_single_active_task_after_serial_updates(self):
+        ms = AgentState(mode="execute")
+        ms.update_tasks("set", tasks=["A", "B", "C"])
+        for task_id in (1, 2, 3):
+            ms.update_tasks("in_progress", task_id=task_id)
+
+        restored = AgentState.deserialize(ms.serialize())
+
+        assert [task["status"] for task in restored.tasks] == [
+            "pending", "pending", "in_progress",
+        ]
+
+    def test_transition_repairs_legacy_state_with_multiple_active_tasks(self):
+        legacy = AgentState(tasks=[
+            {"id": 1, "text": "A", "status": "in_progress"},
+            {"id": 2, "text": "B", "status": "done"},
+            {"id": 3, "text": "C", "status": "in_progress"},
+        ], next_task_id=4)
+
+        legacy.update_tasks("in_progress", task_id=3)
+
+        assert [task["status"] for task in legacy.tasks] == [
+            "pending", "done", "in_progress",
+        ]
 
     def test_next_task_id_preserved(self):
         ms = AgentState()
@@ -367,3 +633,16 @@ class TestStates:
         ms.set_state('kanban', 'active', blocked_tools=['drop_db'])
         rendered = ms.render()
         assert 'drop_db' in rendered
+
+    def test_render_omits_update_tasks_hint_when_tool_unavailable(self):
+        ms = AgentState(mode='execute')
+        rendered = ms.render(update_tasks_available=False)
+        assert 'update_tasks' not in rendered
+        assert 'No tasks defined' not in rendered
+
+    def test_render_bookkeeping_line_follows_tool_availability(self):
+        ms = AgentState(mode='execute', tasks=[
+            {'id': 1, 'text': 'Do the thing', 'status': 'pending'},
+        ])
+        assert 'Keep this list current' in ms.render()
+        assert 'Keep this list current' not in ms.render(update_tasks_available=False)

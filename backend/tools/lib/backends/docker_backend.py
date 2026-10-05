@@ -33,6 +33,7 @@ try:
         SANDBOX_NETWORK,
         SANDBOX_IMAGE,
         SANDBOX_MAX_CONTAINERS,
+        SANDBOX_PERSISTENT_CONTAINER_ENABLED,
     )
 except ImportError:
     SANDBOX_WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
@@ -42,10 +43,30 @@ except ImportError:
     SANDBOX_NETWORK = 'bridge'
     SANDBOX_IMAGE = 'evonic-sandbox:latest'
     SANDBOX_MAX_CONTAINERS = 10
+    SANDBOX_PERSISTENT_CONTAINER_ENABLED = True
 
 # Directory containing the evonic helper package (mounted into the container)
 _HELPERS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', 'runpy_helpers'))
 _HELPERS_MOUNT = '/usr/local/lib/python3.11/site-packages/evonic'
+
+# Host artifact registry root: BASE_DIR/shared/agents/<agent_id>/artifacts is
+# the authoritative artifact location served by the web UI / list_artifacts /
+# fetch_artifact.  It is bind-mounted into every sandbox container at
+# /workspace/shared/agents/<agent_id>/artifacts so bash/runpy writes land on
+# the same directory the UI reads (prevents silent artifact divergence).
+#
+# When an agent's workspace differs from BASE_DIR (e.g. an agent whose
+# workspace is agents/<id>/), the sandbox's /workspace mount does NOT include
+# that registry, so /workspace/shared/agents/<id>/artifacts would silently
+# resolve to a DIFFERENT directory than the one the UI serves.  To keep the
+# sandbox view and the host registry consistent we bind-mount the registry into
+# the container at the same relative path.
+_ARTIFACTS_ROOT = os.path.normpath(os.path.join(SANDBOX_WORKSPACE, 'shared', 'agents'))
+
+# Bump when the container mount layout changes so existing containers are
+# recreated with the new mounts (persistent containers survive restarts, so an
+# in-memory version check is required to detect stale mounts).
+_MOUNT_LAYOUT_VERSION = 2
 
 _MAX_OUTPUT_BYTES = 64 * 1024  # 64 KB
 
@@ -124,7 +145,11 @@ def get_pool_status() -> dict:
     """Return current pool state for monitoring/debugging."""
     with _pool_lock:
         containers = []
+        persistent_count = 0
         for sid, info in _containers.items():
+            is_persistent = bool(info.get('persistent'))
+            if is_persistent:
+                persistent_count += 1
             containers.append({
                 'session_id': sid[:12],
                 'container_id': info['container_id'][:12],
@@ -133,49 +158,148 @@ def get_pool_status() -> dict:
                 'created_at': info['created_at'],
                 'last_used': info['last_used'],
                 'workspace': info.get('workspace'),
-                'first_call': info.get('first_call', False)
+                'first_call': info.get('first_call', False),
+                'persistent': is_persistent,
             })
         return {
             'pool_size': len(_containers),
             'max_containers': SANDBOX_MAX_CONTAINERS,
             'idle_timeout': SANDBOX_IDLE_TIMEOUT,
-            'containers': containers
+            'persistent_count': persistent_count,
+            'persistent_enabled': SANDBOX_PERSISTENT_CONTAINER_ENABLED,
+            'containers': containers,
         }
 
 
+def _list_persistent_stopped_containers() -> list:
+    """Return names of evonic-managed persistent containers that are stopped.
+
+    These were left behind by a previous `evonic` process and can be restarted
+    transparently to preserve the agent's installed tools.
+    """
+    ps = _docker('ps', '-a',
+                 '--filter', 'label=evonic.managed=1',
+                 '--filter', 'label=evonic.persistent=1',
+                 '--format', '{{.Names}} {{.State}}')
+    if ps.returncode != 0:
+        return []
+    out = []
+    for line in ps.stdout.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and parts[1].lower().startswith('exited'):
+            out.append(parts[0])
+    return out
+
+
+def _restart_persistent_container(name: str) -> str:
+    """Start a persistent container by name; return new container_id or ''."""
+    res = _docker('start', name)
+    if res.returncode != 0:
+        logger.warning(f'Failed to start persistent container {name}: {res.stderr.strip()}')
+        return ''
+    return res.stdout.strip()
+
+
 def _startup_sweep() -> None:
-    """Destroy evonic containers left over from previous (crashed) processes."""
-    result = _docker('ps', '--filter', 'label=evonic.managed=1', '--format', '{{.Names}}')
+    """Sweep state left over from previous (crashed) processes.
+
+    - Restart stopped persistent containers so their installed tools survive
+      across `evonic` restarts.
+    - Destroy non-persistent orphans (containers not in the in-memory pool).
+    """
+    # 1. Restart persistent stopped containers.
+    for name in _list_persistent_stopped_containers():
+        logger.info(f'Startup sweep — restarting persistent container {name}')
+        new_id = _restart_persistent_container(name)
+        if not new_id:
+            continue
+        # Adopt the container into the pool so subsequent calls hit it without
+        # having to recreate. The pool key is the agent_id (matches the
+        # persistent-key contract in _get_or_create_container); we don't know
+        # agent_id here, but we can set it later from the DockerBackend that
+        # actually uses it. For now, key by container_name.
+        # (Adoption is best-effort: if no DockerBackend picks it up on first
+        # call, _get_or_create_container will re-create it.)
+        with _pool_lock:
+            # Don't clobber an existing pool entry.
+            exists = any(info.get('container_name') == name for info in _containers.values())
+            if not exists:
+                _containers[name] = {
+                    'container_id': new_id,
+                    'container_name': name,
+                    'agent_id': '',
+                    'last_used': time.time(),
+                    'created_at': time.time(),
+                    'first_call': False,
+                    'workspace': None,
+                    'persistent': True,
+                    'pool_key': name,
+                }
+                logger.info(f'Startup sweep — adopted persistent container {name} into pool')
+
+    # 2. Destroy non-persistent orphans (only).
+    result = _docker('ps', '-a',
+                     '--filter', 'label=evonic.managed=1',
+                     '--format', '{{.Names}} {{.State}}')
     if result.returncode != 0:
-        return
-    live_names = {n.strip() for n in result.stdout.splitlines() if n.strip()}
-    if not live_names:
         return
     with _pool_lock:
         known_names = {info['container_name'] for info in _containers.values()}
-    orphans = live_names - known_names
-    for name in orphans:
-        logger.info(f'Startup sweep — destroying orphan container {name}')
-        _docker('rm', '-f', name)
+    for line in result.stdout.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2:
+            continue
+        name, state = parts
+        if name in known_names:
+            continue
+        if state.lower() == 'running':
+            # Non-persistent running container: kill it.
+            logger.info(f'Startup sweep — destroying orphan running container {name}')
+            _docker('rm', '-f', name)
+        elif state.lower().startswith('exited'):
+            # Non-persistent exited container: remove silently.
+            logger.info(f'Startup sweep — removing exited orphan container {name}')
+            _docker('rm', name)
 
 
 def _reconcile_with_docker() -> None:
-    """Cross-check pool against live Docker state; fix divergence in both directions."""
-    result = _docker('ps', '--filter', 'label=evonic.managed=1', '--format', '{{.Names}}')
+    """Cross-check pool against live Docker state; fix divergence in both directions.
+
+    - Orphans that are non-persistent: destroy.
+    - Orphans that are persistent: leave alone (they'll be restarted by
+      _startup_sweep on next process boot, or by manual intervention).
+    - Phantoms (in pool but not in Docker): remove from pool.
+    """
+    result = _docker('ps', '-a',
+                     '--filter', 'label=evonic.managed=1',
+                     '--format', '{{.Names}} {{.Labels}}')
     if result.returncode != 0:
         return
-    live_names = {n.strip() for n in result.stdout.splitlines() if n.strip()}
+    live_names = {}
+    for line in result.stdout.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2:
+            continue
+        name, labels = parts
+        is_persistent = 'evonic.persistent=1' in labels
+        live_names[name] = is_persistent
     with _pool_lock:
-        pool_snapshot = [(sid, info['container_name']) for sid, info in _containers.items()]
-    pool_names = {name for _, name in pool_snapshot}
+        pool_snapshot = [(sid, info['container_name'], bool(info.get('persistent')))
+                         for sid, info in _containers.items()]
+    pool_names = {name for _, name, _ in pool_snapshot}
 
-    # Orphans: in Docker but not in pool → destroy (leftover from a previous crash)
-    for name in live_names - pool_names:
+    # Orphans: in Docker but not in pool → destroy if non-persistent.
+    for name in live_names:
+        if name in pool_names:
+            continue
+        if live_names[name]:
+            logger.warning(f'Reconcile — persistent orphan container {name} not in pool, leaving for startup')
+            continue
         logger.warning(f'Reconcile — orphan container {name} not in pool, destroying')
         _docker('rm', '-f', name)
 
-    # Phantoms: in pool but not in Docker → remove from pool (killed externally)
-    for sid, name in pool_snapshot:
+    # Phantoms: in pool but not in Docker → remove from pool (killed externally).
+    for sid, name, _ in pool_snapshot:
         if name not in live_names:
             logger.warning(f'Reconcile — container {name} vanished externally, removing from pool')
             with _pool_lock:
@@ -191,6 +315,8 @@ def _reaper_loop() -> None:
             stale = []
             with _pool_lock:
                 for sid, info in list(_containers.items()):
+                    if info.get('persistent'):
+                        continue
                     if info['last_used'] < deadline:
                         stale.append(sid)
             for sid in stale:
@@ -207,9 +333,28 @@ def _reaper_loop() -> None:
 
 @atexit.register
 def _cleanup_all() -> None:
+    # 1. Stop persistent containers (do NOT remove) so they survive process exit.
+    with _pool_lock:
+        persistent_entries = [(sid, info) for sid, info in _containers.items()
+                              if info.get('persistent')]
+    for sid, info in persistent_entries:
+        try:
+            _docker('stop', info['container_id'])
+        except Exception:
+            pass
+
+    # 2. Destroy all containers from the pool and remove them. Persistent ones
+    #    are skipped so that `--restart=unless-stopped` left them stopped but
+    #    present on disk, ready for the next `evonic start` to find and start.
     with _pool_lock:
         sids = list(_containers.keys())
     for sid in sids:
+        with _pool_lock:
+            info = _containers.get(sid)
+        if info and info.get('persistent'):
+            logger.info(f'Persistent container for {sid[:12]} kept on disk (stopped, not removed)')
+            _containers.pop(sid, None)
+            continue
         _destroy_container(sid)
 
 
@@ -249,41 +394,93 @@ def _evict_lru() -> None:
     with _pool_lock:
         if not _containers:
             return
-        lru_sid = min(_containers, key=lambda s: _containers[s]['last_used'])
-    logger.warning(f'Max containers reached — evicting LRU session {lru_sid[:12]}')
+        # Prefer evicting non-persistent entries first; persistent ones only evicted if no choice.
+        non_persistent = [s for s, i in _containers.items() if not i.get('persistent')]
+        if non_persistent:
+            lru_sid = min(non_persistent, key=lambda s: _containers[s]['last_used'])
+            is_persistent = False
+        else:
+            lru_sid = min(_containers, key=lambda s: _containers[s]['last_used'])
+            is_persistent = True
+        logger.warning(
+            f'Max containers reached — evicting LRU session {lru_sid[:12]} '
+            f'({"persistent" if is_persistent else "non-persistent"})'
+        )
     _destroy_container(lru_sid)
 
 
-def _get_or_create_container(session_id: str, agent_id: str = '', workspace: str = None) -> tuple:
-    """Return (container_id, None) or (None, error_string)."""
+def _get_or_create_container(
+    session_id: str,
+    agent_id: str = '',
+    workspace: str = None,
+    persistent: bool = False,
+    artifacts_root: str = None,
+) -> tuple:
+    """Return (container_id, None) or (None, error_string).
+
+    When ``persistent`` is True, the container is keyed by ``agent_id`` (not
+    ``session_id``) so every session of the same main agent reuses it,
+    configured with ``--restart=unless-stopped`` and without ``--rm`` so
+    it survives ``evonic`` restarts with all installed state preserved.
+
+    ``artifacts_root`` overrides the host artifact registry root
+    (default ``_ARTIFACTS_ROOT`` = ``<BASE_DIR>/shared/agents``).  A simulation
+    injects its own root so the bind-mounted registry lives *inside* the
+    simulation tree instead of the live one (containment).
+    """
     effective_workspace = os.path.abspath(workspace if workspace else SANDBOX_WORKSPACE)
+    effective_artifacts_root = artifacts_root or _ARTIFACTS_ROOT
     needs_destroy = False
+    pool_key = (agent_id or session_id) if persistent else session_id
     with _pool_lock:
-        if session_id in _containers:
-            info = _containers[session_id]
-            if info.get('workspace') != effective_workspace:
-                logger.info(f'Workspace changed for session {session_id[:12]} — recreating container')
+        if pool_key in _containers:
+            info = _containers[pool_key]
+            if (info.get('workspace') != effective_workspace
+                    or info.get('mount_version') != _MOUNT_LAYOUT_VERSION
+                    or info.get('artifacts_root', _ARTIFACTS_ROOT) != effective_artifacts_root):
+                logger.info(f'Workspace/mount changed for {("persistent " if persistent else "")}{pool_key[:12]} — recreating container')
                 needs_destroy = True
             else:
                 info['last_used'] = time.time()
                 return info['container_id'], None
 
     if needs_destroy:
-        _destroy_container(session_id)
+        _destroy_container(pool_key)
 
     with _pool_lock:
         count = len(_containers)
     if count >= SANDBOX_MAX_CONTAINERS:
         _evict_lru()
 
-    name = _container_name(session_id, agent_id)
+    name = _container_name(pool_key, agent_id if persistent else '')
     effective_workspace = os.path.abspath(workspace if workspace else SANDBOX_WORKSPACE)
     scratch = scratch_dir(agent_id)
     created_at = time.time()
 
+    # Bind-mount the agent's host artifact registry into the container at the
+    # same relative path the sandbox-visible path convention uses, so that
+    # /workspace/shared/agents/<id>/artifacts/ always points at the SAME
+    # directory the web UI / list_artifacts / fetch_artifact serve.  Without
+    # this, agents whose workspace differs from BASE_DIR would silently append
+    # to a sandbox copy the UI never reads (artifact divergence bug).
+    artifacts_mounts = []
+    if agent_id and effective_artifacts_root:
+        registry_dir = os.path.join(effective_artifacts_root, agent_id, 'artifacts')
+        # Skip when the workspace mount already exposes the registry at the
+        # same container path (workspace == BASE_DIR): bind-mounting a
+        # directory onto itself is redundant.
+        ws_relative = os.path.join(effective_workspace, 'shared', 'agents',
+                                   agent_id, 'artifacts')
+        if os.path.realpath(ws_relative) != os.path.realpath(registry_dir):
+            os.makedirs(registry_dir, exist_ok=True)
+            artifacts_mounts = [
+                '-v', f'{registry_dir}:/workspace/shared/agents/{agent_id}/artifacts:rw',
+            ]
+
     cmd = [
         'run', '-d',
-        '--rm',
+        *(('--rm',) if not persistent else ()),
+        '--restart=unless-stopped' if persistent else '--restart=no',
         '--name', name,
         f'--memory={SANDBOX_MEMORY_LIMIT}',
         f'--cpus={SANDBOX_CPU_LIMIT}',
@@ -295,7 +492,9 @@ def _get_or_create_container(session_id: str, agent_id: str = '', workspace: str
         '--label', 'evonic.managed=1',
         '--label', f'evonic.pid={os.getpid()}',
         '--label', f'evonic.created_at={created_at:.0f}',
+        '--label', f'evonic.persistent={1 if persistent else 0}',
         '-v', f'{effective_workspace}:/workspace:rw',
+        *artifacts_mounts,
         '-v', f'{_HELPERS_DIR}:{_HELPERS_MOUNT}:ro',
         '-w', '/workspace',
         '-e', f'SCRATCH={scratch}',
@@ -319,7 +518,7 @@ def _get_or_create_container(session_id: str, agent_id: str = '', workspace: str
 
     container_id = result.stdout.strip()
     with _pool_lock:
-        _containers[session_id] = {
+        _containers[pool_key] = {
             'container_id': container_id,
             'container_name': name,
             'agent_id': agent_id,
@@ -327,6 +526,10 @@ def _get_or_create_container(session_id: str, agent_id: str = '', workspace: str
             'created_at': created_at,
             'first_call': True,
             'workspace': effective_workspace,
+            'mount_version': _MOUNT_LAYOUT_VERSION,
+            'artifacts_root': effective_artifacts_root,
+            'persistent': persistent,
+            'pool_key': pool_key,
         }
     _ensure_reaper_running()
     _ensure_monitor_running()
@@ -395,10 +598,20 @@ class DockerBackend(ExecutionBackend):
     """Executes bash/python inside a persistent Docker container."""
 
     def __init__(self, session_id: str, agent_id: str = '', workspace: str = None,
-                 is_subagent: bool = False, is_explorer: bool = False):
+                 is_subagent: bool = False, is_explorer: bool = False,
+                 container_session_id: str = None, container_workspace: str = None,
+                 persistent: bool = False, artifacts_root: str = None):
         self._session_id = session_id
+        self._container_session_id = container_session_id or session_id
+        self._owns_container = not bool(container_session_id)
         self._agent_id = agent_id
+        self._persistent = persistent
         self._workspace = workspace
+        self._container_workspace = container_workspace or workspace
+        # Injectable host artifact-registry root.  Defaults to the live registry
+        # (<BASE_DIR>/shared/agents); a simulation injects a root inside its
+        # temp tree so the bind-mount below never touches the authoritative copy.
+        self._artifacts_root = artifacts_root or _ARTIFACTS_ROOT
         # Normal sub-agents run with cwd = their scratchpad so their relative-path
         # writes stay out of the project root.  Explorer sub-agents have their own
         # explicit workspace and must NOT be redirected to the scratchpad.  The
@@ -417,9 +630,19 @@ class DockerBackend(ExecutionBackend):
         Paths that fall within the host workspace are translated to their
         /workspace counterpart; all other paths pass through unchanged.
         """
-        effective = os.path.abspath(self._workspace if self._workspace else SANDBOX_WORKSPACE)
-        if path.startswith(effective):
+        effective = os.path.abspath(
+            self._container_workspace if self._container_workspace else SANDBOX_WORKSPACE)
+        if path == effective or path.startswith(effective + os.sep):
             return '/workspace' + path[len(effective):]
+        # The host artifact registry is bind-mounted into the container at
+        # /workspace/shared/agents/<id>/artifacts; translate host registry
+        # paths to that container path (file tools resolve the sandbox path to
+        # the host registry via resolve_workspace_path).
+        if self._agent_id and self._artifacts_root:
+            registry = os.path.join(self._artifacts_root, self._agent_id, 'artifacts')
+            if path == registry or path.startswith(registry + os.sep):
+                rel = path[len(registry):]
+                return f'/workspace/shared/agents/{self._agent_id}/artifacts{rel}'
         return path
 
     def run_bash(self, script: str, timeout: int, env: dict, on_output=None) -> dict:
@@ -428,7 +651,12 @@ class DockerBackend(ExecutionBackend):
         # Abort if a /stop landed in the race window just before this call.
         if process_tracker.is_stop_pending(self._session_id):
             return {'error': 'Execution stopped by user', 'exit_code': -9, 'execution_time': 0.0}
-        container_id, err = _get_or_create_container(self._session_id, agent_id=self._agent_id, workspace=self._workspace)
+        container_id, err = _get_or_create_container(
+            self._container_session_id, agent_id=self._agent_id,
+            workspace=self._container_workspace,
+            persistent=self._persistent,
+            artifacts_root=self._artifacts_root,
+        )
         if err:
             return {'error': err}
 
@@ -472,35 +700,47 @@ class DockerBackend(ExecutionBackend):
         if process_tracker.is_stop_pending(self._session_id):
             return {'error': 'Execution stopped by user', 'exit_code': -9, 'execution_time': 0.0}
         with _pool_lock:
-            info = _containers.get(self._session_id, {})
+            info = _containers.get(self._container_session_id, {})
             is_first = info.get('first_call', False)
 
-        container_id, err = _get_or_create_container(self._session_id, agent_id=self._agent_id, workspace=self._workspace)
+        container_id, err = _get_or_create_container(
+            self._container_session_id, agent_id=self._agent_id,
+            workspace=self._container_workspace,
+            persistent=self._persistent,
+            artifacts_root=self._artifacts_root,
+        )
         if err:
             return {'error': err}
 
         with _pool_lock:
-            info = _containers.get(self._session_id, {})
+            info = _containers.get(self._container_session_id, {})
             is_first = info.get('first_call', False)
 
         result = self._run_code(container_id, code, timeout, env)
 
         if _is_container_gone(result):
-            logger.info(f'Container {container_id[:12]} gone — recreating for session {self._session_id[:12]}')
+            logger.info(
+                f'Container {container_id[:12]} gone — recreating for pool session '
+                f'{self._container_session_id[:12]}')
             with _pool_lock:
-                _containers.pop(self._session_id, None)
-            container_id, err = _get_or_create_container(self._session_id, agent_id=self._agent_id, workspace=self._workspace)
+                _containers.pop(self._container_session_id, None)
+            container_id, err = _get_or_create_container(
+                self._container_session_id, agent_id=self._agent_id,
+                workspace=self._container_workspace,
+                persistent=self._persistent,
+                artifacts_root=self._artifacts_root,
+            )
             if err:
                 return {'error': err}
             with _pool_lock:
-                info = _containers.get(self._session_id, {})
+                info = _containers.get(self._container_session_id, {})
                 is_first = info.get('first_call', False)
             result = self._run_code(container_id, code, timeout, env)
 
         if is_first and 'error' not in result:
             with _pool_lock:
-                if self._session_id in _containers:
-                    _containers[self._session_id]['first_call'] = False
+                if self._container_session_id in _containers:
+                    _containers[self._container_session_id]['first_call'] = False
             helpers = _get_available_helpers(container_id)
             if helpers:
                 result['available_helpers'] = helpers
@@ -593,7 +833,12 @@ class DockerBackend(ExecutionBackend):
     # ------------------------------------------------------------------
 
     def _container_exec_python(self, code: str, timeout: int = 30) -> dict:
-        container_id, err = _get_or_create_container(self._session_id, agent_id=self._agent_id, workspace=self._workspace)
+        container_id, err = _get_or_create_container(
+            self._container_session_id, agent_id=self._agent_id,
+            workspace=self._container_workspace,
+            persistent=self._persistent,
+            artifacts_root=self._artifacts_root,
+        )
         if err:
             return {'error': err}
         cmd = ['exec', '-i', container_id, 'python3', '-']
@@ -813,7 +1058,10 @@ class DockerBackend(ExecutionBackend):
     def docker_cp_out(self, container_path: str, host_path: str) -> dict:
         """Copy a file from the container to the host filesystem."""
         container_id, err = _get_or_create_container(
-            self._session_id, agent_id=self._agent_id, workspace=self._workspace,
+            self._container_session_id, agent_id=self._agent_id,
+            workspace=self._container_workspace,
+            persistent=self._persistent,
+            artifacts_root=self._artifacts_root,
         )
         if err:
             return {'error': err}
@@ -826,7 +1074,10 @@ class DockerBackend(ExecutionBackend):
     def docker_cp_in(self, host_path: str, container_path: str) -> dict:
         """Copy a file from the host filesystem into the container."""
         container_id, err = _get_or_create_container(
-            self._session_id, agent_id=self._agent_id, workspace=self._workspace,
+            self._container_session_id, agent_id=self._agent_id,
+            workspace=self._container_workspace,
+            persistent=self._persistent,
+            artifacts_root=self._artifacts_root,
         )
         if err:
             return {'error': err}
@@ -836,11 +1087,13 @@ class DockerBackend(ExecutionBackend):
         return {'ok': True}
 
     def destroy(self) -> dict:
-        return _destroy_container(self._session_id)
+        if not self._owns_container:
+            return {'result': 'shared_container_retained'}
+        return _destroy_container(self._container_session_id)
 
     def status(self) -> dict:
         with _pool_lock:
-            info = _containers.get(self._session_id)
+            info = _containers.get(self._container_session_id)
         if info:
             return {
                 'backend': 'docker',

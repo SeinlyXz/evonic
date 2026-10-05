@@ -160,7 +160,10 @@ class DiscordChannel(BaseChannel):
         return (
             "You are responding via Discord. Discord supports Markdown, so you may "
             "use **bold**, *italic*, `inline code`, and ```code blocks```. Keep each "
-            "message under 2000 characters; very long answers are split automatically."
+            "message under 2000 characters; very long answers are split automatically.\n"
+            "- Images and files: ALWAYS deliver them with the `send_file` tool so they arrive "
+            "as attachments. NEVER embed images with HTML `<img>` tags or Markdown image "
+            "embeds (`![alt](url)`) - Discord does not render them in chat; they arrive as raw text."
         )
 
     # ------------------------------------------------------------------ lifecycle
@@ -389,7 +392,20 @@ class DiscordChannel(BaseChannel):
 
         # Respect the per-session bot toggle.
         if not db.is_session_bot_enabled(session_id, agent_id=agent_id):
-            db.add_chat_message(session_id, 'user', text or '[Image]', agent_id=agent_id)
+            stored = text or '[Image]'
+            message_id = db.add_chat_message(session_id, 'user', stored, agent_id=agent_id)
+            message_id = message_id if type(message_id) in (int, str) else None
+            from models.chatlog import chatlog_manager
+            chatlog_manager.get(agent_id, session_id).append({
+                'type': 'user', 'session_id': session_id, 'content': stored,
+                'sender_id': user_id, 'message_id': message_id,
+            })
+            from backend.event_stream import event_stream
+            event_stream.emit('message_received', {
+                'agent_id': agent_id, 'session_id': session_id,
+                'external_user_id': user_id, 'channel_id': channel_id,
+                'message': stored, 'message_id': message_id, 'role': 'user',
+            })
             return
 
         # Include the replied-to bot message as context, when present.
@@ -412,6 +428,7 @@ class DiscordChannel(BaseChannel):
         result = agent_runtime.handle_message(
             agent_id, user_id, final_text, channel_id,
             image_url=image_url, video_url=video_url,
+            metadata={"channel_message_id": str(message.id)},
         )
         if result.get('buffered'):
             return  # response will be delivered by the buffering path
@@ -666,10 +683,15 @@ class DiscordChannel(BaseChannel):
             desc = info.get('description', 'This action requires careful consideration.')
             reasons_str = ', '.join(reasons) if reasons else '-'
             tool_args = data.get('tool_args') or {}
-            code_snippet = tool_args.get('script') or tool_args.get('code') or ''
             code_lang = 'bash' if 'script' in tool_args else 'python'
-            if code_snippet and len(code_snippet) > 500:
-                code_snippet = code_snippet[:500] + '\n... (truncated)'
+            # Prefer the focused snippet (window centered on the dangerous line with a
+            # marker) so the risky code is always visible even when the full script is
+            # long. Fall back to head-truncation only when no focus snippet is present.
+            code_snippet = info.get('focus_snippet') or ''
+            if not code_snippet:
+                code_snippet = tool_args.get('script') or tool_args.get('code') or ''
+                if code_snippet and len(code_snippet) > 500:
+                    code_snippet = code_snippet[:500] + '\n... (truncated)'
             code_block = f"\n```{code_lang}\n{code_snippet}\n```" if code_snippet else ''
             source_agent = data.get('source_agent_name')
             header = (f"⚠️ Approval Required (agent: {source_agent})"

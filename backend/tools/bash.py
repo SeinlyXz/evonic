@@ -11,6 +11,7 @@ New backends (E2B, etc.) plug in without changing this file.
 
 import logging
 import re
+from typing import Optional
 
 from backend.tools.lib.exec_backend import registry, validate_env_keys
 
@@ -42,6 +43,28 @@ def _get_long_running_setting() -> bool:
     try:
         from models.db import db
         val = db.get_setting('long_running_guard_enabled', '1')
+        return val == '1'
+    except Exception:
+        return True
+
+
+def _root_fs_scan_guard_enabled() -> bool:
+    """Check whether the root filesystem scan guard is enabled.
+
+    Priority: env var RFS_GUARD_DISABLED=1 force-disables it (config.py).
+    Otherwise, falls back to the 'root_fs_scan_guard_enabled' DB setting
+    (defaults to '1' = enabled; toggled in System > Settings UI).
+    Fails safe to True when config or the database cannot be read.
+    """
+    try:
+        import config as _cfg
+        if not _cfg.ROOT_FS_SCAN_GUARD_ENABLED:
+            return False
+    except Exception:
+        return True
+    try:
+        from models.db import db
+        val = db.get_setting('root_fs_scan_guard_enabled', '1')
         return val == '1'
     except Exception:
         return True
@@ -86,10 +109,11 @@ def execute(agent: dict, args: dict) -> dict:
                 f"Do NOT retry the command directly — it will be blocked again.\n\n"
                 f"REQUIRED: Copy and execute this exact script as your next bash call:\n"
                 f"```\n{lr['run_script']}\n```\n\n"
-                f"Once started, the process is monitored automatically — you will "
-                f"receive a system notification when it finishes, so do NOT poll "
-                f"for completion in a loop. Continue with other work or end your "
-                f"turn. To peek at output meanwhile: {lr['monitor_script']}"
+                f"It runs unwatched — nothing will notify you when it finishes. "
+                f"If the outcome matters, call the `monitor` tool on the job_id "
+                f"returned by that bash call and you will be told once, when "
+                f"your condition is met. Either way do NOT poll in a loop. "
+                f"To peek at output: {lr['monitor_script']}"
             ),
         }
 
@@ -97,11 +121,13 @@ def execute(agent: dict, args: dict) -> dict:
     # Root filesystem scan guard (performance concern, e.g. `find /`, `tree /`).
     # Independent of the safety pipeline on purpose: it fires for ALL agents —
     # including super agents and agents with safety_checker_enabled=0 — because a
-    # full-root scan is a performance hazard regardless of trust. We still honour
-    # `_skip_safety` (set on the post-approval re-execution) so an approved scan
-    # runs instead of re-prompting forever.
+    # full-root scan is a performance hazard regardless of trust. It therefore has its
+    # own switch (RFS_GUARD_DISABLED=1 env var force-disables it; otherwise the
+    # root_fs_scan_guard_enabled DB setting toggled in System > Settings applies),
+    # NOT the per-agent safety checker toggle. We still honour `_skip_safety` (set on
+    # the post-approval re-execution) so an approved scan runs without re-prompting.
     # ------------------------------------------------------------------
-    if not should_skip_safety(agent):
+    if _root_fs_scan_guard_enabled() and not should_skip_safety(agent):
         _rfs = check_root_filesystem_scan(script)
         if _rfs:
             return {
@@ -170,49 +196,49 @@ def execute(agent: dict, args: dict) -> dict:
     backend = registry.get_backend(session_id, agent)
     result = backend.run_bash(script, timeout, env)
 
-    # Track background spawns (guard wrapper or manual tmux/screen/nohup) and
-    # start the completion watcher so the agent is notified when they finish.
+    # Identify background spawns so the agent can attach a monitor to them.
+    # Registration is silent — nothing watches or notifies on its own.
     try:
-        _track_background_spawn(agent, session_id, script, result)
+        job = _track_background_spawn(session_id, script, result, agent)
+        if job:
+            result['background_job'] = {
+                'job_id': job.job_id,
+                'log_file': job.log_file,
+                'kind': job.kind,
+                'hint': ('Running unwatched. Call monitor(action="attach", '
+                         f'target={{"job_id": "{job.job_id}"}}, when={{...}}) '
+                         'if you need to be told when something happens.'),
+            }
     except Exception:
         pass  # Never let job tracking break command execution
     return result
 
 
-def _track_background_spawn(agent: dict, session_id: str, script: str,
-                            result: dict) -> None:
-    """Register a background spawn after successful execution and auto-watch it.
+def _track_background_spawn(session_id: str, script: str, result: dict,
+                            agent: Optional[dict] = None):
+    """Register a background spawn after successful execution.
 
     Handles both long_running_guard wrapper scripts (BYPASS_MARKER) and the
     agent's own tmux/screen/nohup spawns. Only fires when the spawning script
-    itself succeeded — a failed spawn has nothing to watch.
+    itself succeeded — a failed spawn has nothing to track. Returns the
+    BackgroundJob, or None when the script did not spawn anything.
     """
     if result.get('error') or result.get('exit_code', 0) != 0:
-        return
+        return None
 
     from backend.agent_runtime.background_jobs import (
-        parse_wrapper_script, parse_manual_spawn, background_jobs, auto_watch,
+        parse_wrapper_script, parse_manual_spawn, background_jobs,
         snapshot_backend_ctx)
 
-    # Capture which sandbox this ran in so the later completion poll targets the
-    # SAME one (the poll only has agent_id and would otherwise recreate it).
-    backend_ctx = snapshot_backend_ctx(agent)
+    # Capture which sandbox this ran in so a monitor attached later polls the
+    # SAME one (its persisted schedule only has agent_id and would otherwise
+    # resolve — or recreate — a different sandbox).
+    backend_ctx = snapshot_backend_ctx(agent or {})
 
-    _wrap = parse_wrapper_script(script)
-    if _wrap:
-        job = background_jobs.register(session_id, backend_ctx=backend_ctx, **_wrap)
-    else:
-        _spawn = parse_manual_spawn(script)
-        if not _spawn:
-            return
-        job = background_jobs.register(session_id, backend_ctx=backend_ctx, **_spawn)
-
-    auto_watch(
-        job,
-        agent_id=(agent or {}).get('agent_id') or (agent or {}).get('id', ''),
-        external_user_id=(agent or {}).get('user_id'),
-        channel_id=(agent or {}).get('channel_id'),
-    )
+    _spawn = parse_wrapper_script(script) or parse_manual_spawn(script)
+    if not _spawn:
+        return None
+    return background_jobs.register(session_id, backend_ctx=backend_ctx, **_spawn)
 
 
 # ---------------------------------------------------------------------------

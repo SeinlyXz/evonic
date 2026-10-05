@@ -93,6 +93,19 @@ html.dark #plan-modal .recap-prose h5, html.dark #plan-modal .recap-prose h6 { c
 html.dark #plan-modal .recap-prose blockquote { border-left-color: #475569; color: #94a3b8; }
 html.dark #plan-modal .recap-prose code { background: #1e293b; color: #e2e8f0; }
 html.dark #plan-modal .recap-prose pre { background: #1e293b; }
+/* Prevent pre/code overflow in right sidebar panels */
+#agent-state-content pre,
+#agent-state-content code,
+#mobile-agent-state-content pre,
+#mobile-agent-state-content code,
+#SessionStateContent pre,
+#SessionStateContent code,
+#mobile-SessionStateContent pre,
+#mobile-SessionStateContent code {
+    white-space: pre-wrap !important;
+    word-break: break-all;
+    overflow-wrap: break-word;
+}
 </style>
 <div class="sessions-page flex flex-col h-[calc(100vh-3.5rem)]">
 
@@ -193,7 +206,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                 </div>
 
                 <!-- Side panels wrapper (Agent State + Session State stacked vertically) -->
-                <div id="side-panels-wrapper" class="hidden lg:flex flex-col border-l dark:border-gray-600 border-gray-200 bg-white dark:bg-gray-800 flex-shrink-0 min-h-0" style="width: 300px;">
+                <div id="side-panels-wrapper" class="hidden lg:flex flex-col border-l dark:border-gray-600 border-gray-200 bg-white dark:bg-gray-800 flex-shrink-0 min-h-0 min-w-0 overflow-hidden" style="width: 300px;">
                     <!-- Agent State Panel -->
                     <div id="agent-state-panel" class="flex-shrink-0">
                         <div id="AgentState" class="flex justify-between items-center px-4 py-3 border-b border-gray-100 dark:border-gray-600">
@@ -202,7 +215,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm-10.625-2.85a5.5 5.5 0 0 1 9.201-2.465l.312.31H11.767a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V3.535a.75.75 0 0 0-1.5 0v2.033l-.312-.31A7 7 0 0 0 2.627 8.396a.75.75 0 0 0 1.449.39l.611.789Z" clip-rule="evenodd"/></svg>
                             </button>
                         </div>
-                        <div id="agent-state-content" class="overflow-y-auto p-4" style="max-height:200px;">
+                        <div id="agent-state-content" class="overflow-y-auto overflow-x-hidden p-4 break-words" style="max-height:200px;">
                             <p class="text-xs text-gray-400 dark:text-gray-500 italic">No state yet.</p>
                         </div>
                     </div>
@@ -218,7 +231,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                                 </button>
                             </div>
                         </div>
-                        <div id="SessionStateContent" class="flex-1 overflow-y-auto p-4">
+                        <div id="SessionStateContent" class="flex-1 overflow-y-auto overflow-x-hidden p-4 break-words">
                             <div id="SessionContext"></div>
                             <div id="SessionPlan"></div>
                             <div id="SessionSkills"></div>
@@ -251,7 +264,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                 </div>
                 <div class="flex gap-2">
                     <input type="file" id="file-input" class="hidden"
-                           accept="image/*,.pdf,.txt,.md,.log,.json,.yaml,.yml,.xml,.csv,.tsv,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.html,.css,.sql,.sh,.toml,.ini,.zip"
+                           accept="image/*,.pdf,.txt,.md,.log,.json,.yaml,.yml,.xml,.csv,.tsv,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.html,.css,.sql,.sh,.toml,.ini,.zip,.docx,.xlsx,.pptx,.odt,.ods,.odp,.rtf,.epub"
                            onchange="onFileSelected(this)">
                     <button type="button" id="attach-btn" onclick="document.getElementById('file-input').click()"
                             class="hidden p-2.5 text-gray-400 hover:text-indigo-500 transition-colors flex-shrink-0" title="Attach file">
@@ -407,7 +420,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                 </button>
             </div>
         </div>
-        <div id="mobile-SessionStateContent" class="flex-1 overflow-y-auto p-4">
+        <div id="mobile-SessionStateContent" class="flex-1 overflow-y-auto overflow-x-hidden p-4 break-words">
             <div id="mobile-SessionContext"></div>
             <div id="mobile-SessionPlan"></div>
             <div id="mobile-SessionSkills"></div>
@@ -422,82 +435,129 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm-10.625-2.85a5.5 5.5 0 0 1 9.201-2.465l.312.31H11.767a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V3.535a.75.75 0 0 0-1.5 0v2.033l-.312-.31A7 7 0 0 0 2.627 8.396a.75.75 0 0 0 1.449.39l.611.789Z" clip-rule="evenodd"/></svg>
                 </button>
             </div>
-            <div id="mobile-agent-state-content" class="p-4">
+            <div id="mobile-agent-state-content" class="p-4 overflow-x-hidden break-words">
                 <p class="text-xs text-gray-400 dark:text-gray-500 italic">No state yet.</p>
             </div>
         </div>
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=59"></script>
-<script src="{{ url_for('static', filename='js/agent-state.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=64"></script>
+<script src="{{ url_for('static', filename='js/agent-state.js') }}?v=7"></script>
 <script>
 let allSessions = [];
 let currentSessionId = null;
 let currentAgentId = null;
 let currentAttachmentsEnabled = true;
-let lastChatTs = 0;
-let pollTimer = null;
 let sidebarPollTimer = null;
 let _selectGeneration = 0;  // incremented on every selectSession call; guards stale async renders
 let _sseThinkingId = null;  // active thinking bubble from SSE
-let _sseCompleted = false;  // true after SSE done fires, prevents duplicate timeline rendering on poll
+let _sessionTurn = { phase: 'idle', lastSeq: 0, terminalSeq: 0 };
 let _pendingIntermediateResponse = null;  // queued intermediate response, shown when next thinking event starts
-let _pollThinkingId = null;  // active thinking bubble from incremental poll (persists across calls)
-let _pollInFlight = false;  // guard against concurrent pollNewMessages calls
+const _seenRealtimeMessages = new Set();
+const _optimisticMessages = new Map();
+
+function newClientMessageId() {
+    return (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function handleRealtimeMessage(data, sessionId) {
+    if (currentSessionId !== sessionId || !data || !data.message_id) return;
+    const key = `${sessionId}:${data.message_id}`;
+    if (_seenRealtimeMessages.has(key)) return;
+    _seenRealtimeMessages.add(key);
+    let $message = data.client_message_id && _optimisticMessages.get(data.client_message_id);
+    const optimistic = $message;
+    if (optimistic) {
+        optimistic.attr('data-message-id', data.message_id);
+        _optimisticMessages.delete(data.client_message_id);
+    } else {
+        $message = chatUI.appendMessage(data.role || 'user', data.content || data.message || '', {
+            metadata: data.metadata || {},
+            timestamp: data.timestamp ? new Date(data.timestamp).toISOString() : null,
+        }).attr('data-message-id', data.message_id);
+    }
+    if ((data.role || 'user') === 'user' && data.turn_id) {
+        chatUI.markLastUserBubbleQueued($message);
+    }
+    chatUI.scrollToBottom();
+}
 let _chatPerspective = 'A';  // 'A' (right) or 'B' (left) — controls which side your messages appear on
 let _sessionsAbort = null;  // AbortController for the in-flight /api/sessions load; supersede on new call
 
-// ==================== Reasoning State (refresh recovery) ====================
-// Save { sessionId, lastSeq } to sessionStorage while a turn is in progress so
-// that on page refresh the client can replay the trace and resume from the right seq.
-
-const _REASONING_KEY = 'evonic_active_reasoning';
 const _LAST_SESSION_KEY = 'evonic_last_session';
-
-function saveReasoningState(sessionId, lastSeq) {
-    try { sessionStorage.setItem(_REASONING_KEY, JSON.stringify({ sessionId, lastSeq })); } catch (_) {}
-}
-function clearReasoningState() {
-    try { sessionStorage.removeItem(_REASONING_KEY); } catch (_) {}
-}
-function loadReasoningState() {
-    try { return JSON.parse(sessionStorage.getItem(_REASONING_KEY) || 'null'); } catch (_) { return null; }
-}
 
 // ==================== SSE Event Dispatcher (module-level) ====================
 // Kept outside connectSessionStream so selectSession can call it during replay.
 
+function _beginSessionTurn(startTs = null, anchor = null) {
+    if (_sessionTurn.phase === 'active') return _sseThinkingId;
+    _sessionTurn.phase = 'active';
+    _sessionTurn.terminalSeq = 0;
+    if (!_sseThinkingId) {
+        _sseThinkingId = chatUI.showThinkingIndicator(startTs, anchor);
+    }
+    showStopBtn(true);
+    return _sseThinkingId;
+}
+
+function _completeSessionTurn(seq = 0, thinkingDuration = null) {
+    if (_sessionTurn.phase === 'complete') return false;
+    _sessionTurn.phase = 'complete';
+    _sessionTurn.terminalSeq = Math.max(_sessionTurn.terminalSeq, seq || 0, _sessionTurn.lastSeq);
+    showStopBtn(false);
+    if (_sseThinkingId) {
+        chatUI.finalizeThinkingBubble(_sseThinkingId, thinkingDuration);
+        _sseThinkingId = null;
+    }
+    return true;
+}
+
+function formatWhatsAppRestriction(content, metadata) {
+    const ends = metadata && metadata.reachout_enforcement_ends;
+    if (!ends) return content || '';
+    const date = new Date(ends);
+    if (Number.isNaN(date.getTime())) return content || '';
+    return (content || '') + '\nLocal time: ' + date.toLocaleString() + ' (' + ends + ')';
+}
+
 function dispatchSessionEvent(evtName, data, sessionId) {
     if (currentSessionId !== sessionId) return;
-    if (evtName === 'thinking') {
-        showStopBtn(true);
+    const seq = data.seq || 0;
+    if (_sessionTurn.phase === 'complete' && seq && seq <= _sessionTurn.terminalSeq) return;
+    if (evtName === 'agent_busy_changed') {
+        const ownsSession = data.session_id === sessionId ||
+            (data.session_ids || []).includes(sessionId);
+        if (data.busy && ownsSession) _beginSessionTurn(data.timestamp || null);
+    } else if (evtName === 'turn_queued') {
+        _beginSessionTurn(data.timestamp || null);
+    } else if (evtName === 'turn_begin') {
+        _beginSessionTurn(data.ts || null);
+    } else if (evtName === 'thinking') {
+        _beginSessionTurn();
         // Clear any pending intermediate response — it was already shown inside the bubble
         // via a response_chunk timeline entry. We no longer split the bubble.
         if (_pendingIntermediateResponse !== null) {
             _pendingIntermediateResponse = null;
         }
         if (!_sseThinkingId) {
-            // Finalize any orphaned poll bubble before SSE takes over
-            if (_pollThinkingId) {
-                chatUI.finalizeThinkingBubble(_pollThinkingId);
-                _pollThinkingId = null;
-            }
             _sseThinkingId = chatUI.showThinkingIndicator();
         }
         chatUI.appendTimelineEntry(_sseThinkingId, {type: 'thinking', content: data.content});
     } else if (evtName === 'tool_call_started') {
-        if (!_sseThinkingId) {
-            _sseThinkingId = chatUI.showThinkingIndicator();
-        }
+        _beginSessionTurn();
         chatUI.appendTimelineEntry(_sseThinkingId, {type: 'tool_call', tool: data.tool, args: data.args, param_types: data.param_types || {}});
     } else if (evtName === 'tool_executed') {
-        if (!_sseThinkingId) {
-            _sseThinkingId = chatUI.showThinkingIndicator();
-        }
+        _beginSessionTurn();
         chatUI.appendTimelineEntry(_sseThinkingId, {type: 'tool_result', tool: data.tool, result: data.result, error: data.error});
     } else if (evtName === 'state:changed') {
         document.dispatchEvent(new CustomEvent('evonic:state-changed', {detail: data}));
+        document.dispatchEvent(new CustomEvent('evonic:agent-state-changed', {detail: data}));
+    } else if (evtName === 'state_changed') {
+        // Context-usage persistence emits this underscore-form event. It has no
+        // snapshot, so refresh the session-scoped state from the API.
         document.dispatchEvent(new CustomEvent('evonic:agent-state-changed', {detail: data}));
     } else if (evtName === 'response_chunk') {
         if (data.content && _sseThinkingId) {
@@ -525,14 +585,17 @@ function dispatchSessionEvent(evtName, data, sessionId) {
         }
         _sseThinkingId = chatUI.showThinkingIndicator();
         chatUI.markQueuedAsDelivered();
+    } else if (evtName === 'whatsapp_restriction_warning') {
+        chatUI.appendMessage('system', formatWhatsAppRestriction(data.content, data.metadata),
+            {metadata: data.metadata || {}});
+    } else if (evtName === 'done') {
+        _completeSessionTurn(seq, data.thinking_duration);
     } else if (evtName === 'session_clear') {
-        // Clear chat history when session is cleared, reset cursor so poll reloads
-        lastChatTs = 0;
+        // Clear the rendered history when this session is reset.
         chatUI.clearContainer();
     }
 }
 
-const POLL_INTERVAL = 2000;       // poll chat every 2s
 const SIDEBAR_POLL_INTERVAL = 5000; // refresh sidebar every 5s
 
 const chatUI = new ChatUI($('#chat-messages'), {
@@ -585,13 +648,10 @@ function scrollChatToBottom() {
 }
 
 // Render a flat list of JSONL entries into the chat container.
-// Pass { persistent: true } when called from incremental polling so the thinking
-// bubble persists across multiple poll calls within a single turn.
-function renderEntries(entries, { persistent = false } = {}) {
-    let thinkingId = persistent ? _pollThinkingId : null;
+function renderEntries(entries) {
+    let thinkingId = null;
     let entryCount = 0;
     for (const entry of entries) {
-        if (entry.ts > lastChatTs) lastChatTs = entry.ts;
         const type = entry.type;
         entryCount++;
         if (type === 'user') {
@@ -605,7 +665,11 @@ function renderEntries(entries, { persistent = false } = {}) {
                 _pendingFileUpload = false;
                 continue;
             }
-            chatUI.appendMessage('user', entry.content || '', {timestamp: entry.ts ? new Date(entry.ts).toISOString() : null, metadata: entry.metadata});
+            const $el = chatUI.appendMessage('user', entry.content || '', {timestamp: entry.ts ? new Date(entry.ts).toISOString() : null, metadata: entry.metadata});
+            if (entry.message_id) {
+                $el.attr('data-message-id', entry.message_id);
+                _seenRealtimeMessages.add(`${currentSessionId}:${entry.message_id}`);
+            }
         } else if (type === 'thinking') {
             if (!thinkingId) thinkingId = chatUI.showThinkingIndicator();
             chatUI.appendTimelineEntry(thinkingId, {type: 'thinking', content: entry.content});
@@ -639,6 +703,10 @@ function renderEntries(entries, { persistent = false } = {}) {
                     console.log('[renderEntries] FINAL skipped (matched _pendingSlashResponse from SSE done)');
                 } else {
                     const $el = chatUI.appendMessage('assistant', entry.content, {timestamp: entry.ts ? new Date(entry.ts).toISOString() : null, metadata: meta});
+                    if (entry.message_id) {
+                        $el.attr('data-message-id', entry.message_id);
+                        _seenRealtimeMessages.add(`${currentSessionId}:${entry.message_id}`);
+                    }
                     console.log('[renderEntries] FINAL appendMessage returned element:', !!$el.length);
                 }
             } else {
@@ -653,21 +721,21 @@ function renderEntries(entries, { persistent = false } = {}) {
                 _pendingSlashResponse = null;
                 continue;
             }
-            chatUI.appendMessage('system', entry.content || '');
+            const meta = entry.metadata || {};
+            const content = meta.whatsapp_restriction_key
+                ? formatWhatsAppRestriction(entry.content, meta)
+                : (entry.content || '');
+            chatUI.appendMessage('system', content, {metadata: meta});
         } else if (type === 'turn_end') {
             if (thinkingId) { chatUI.finalizeThinkingBubble(thinkingId, entry.thinking_duration); thinkingId = null; }
         }
     }
-    if (persistent) {
-        _pollThinkingId = thinkingId;  // save for next incremental poll call
-    } else if (thinkingId) {
-        // In-progress turn detected: remove the incomplete bubble so the event-buffer
-        // replay (dispatchSessionEvent / restoreActiveReasoning) can create a fresh one
-        // without duplicating the entries that are already in the buffer.
+    if (thinkingId) {
+        // Active telemetry is rebuilt from the durable stream after history loads.
         console.warn('[renderEntries] removing orphan thinking indicator at end, thinkingId:', thinkingId);
         chatUI.removeThinkingIndicator(thinkingId);
     }
-    console.log('[renderEntries] processed', entryCount, 'entries, persistent:', persistent, 'orphanThinking:', !!thinkingId);
+    console.log('[renderEntries] processed', entryCount, 'entries, orphanThinking:', !!thinkingId);
 }
 
 // Render a history message whose timeline should be split into per-iteration bubbles
@@ -807,21 +875,17 @@ document.addEventListener('click', e => {
 
 async function selectSession(sessionId) {
     const gen = ++_selectGeneration;  // capture this call's generation; stale callbacks check against it
-    stopPolling();
     disconnectSessionStream();
-    // Dispose any poll Turn that wasn't finalized — clears its setInterval/setTimeout
-    if (_pollThinkingId) { chatUI.removeThinkingIndicator(_pollThinkingId); _pollThinkingId = null; }
     // Dispose all remaining active Turns and clear the container
     chatUI.clear();
     currentSessionId = sessionId;
     currentAgentId = null;
-    lastChatTs = 0;
     _sseThinkingId = null;
-    _sseCompleted = false;
+    _sessionTurn = { phase: 'idle', lastSeq: 0, terminalSeq: 0 };
     _pendingIntermediateResponse = null;
-    _pollThinkingId = null;
-    _pollInFlight = false;
     _pendingSlashResponse = null;
+    _pendingReplyText = null;
+    _pendingFileUpload = false;
     renderSessionList();
 
     const res = await fetch(`/api/sessions/${sessionId}`);
@@ -837,6 +901,7 @@ async function selectSession(sessionId) {
             `<div class="flex items-center justify-center h-full text-gray-400 text-sm px-6 text-center">${esc(msg)}</div>`;
         return;
     }
+    let realtimeCursor = Number(res.headers.get('X-Evonic-Realtime-Cursor') || 0);
     const data = await res.json();
     if (data.error) return;
 
@@ -881,6 +946,10 @@ async function selectSession(sessionId) {
             const jr = await fetch(`/api/agents/${encodeURIComponent(currentAgentId)}/chat?${qs}`);
             if (_selectGeneration !== gen) return;  // stale — another selectSession started
             if (jr.ok) {
+                realtimeCursor = Math.max(
+                    realtimeCursor,
+                    Number(jr.headers.get('X-Evonic-Realtime-Cursor') || 0),
+                );
                 const jd = await jr.json();
                 if (_selectGeneration !== gen) return;
                 const entries = jd.entries || [];
@@ -905,8 +974,7 @@ async function selectSession(sessionId) {
         } catch (e) {
             console.error('[selectSession] JSONL fetch/parse error, falling back to SQLite:', e);
             // Clear any partial render before falling back to SQLite
-            container.innerHTML = '';
-            _pollThinkingId = null;
+            chatUI.clear();
             _renderSqliteMessages(messages, container);
         }
     } else {
@@ -928,41 +996,8 @@ async function selectSession(sessionId) {
     clearAgentStatePanel();
     loadAgentState();
 
-    // Always check for any in-progress reasoning trace on the server.
-    // This is a fast in-memory buffer lookup — no I/O cost.
-    // Replay found events so the thinking bubble is restored immediately,
-    // then start SSE from resumeSeq so the backend only delivers the gap
-    // between this fetch and the moment the SSE subscription is registered.
-    let resumeSeq = 0;
-    if (currentAgentId) {
-        try {
-            const r = await fetch(`/api/agents/${encodeURIComponent(currentAgentId)}/chat/events?session_id=${encodeURIComponent(sessionId)}&after=0`);
-            if (_selectGeneration !== gen) return;  // stale — another selectSession started
-            if (r.ok) {
-                const body = await r.json();
-                if (_selectGeneration !== gen) return;
-                const events = body.events || [];
-                console.log('[selectSession] event-buffer replay: got', events.length, 'events, types:', events.map(e=>e.event).join(','));
-                // Only replay the current in-progress turn: skip everything up to the last 'done'
-                const lastDoneIdx = events.reduce((idx, ev, i) => ev.event === 'done' ? i : idx, -1);
-                const replayEvents = lastDoneIdx >= 0 ? events.slice(lastDoneIdx + 1) : events;
-                console.log('[selectSession] event-buffer replay: lastDoneIdx=', lastDoneIdx, 'replayEvents=', replayEvents.length);
-                if (replayEvents.length) {
-                    for (const ev of replayEvents) {
-                        if (ev.seq > resumeSeq) resumeSeq = ev.seq;
-                        dispatchSessionEvent(ev.event, ev.data, sessionId);
-                    }
-                    chatUI.scrollToBottom();
-                } else {
-                    clearReasoningState();
-                }
-            }
-        } catch (_) {}
-    }
-
-    // Connect SSE for real-time thinking events, then start polling.
-    connectSessionStream(sessionId, resumeSeq);
-    startPolling();
+    // The durable stream restores queued/running state and any active telemetry.
+    connectSessionStream(sessionId, realtimeCursor);
 }
 
 function _renderSqliteMessages(messages, container) {
@@ -975,91 +1010,22 @@ function _renderSqliteMessages(messages, container) {
         if (msg.role === 'assistant' && msg.metadata?.send_intermediate_responses && msg.metadata?.timeline?.length) {
             renderInterleavedHistory(msg);
         } else {
-            chatUI.appendMessage(msg.role, msg.content, {timestamp: msg.created_at, metadata: msg.metadata});
+            const $el = chatUI.appendMessage(msg.role, msg.content, {timestamp: msg.created_at, metadata: msg.metadata});
+            if (msg.id) {
+                $el.attr('data-message-id', msg.id);
+                _seenRealtimeMessages.add(`${currentSessionId}:${msg.id}`);
+            }
         }
     }
     container.scrollTop = container.scrollHeight;
 }
 
-// ==================== Real-time Polling ====================
-
-function startPolling() {
-    stopPolling();
-    pollTimer = setInterval(pollNewMessages, POLL_INTERVAL);
-}
-
-function stopPolling() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-}
-
-async function pollNewMessages() {
-    if (!currentSessionId || !currentAgentId) return;
-    if (_pollInFlight) return;
-    _pollInFlight = true;
-    const pollGen = _selectGeneration;  // capture generation; discard result if session changed
-    try {
-        const qs = `session_id=${encodeURIComponent(currentSessionId)}&after_ts=${lastChatTs}`;
-        const res = await fetch(`/api/agents/${encodeURIComponent(currentAgentId)}/chat?${qs}`);
-        if (_selectGeneration !== pollGen) return;  // session changed while fetch was in-flight
-        const data = await res.json();
-        if (_selectGeneration !== pollGen) return;
-        const entries = data.entries || [];
-        if (!entries.length) return;
-
-        const wasAtBottom = chatUI.isNearBottom(80);
-
-        // If SSE is active, only act when the turn has actually ended.
-        // Mid-turn entries (thinking, tool_call, tool_output) are already shown live
-        // via SSE — finalizing the bubble early would split it into multiple bubbles.
-        const turnEnded = entries.some(e => e.type === 'final' || e.type === 'turn_end' || e.type === 'error');
-        if (_sseThinkingId || _sseCompleted) {
-            if (!turnEnded) {
-                // Turn still in progress — advance cursor only for non-user/system entries.
-                // User/system messages (e.g. injected notifications) must NOT have their
-                // timestamps advanced here; they would otherwise fall below lastChatTs and
-                // be silently dropped when the turn eventually ends.
-                for (const e of entries) {
-                    if (e.type !== 'user' && e.type !== 'system' && e.ts > lastChatTs) lastChatTs = e.ts;
-                }
-                return;
-            }
-            clearReasoningState();
-            if (_sseThinkingId) {
-                chatUI.finalizeThinkingBubble(_sseThinkingId);
-                _sseThinkingId = null;
-            }
-            // Finalize any poll bubble that was created before SSE started — do not orphan it
-            if (_pollThinkingId) {
-                chatUI.finalizeThinkingBubble(_pollThinkingId);
-            }
-            _sseCompleted = false;
-            _pollThinkingId = null;
-            // Only render final/user entries — SSE already showed the thinking+tool details
-            const finalEntries = entries.filter(e => e.type === 'final' || e.type === 'user' || e.type === 'error' || e.type === 'system');
-            renderEntries(finalEntries);
-            // Still advance lastChatTs for all entries
-            for (const e of entries) { if (e.ts > lastChatTs) lastChatTs = e.ts; }
-        } else {
-            renderEntries(entries, { persistent: true });
-        }
-
-        if (wasAtBottom) chatUI.scrollToBottom();
-
-        // Refresh summary when new messages arrive
-        loadSessionSummary();
-        loadAgentState();
-    } catch (e) {
-        // Silently ignore poll errors
-    } finally {
-        _pollInFlight = false;
-    }
-}
-
 // ==================== SSE Stream ====================
 
 let _sessionEs = null;
+let _sessionHistoryResyncing = false;
 
-// afterSeq: last seq the client already has from replay; SSE pre-fills only the gap above it.
+// afterSeq is the history snapshot's durable journal cursor.
 function connectSessionStream(sessionId, afterSeq = 0) {
     // Close the old EventSource if any, but do NOT finalize the thinking bubble —
     // it may have been restored by the replay in selectSession and must be kept alive.
@@ -1068,7 +1034,8 @@ function connectSessionStream(sessionId, afterSeq = 0) {
         _sessionEs = null;
     }
     if (!currentAgentId) return;
-    const url = `/api/realtime/stream?chat=1&agent_id=${encodeURIComponent(currentAgentId)}&session_id=${encodeURIComponent(sessionId)}&after=${afterSeq}`;
+    afterSeq = Math.max(afterSeq, _sessionTurn.lastSeq, _sessionTurn.terminalSeq);
+    const url = `/api/realtime/stream?chat=1&cursor_version=2&snapshot=1&agent_id=${encodeURIComponent(currentAgentId)}&session_id=${encodeURIComponent(sessionId)}&after=${afterSeq}`;
     // LOG-A: track every connect/reconnect and whether _lastSeq will reset
     console.log(`[sse] connect afterSeq=${afterSeq} sseThinkingId=${!!_sseThinkingId} url=${url}`);
     if (afterSeq === 0 && _sseThinkingId) {
@@ -1077,69 +1044,23 @@ function connectSessionStream(sessionId, afterSeq = 0) {
     const es = new EventSource(url);
     _sessionEs = es;
 
-    let _lastSeq = afterSeq;  // start from where the replay left off
-    let _fillingGap = false;
-    const _gapQueue = [];
-    let _dispatchCount = 0; // LOG-B: count events dispatched per connection
-
-    async function fillGap(fromSeq, upToSeq) {
-        try {
-            const res = await fetch(`/api/agents/${encodeURIComponent(currentAgentId)}/chat/events?session_id=${encodeURIComponent(sessionId)}&after=${fromSeq}&up_to=${upToSeq}`);
-            const body = await res.json();
-            const gapEvents = body.events || [];
-            console.log(`[gap-fill] from=${fromSeq} to=${upToSeq} got ${gapEvents.length} events`);
-            for (const ev of gapEvents) {
-                if (ev.seq <= _lastSeq) continue;
-                _lastSeq = ev.seq;
-                dispatchSessionEvent(ev.event, ev.data, sessionId);
-            }
-        } catch (err) {
-            console.warn('[gap-fill] failed:', err);
-            _lastSeq = upToSeq - 1;
-        }
-    }
+    let _lastSeq = afterSeq;
 
     function handleSeq(evtName, data, dispatch) {
         const seq = data.seq || 0;
-        if (_fillingGap) {
-            _gapQueue.push({evtName, data});
-            return;
-        }
-        // Skip events already covered by the replay or a previous gap-fill
         if (seq && seq <= _lastSeq) {
-            console.log(`[sse] dedup skip ${evtName} seq=${seq} _lastSeq=${_lastSeq}`);
-            return;
-        }
-        if (seq && _lastSeq > 0 && seq > _lastSeq + 1) {
-            console.warn(`[sse] gap detected ${evtName} seq=${seq} _lastSeq=${_lastSeq} gap=${seq-_lastSeq-1}`);
-            _fillingGap = true;
-            _gapQueue.push({evtName, data});
-            fillGap(_lastSeq, seq).then(() => {
-                _fillingGap = false;
-                console.log(`[gap-fill] draining queue len=${_gapQueue.length}`);
-                while (_gapQueue.length > 0) {
-                    const item = _gapQueue.shift();
-                    const itemSeq = item.data.seq || 0;
-                    if (itemSeq && itemSeq <= _lastSeq) continue;
-                    if (itemSeq) _lastSeq = itemSeq;
-                    dispatchSessionEvent(item.evtName, item.data, sessionId);
-                }
-            });
             return;
         }
         if (seq) _lastSeq = seq;
-        // LOG-B: count and log every event actually dispatched
-        _dispatchCount++;
-        console.log(`[sse] dispatch #${_dispatchCount} ${evtName} seq=${seq} _lastSeq=${_lastSeq} sseId=${!!_sseThinkingId}`);
+        if (seq) _sessionTurn.lastSeq = Math.max(_sessionTurn.lastSeq, seq);
         dispatch(data);
     }
 
-    for (const evtName of ['thinking', 'tool_call_started', 'tool_executed', 'state:changed', 'response_chunk', 'turn_split', 'session_clear', 'approval_required', 'approval_resolved']) {
+    for (const evtName of ['agent_busy_changed', 'turn_queued', 'turn_begin', 'thinking', 'tool_call_started', 'tool_executed', 'state:changed', 'state_changed', 'response_chunk', 'turn_split', 'whatsapp_restriction_warning', 'session_clear', 'approval_required', 'approval_resolved']) {
         es.addEventListener(evtName, e => {
             if (currentSessionId !== sessionId) return;
             const data = JSON.parse(e.data);
-            // Normalize raw SSE field names to match gap-fill/replay format so
-            // dispatchSessionEvent receives consistent field names regardless of path.
+            // Normalize legacy field aliases before dispatching.
             if (evtName === 'tool_call_started') {
                 data.tool = data.tool_name || data.tool;
                 data.args = data.tool_args || data.args;
@@ -1152,14 +1073,34 @@ function connectSessionStream(sessionId, afterSeq = 0) {
         });
     }
 
+    es.addEventListener('message_received', e => {
+        if (currentSessionId !== sessionId) return;
+        const data = JSON.parse(e.data);
+        handleSeq('message_received', data, d => handleRealtimeMessage(d, sessionId));
+    });
+
+    es.addEventListener('history_resync_required', () => {
+        if (_sessionEs !== es || currentSessionId !== sessionId || _sessionHistoryResyncing) return;
+        _sessionHistoryResyncing = true;
+        es.close();
+        _sessionEs = null;
+        selectSession(sessionId).finally(() => { _sessionHistoryResyncing = false; });
+    });
+
+    es.addEventListener('auth_expired', () => {
+        es.close();
+        window.location.href = '/login';
+    });
+
     es.addEventListener('done', (e) => {
         if (currentSessionId !== sessionId) return;
-        showStopBtn(false);
-        clearReasoningState();
 
         // Parse event data — slash commands carry response text directly
         let payload = {};
         try { payload = JSON.parse(e.data); } catch(_) {}
+        const doneSeq = payload.seq || 0;
+        _sessionTurn.lastSeq = Math.max(_sessionTurn.lastSeq, doneSeq);
+        if (!_completeSessionTurn(doneSeq, payload.thinking_duration)) return;
 
         if (payload.slash_command && payload.response) {
             // Slash command response — finalize any thinking bubble and display the response.
@@ -1175,7 +1116,7 @@ function connectSessionStream(sessionId, afterSeq = 0) {
                 _sseThinkingId = null;
             }
             if (!alreadyRendered) {
-                // Not rendered yet — display the response and mark it so POST/poll skip it
+                // Not rendered yet — display it and let message IDs deduplicate later delivery.
                 const msgOpts = {};
                 if (payload.attachment_info) {
                     msgOpts.metadata = { attachment_info: payload.attachment_info };
@@ -1185,17 +1126,7 @@ function connectSessionStream(sessionId, afterSeq = 0) {
                 _pendingSlashResponse = payload.response;
             }
             // If alreadyRendered is true: POST handler already rendered + set _pendingSlashResponse.
-            // Leave _pendingSlashResponse as-is so the poll can still dedup the stored entry.
-            _sseCompleted = true;
-            // Reconnect so we're ready for the next incoming message
-            es.close();
-            if (_sessionEs === es) {
-                _sessionEs = null;
-                const doneGen = _selectGeneration;
-                setTimeout(() => {
-                    if (currentSessionId === sessionId && _selectGeneration === doneGen) connectSessionStream(sessionId);
-                }, 500);
-            }
+            // Leave _pendingSlashResponse set for a later history refresh.
             return;
         }
 
@@ -1214,47 +1145,32 @@ function connectSessionStream(sessionId, afterSeq = 0) {
         }
         // Render the final response from the done event. The SSE done event
         // already carries the response text (from turn_complete). Rendering it
-        // here means the chat bubble appears instantly rather than waiting for
-        // the next poll tick. This is also the ONLY path that works for
+        // here means the chat bubble appears instantly without a history refresh.
+        // This is also the ONLY path that works for
         // explorer sub-agent sessions — their JSONL chatlog lives under the
-        // parent's agent ID, so the poll's chatlog_manager.get(agent_id, ...)
+        // parent's agent ID, so the history endpoint's chatlog lookup
         // lookup returns nothing (see routes/agents.py api_chat_jsonl).
-        if (payload.response) {
+        const responseSeen = payload.message_id &&
+            _seenRealtimeMessages.has(`${sessionId}:${payload.message_id}`);
+        if (payload.response && !responseSeen) {
             const wasAtBottom = chatUI.isNearBottom(80);
             const msgOpts = {};
             if (payload.attachment_info) {
                 msgOpts.metadata = { attachment_info: payload.attachment_info };
             }
-            chatUI.appendMessage('assistant', payload.response, msgOpts);
+            const $el = chatUI.appendMessage('assistant', payload.response, msgOpts);
+            if (payload.message_id) {
+                $el.attr('data-message-id', payload.message_id);
+                _seenRealtimeMessages.add(`${sessionId}:${payload.message_id}`);
+            }
             if (wasAtBottom) requestAnimationFrame(() => chatUI.scrollToBottom());
             _pendingSlashResponse = payload.response;
-        }
-        _sseCompleted = true;
-        // Reconnect so we're ready for the next incoming message
-        es.close();
-        if (_sessionEs === es) {
-            _sessionEs = null;
-            const doneGen = _selectGeneration;
-            setTimeout(() => {
-                if (currentSessionId === sessionId && _selectGeneration === doneGen) connectSessionStream(sessionId);
-            }, 500);
         }
     });
 
     es.onerror = () => {
-        // SSE dropped — reconnect after a short delay if session is still active.
-        // Do NOT clear reasoning state here: the turn may still be running,
-        // and the saved state lets a page refresh recover properly.
-        // Do NOT finalize the thinking bubble — keep _sseThinkingId alive so the
-        // reconnected stream continues appending to the same bubble.
-        _pendingIntermediateResponse = null;
-        es.close();
-        if (_sessionEs === es) {
-            _sessionEs = null;
-            setTimeout(() => {
-                if (currentSessionId === sessionId) connectSessionStream(sessionId);
-            }, 2000);
-        }
+        // Native EventSource reconnects with Last-Event-ID. The durable journal
+        // fills the disconnect window without replacing the active bubble.
     };
 }
 
@@ -1282,9 +1198,9 @@ function startSidebarPolling() {
 
 // ==================== Admin Reply ====================
 
-let _pendingReplyText = null; // text of optimistically-rendered reply; suppressed in poll
-let _pendingFileUpload = false; // skip next user entry in poll (file upload dedup)
-let _pendingSlashResponse = null; // content of just-rendered slash command response; suppressed in poll
+let _pendingReplyText = null; // fallback content dedup for optimistic replies
+let _pendingFileUpload = false; // fallback dedup for uploaded JSONL entries
+let _pendingSlashResponse = null; // fallback content dedup for slash responses
 
 // ==================== File Upload Helpers ====================
 
@@ -1322,6 +1238,38 @@ function clearFileInput() {
     const previewImg = document.getElementById('file-preview-img');
     if (previewImg.src) { URL.revokeObjectURL(previewImg.src); previewImg.src = ''; }
 }
+
+// ==================== Image Paste ====================
+
+(function initChatImagePaste() {
+    const input = document.getElementById('reply-input');
+    if (!input) return;
+    input.addEventListener('paste', function(event) {
+        const items = event.clipboardData?.items;
+        if (!items) return;
+        const images = Array.from(items)
+            .filter(item => item.type.startsWith('image/'))
+            .map(item => item.getAsFile())
+            .filter(Boolean);
+        if (!images.length) return;
+        event.preventDefault();
+
+        if (!currentAttachmentsEnabled) {
+            if (typeof showToast === 'function') {
+                showToast('This agent does not support file attachments. Enable attachments in Agent Settings to upload files.', true);
+            }
+            return;
+        }
+
+        // Sessions page supports a single file attachment; use the first pasted image.
+        const file = images[0];
+        const fileInput = document.getElementById('file-input');
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        onFileSelected(fileInput);
+    });
+})();
 
 // ==================== Drag & Drop File Upload ====================
 
@@ -1369,6 +1317,12 @@ function _isFileAccepted(file) {
         if (!file) return;
         if (!currentSessionId) {
             if (typeof showToast === 'function') showToast('Select a session first', true);
+            return;
+        }
+        if (!currentAttachmentsEnabled) {
+            if (typeof showToast === 'function') {
+                showToast('This agent does not support file attachments. Enable attachments in Agent Settings to upload files.', true);
+            }
             return;
         }
         if (!_isFileAccepted(file)) {
@@ -1540,10 +1494,28 @@ async function doSendReply() {
     }
     const displayText = text || (file ? (file.type.startsWith('image/') ? '[Image]' : `[File: ${file.name}]`) : '');
     const $msgEl = chatUI.appendMessage(outRole, displayText, {metadata: optimisticMeta});
-    // If the agent is mid-turn, mark message as queued with clock indicator
-    if (_sseThinkingId) chatUI.markLastUserBubbleQueued($msgEl);
+    const clientMessageId = newClientMessageId();
+    $msgEl.attr('data-client-message-id', clientMessageId);
+    _optimisticMessages.set(clientMessageId, $msgEl);
+    // Render a turn immediately. SSE later adopts this same bubble on turn_begin;
+    // a message injected into an existing turn remains queued instead.
+    const wasActiveTurn = _sessionTurn.phase === 'active';
+    const optimisticThinkingId = wasActiveTurn ? null : _beginSessionTurn(null, $msgEl);
+    if (wasActiveTurn) chatUI.markLastUserBubbleQueued($msgEl);
     // Clear input and file preview immediately so the UI feels responsive
     $input.val('');
+    // Reset textarea height — jQuery val('') doesn't fire the oninput handler
+    var textarea = $input[0];
+    textarea.style.height = 'auto';
+    textarea.style.overflowY = 'hidden';
+    // Re-apply after reflow so a stale scrollHeight from the oninput handler
+    // (which fires async) doesn't lock the height again.
+    requestAnimationFrame(function() {
+        if (textarea.value === '') {
+            textarea.style.height = 'auto';
+            textarea.style.overflowY = 'hidden';
+        }
+    });
     if (file) clearFileInput();
     requestAnimationFrame(function () { chatUI.scrollToBottom(); });
     _pendingReplyText = null; // Will be set after we know the final text from backend
@@ -1555,6 +1527,7 @@ async function doSendReply() {
         const formData = new FormData();
         formData.append('text', text);
         formData.append('perspective', _chatPerspective);
+        formData.append('client_message_id', clientMessageId);
         formData.append('file', file);
         res = await $.ajax({
             url: `/api/sessions/${currentSessionId}/reply`,
@@ -1580,15 +1553,23 @@ async function doSendReply() {
             url: `/api/sessions/${currentSessionId}/reply`,
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({text, perspective: _chatPerspective}),
+            data: JSON.stringify({text, perspective: _chatPerspective, client_message_id: clientMessageId}),
         }).catch(err => ({ error: err.responseJSON?.error || 'Request failed' }));
     }
 
     $btn.prop('disabled', false);
     if (res.error) {
+        _optimisticMessages.delete(clientMessageId);
+        if ($msgEl.attr('data-message-id')) return;
         _pendingReplyText = null;
         _pendingFileUpload = false;
-        $msgEl.remove(); // remove optimistically-rendered message on failure
+        if (optimisticThinkingId && _sseThinkingId === optimisticThinkingId) {
+            chatUI.removeThinkingIndicator(optimisticThinkingId);
+            _sseThinkingId = null;
+            _sessionTurn = { phase: 'idle', lastSeq: _sessionTurn.lastSeq, terminalSeq: _sessionTurn.terminalSeq };
+            showStopBtn(false);
+        }
+        if (!$msgEl.attr('data-message-id')) $msgEl.remove();
         return alert(res.error);
     }
     hideEditorTip();
@@ -1596,6 +1577,7 @@ async function doSendReply() {
     if (res.clear_ui) {
         chatUI.clearContainer();
         _pendingReplyText = null;
+        _completeSessionTurn(_sessionTurn.lastSeq);
         return;
     }
     // Slash command response — display immediately, then suppress duplicate renders.
@@ -1609,6 +1591,7 @@ async function doSendReply() {
         _pendingReplyText = null;
         _pendingSlashResponse = res.response;
         if (file) { _pendingFileUpload = true; }
+        _completeSessionTurn(_sessionTurn.lastSeq);
         return;
     }
     if (file) {
@@ -1661,9 +1644,8 @@ async function deleteSession(sessionId) {
     if (!await showConfirm({title: 'Delete Session', message: 'This will clear all chat history for this session. The session will be hidden from the list but not deleted.', confirmText: 'Delete'})) return;
     await fetch(`/api/sessions/${sessionId}`, {method: 'DELETE'});
     if (sessionId === currentSessionId) {
-        stopPolling();
+        disconnectSessionStream();
         currentSessionId = null;
-        lastChatTs = 0;
         document.getElementById('chat-header').classList.add('hidden');
         document.getElementById('reply-bar').classList.add('hidden');
         document.getElementById('chat-messages').innerHTML = '<div id="empty-state" class="flex items-center justify-center h-full text-gray-400 text-sm">Select a session to view conversation</div>';
@@ -1702,7 +1684,7 @@ function buildBgProcessesHtml(procs) {
     for (const p of running) {
         const secs = Math.max(0, Math.floor(Date.now() / 1000 - p.started_at));
         const elapsed = secs < 60 ? `${secs}s` : (secs < 3600 ? `${Math.floor(secs / 60)}m` : `${Math.floor(secs / 3600)}h${Math.floor((secs % 3600) / 60)}m`);
-        html += `<li class="flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 -mx-1 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" onclick="openBgProcessModal('${esc(p.job_id)}')" title="Click to view details">${liveDot}<span class="text-green-500 dark:text-green-400 font-mono text-[11px] flex-shrink-0 select-none">❯</span><span class="font-mono text-[11px] text-gray-700 dark:text-gray-200 truncate">${esc(p.command)}</span><span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 ml-auto tabular-nums">${esc(elapsed)}</span></li>`;
+        html += `<li class="flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 -mx-1 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" onclick="openBgProcessModal('${esc(p.job_id)}')" title="Click to view details">${liveDot}<span class="text-green-500 dark:text-green-400 font-mono text-[11px] flex-shrink-0 select-none">❯</span><span class="font-mono text-[11px] text-gray-700 dark:text-gray-200 truncate">${esc(p.command)}</span>${p.monitored ? '<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0" title="A monitor is attached — the agent will be notified">👁</span>' : ''}<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 ml-auto tabular-nums">${esc(elapsed)}</span></li>`;
     }
     html += '</ul></div>';
     return html;
@@ -1730,7 +1712,6 @@ function buildContextUsageHtml(cu) {
 
 let _bgProcessModalJobId = null;
 let _bgLogPollTimer = null;
-let _bgElapsedTimer = null;
 let _bgProcessModalTrigger = null;
 
 function _formatBgProcessDuration(seconds) {
@@ -1750,56 +1731,7 @@ function openBgProcessModal(jobId) {
     const modal = document.getElementById('bg-process-modal');
     const body = document.getElementById('bg-process-modal-body');
     const title = document.getElementById('bg-process-modal-title');
-    const subtitle = document.getElementById('bg-process-modal-subtitle');
-    const kindColors = {
-        wrapper: 'border-gray-300 text-gray-600 dark:border-white/15 dark:text-slate-300',
-        tmux: 'border-amber-300 text-amber-600 dark:border-amber-500/40 dark:text-amber-400',
-        screen: 'border-purple-300 text-purple-600 dark:border-purple-500/40 dark:text-purple-400',
-        nohup: 'border-sky-300 text-sky-600 dark:border-sky-500/40 dark:text-sky-400'
-    };
-    const pillStyles = {
-        running: { text: 'Running • Live', cls: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300 dark:shadow-lg dark:shadow-emerald-500/30', dot: 'bg-emerald-500 dark:bg-emerald-400', ping: true },
-        done: { text: 'Done', cls: 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-300', dot: 'bg-sky-500 dark:bg-sky-400', ping: false },
-        timeout: { text: 'Timeout', cls: 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300', dot: 'bg-amber-500 dark:bg-amber-400', ping: false },
-        failed: { text: 'Failed', cls: 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300', dot: 'bg-red-500 dark:bg-red-400', ping: false }
-    };
-
-    const startedDate = new Date(p.started_at * 1000);
-    const finishedDate = p.finished_at ? new Date(p.finished_at * 1000) : null;
-    const elapsed = _formatBgProcessDuration((p.finished_at || Date.now() / 1000) - p.started_at);
-    const status = p.status || 'running';
-    const isRunning = status === 'running' && !p.finished_at;
-    const exitCode = !isRunning && p.exit_code != null ? String(p.exit_code) : null;
-    const kindColor = kindColors[p.kind] || kindColors.wrapper;
-    const pill = pillStyles[status] || pillStyles.failed;
-    const dateOptions = { year: 'numeric', month: 'short', day: 'numeric' };
-    const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
-    const startedDay = startedDate.toLocaleDateString([], dateOptions);
-    const startedTime = startedDate.toLocaleTimeString([], timeOptions);
-
-    const iconClock = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l2.5 2.5"/></svg>';
-    const iconRefresh = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>';
-    const iconTerminal = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg>';
-
-    // Header subtitle (job id + kind + status text) and status pill.
-    const subtitleHtml = `<span class="font-mono text-gray-700 dark:text-slate-200">${esc(p.job_id)}</span>`
-        + `<span class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${kindColor}">${esc(p.kind || 'wrapper')}</span>`
-        + '<span class="text-gray-300 dark:text-slate-600" aria-hidden="true">•</span>'
-        + `<span>${isRunning ? 'Running in the background' : 'Process ' + esc(status)}</span>`;
-    const pillDot = pill.ping
-        ? `<span class="relative flex h-2 w-2" aria-hidden="true"><span class="absolute inline-flex h-full w-full animate-ping rounded-full ${pill.dot} opacity-70"></span><span class="relative inline-flex h-2 w-2 rounded-full ${pill.dot}"></span></span>`
-        : `<span class="h-2 w-2 rounded-full ${pill.dot}" aria-hidden="true"></span>`;
-    const pillHtml = `<span class="inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-bold uppercase tracking-wider ${pill.cls}" role="status">${pillDot}${esc(pill.text)}</span>`;
-
     let html = '<div class="space-y-6">';
-
-    // Execution stats — four columns split by vertical dividers on desktop.
-    html += '<div class="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4 sm:gap-x-0 sm:gap-y-0 sm:divide-x sm:divide-gray-200 sm:dark:divide-white/10">';
-    html += `<div class="sm:px-6 sm:first:pl-0"><div class="flex items-center gap-2 text-gray-500 dark:text-slate-400">${iconClock}<span class="text-sm font-medium">Started</span></div><p class="mt-2 text-lg font-bold text-gray-900 dark:text-white">${esc(startedDay)}</p><p class="mt-1 text-sm tabular-nums text-gray-400 dark:text-slate-500">${esc(startedTime)}</p></div>`;
-    html += `<div class="sm:px-6"><div class="flex items-center gap-2 text-gray-500 dark:text-slate-400">${iconClock}<span class="text-sm font-medium">Elapsed</span></div><p class="bg-process-elapsed mt-2 font-mono text-lg font-bold tabular-nums text-gray-900 dark:text-white" data-started="${p.started_at}" data-finished="${p.finished_at || 0}">${esc(elapsed)}</p><p class="mt-1 text-sm ${isRunning ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-slate-500'}">${isRunning ? 'Updating live' : 'Total runtime'}</p></div>`;
-    html += `<div class="sm:px-6"><div class="flex items-center gap-2 text-gray-500 dark:text-slate-400">${iconRefresh}<span class="text-sm font-medium">Finished</span></div><p class="mt-2 text-lg font-bold ${finishedDate ? 'text-gray-900 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}">${finishedDate ? esc(finishedDate.toLocaleDateString([], dateOptions)) : 'In progress'}</p><p class="mt-1 text-sm tabular-nums text-gray-400 dark:text-slate-500">${finishedDate ? esc(finishedDate.toLocaleTimeString([], timeOptions)) : 'Waiting for completion'}</p></div>`;
-    html += `<div class="sm:px-6 sm:last:pr-0"><div class="flex items-center gap-2 text-gray-500 dark:text-slate-400">${iconTerminal}<span class="text-sm font-medium">Exit code</span></div><p class="mt-2 text-lg font-bold ${exitCode === '0' ? 'text-emerald-600 dark:text-emerald-400' : (exitCode ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-slate-300')}">${esc(exitCode || 'Pending')}</p><p class="mt-1 text-sm text-gray-400 dark:text-slate-500">${exitCode == null ? 'Available when finished' : (exitCode === '0' ? 'Completed successfully' : 'Process returned an error')}</p></div>`;
-    html += '</div>';
 
     // Command block — kept dark in both themes (terminal aesthetic).
     html += '<div class="border-t border-gray-200 pt-5 dark:border-white/10">';
@@ -1819,14 +1751,10 @@ function openBgProcessModal(jobId) {
     }
 
     html += '</div>';
-    title.textContent = p.session_name || 'Background Process';
-    subtitle.innerHTML = subtitleHtml;
-    const pillEl = document.getElementById('bg-process-status-pill');
-    if (pillEl) pillEl.innerHTML = pillHtml;
+    title.textContent = 'Background Process';
     body.innerHTML = html;
     backdrop.classList.remove('hidden');
     modal.classList.remove('hidden');
-    if (isRunning) _startBgElapsedTimer();
     if (p.log_file) _fetchBgLog();
     setTimeout(() => {
         const closeButton = modal.querySelector('button[aria-label="Close background process details"]');
@@ -1870,27 +1798,9 @@ function closeBgProcessModal() {
     backdrop.classList.add('hidden');
     modal.classList.add('hidden');
     _bgProcessModalJobId = null;
-    _stopBgElapsedTimer();
     _stopBgLogPolling();
     if (_bgProcessModalTrigger && document.contains(_bgProcessModalTrigger)) _bgProcessModalTrigger.focus();
     _bgProcessModalTrigger = null;
-}
-
-function _startBgElapsedTimer() {
-    _stopBgElapsedTimer();
-    _bgElapsedTimer = setInterval(() => {
-        const modal = document.getElementById('bg-process-modal');
-        const el = modal ? modal.querySelector('.bg-process-elapsed') : null;
-        if (!el) { _stopBgElapsedTimer(); return; }
-        const started = parseFloat(el.dataset.started) || 0;
-        const finished = parseFloat(el.dataset.finished) || 0;
-        if (finished) { _stopBgElapsedTimer(); return; }
-        el.textContent = _formatBgProcessDuration(Date.now() / 1000 - started);
-    }, 1000);
-}
-
-function _stopBgElapsedTimer() {
-    if (_bgElapsedTimer) { clearInterval(_bgElapsedTimer); _bgElapsedTimer = null; }
 }
 
 function _fetchBgLog() {
@@ -1898,7 +1808,9 @@ function _fetchBgLog() {
     if (!p || !p.log_file) return;
     if (!currentAgentId) return;
 
-    fetch(`/api/agents/${encodeURIComponent(currentAgentId)}/bg-job/log?file=${encodeURIComponent(p.log_file)}&lines=200`)
+    let logUrl = `/api/agents/${encodeURIComponent(currentAgentId)}/bg-job/log?file=${encodeURIComponent(p.log_file)}&lines=200`;
+    if (p.session_id) logUrl += `&session_id=${encodeURIComponent(p.session_id)}`;
+    fetch(logUrl)
         .then(res => {
             if (!res.ok) throw new Error('Failed to load log');
             return res.json();
@@ -1954,16 +1866,21 @@ function _renderSessionStateSnapshot(stateData) {
     if (stateData.tasks && stateData.tasks.length > 0) {
         const icons = {pending: '\u2610', in_progress: '\u27f3', done: '\u2713'};
         const iconColors = {pending: 'text-gray-400', in_progress: 'text-amber-500', done: 'text-green-500'};
+        const staleTaskIds = new Set(Array.isArray(stateData.stale_task_ids) ? stateData.stale_task_ids : []);
+        const staleBefore = Date.now() - 180000;
         planHtml += '<div class="mt-2"><div class="text-gray-500 dark:text-gray-400 font-medium mb-1 text-xs uppercase tracking-wide">Tasks</div><ul class="space-y-0.5">';
         for (const t of stateData.tasks) {
             const active = t.status === 'in_progress';
+            const startedAt = Number(t.in_progress_since);
+            const stale = active && (staleTaskIds.has(t.id) || (startedAt > 0 && startedAt * 1000 <= staleBefore));
             const spinnerSvg = '<svg class="task-active-icon animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-opacity="0.2"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="40 60"/></svg>';
             const icon = active ? spinnerSvg : (icons[t.status] || '\u2610');
             const color = iconColors[t.status] || 'text-gray-400';
             const textClass = t.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-200';
             const iconCls = `${color} inline-flex items-center justify-center w-4 h-4 text-xs flex-shrink-0`;
             const textCls = active ? 'task-active-text text-xs' : `${textClass} text-xs`;
-            planHtml += `<li class="flex items-start gap-1.5"><span class="${iconCls}">${icon}</span><span class="${textCls}">${esc(t.text)}</span></li>`;
+            const staleBadge = stale ? '<span class="text-[10px] font-medium text-amber-700 dark:text-amber-300" title="This task has been in progress for a while">stale</span>' : '';
+            planHtml += `<li class="flex items-start gap-1.5"><span class="${iconCls}">${icon}</span><span class="${textCls}">${esc(t.text)}</span>${staleBadge}</li>`;
         }
         planHtml += '</ul></div>';
     }
@@ -1994,6 +1911,7 @@ function _renderSessionSummary(data) {
         const meta = document.getElementById(prefix + 'summary-meta');
         if (summaryEl && data.summary) {
             summaryEl.innerHTML = '<div class="recap-prose">' + marked.parse(data.summary) + '</div>';
+            ui.addCopyButtons(summaryEl);
             if (meta) {
                 meta.textContent = metaText || '';
                 meta.classList.remove('hidden');
@@ -2062,14 +1980,31 @@ function clearSummaryPanel() {
 
 // ==================== Agent State ====================
 
+let _agentStateReq = 0;
+
 async function loadAgentState() {
     if (!currentAgentId) return;
     const userId = document.getElementById('hdr-user')?.textContent || 'web_test';
+    const myReq = ++_agentStateReq;
     try {
         const url = `/api/agents/${currentAgentId}/chat/state?user_id=${encodeURIComponent(userId)}&session_id=${encodeURIComponent(currentSessionId || '')}`;
         const response = await fetch(url);
-        if (!response.ok) return;
-        _sessionStateData = await response.json();
+        if (!response.ok) {
+            console.warn('[Sessions] Session state request failed:', response.status, currentAgentId, currentSessionId);
+            if (myReq === _agentStateReq) {
+                const message = `Unable to load session state (HTTP ${response.status}). Please refresh or try again.`;
+                ['agent-state-content', 'mobile-agent-state-content'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = `<p class="text-sm text-amber-600 dark:text-amber-400 italic">${message}</p>`;
+                });
+            }
+            return;
+        }
+        const data = await response.json();
+        // A fresher state:changed snapshot or newer fetch landed while this
+        // response was in flight — don't overwrite it with stale data.
+        if (myReq !== _agentStateReq) return;
+        _sessionStateData = data;
         _renderSessionStateSnapshot(_sessionStateData);
         renderAgentState(
             currentAgentId,
@@ -2078,7 +2013,16 @@ async function loadAgentState() {
             currentSessionId,
             _sessionStateData
         );
-    } catch(e) { /* ignore */ }
+    } catch(e) {
+        console.error('[Sessions] Session state request failed:', e, currentAgentId, currentSessionId);
+        if (myReq === _agentStateReq) {
+            const message = 'Unable to load session state. Please refresh or try again.';
+            ['agent-state-content', 'mobile-agent-state-content'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = `<p class="text-sm text-amber-600 dark:text-amber-400 italic">${message}</p>`;
+            });
+        }
+    }
 }
 
 function clearAgentStatePanel() {
@@ -2086,12 +2030,33 @@ function clearAgentStatePanel() {
     clearAgentState(['agent-state-content', 'mobile-agent-state-content']);
 }
 
+function _refreshTaskLifecycleSnapshot(detail) {
+    if (Array.isArray(detail.tasks)) _sessionStateData.tasks = detail.tasks;
+    if (Array.isArray(detail.task_ids)) _sessionStateData.stale_task_ids = detail.task_ids;
+    else if (Array.isArray(detail.tasks)) _sessionStateData.stale_task_ids = [];
+    _renderSessionStateSnapshot(_sessionStateData);
+}
+
+document.addEventListener('evonic:task-auto-transition', function(event) {
+    const detail = event.detail || {};
+    _refreshTaskLifecycleSnapshot(detail);
+    const count = Array.isArray(detail.task_ids) ? detail.task_ids.length : 0;
+    showToast(count === 1 ? 'Task status updated automatically' : 'Task statuses updated automatically');
+});
+
+document.addEventListener('evonic:tasks-stale', function(event) {
+    _refreshTaskLifecycleSnapshot(event.detail || {});
+});
+
 document.addEventListener('evonic:agent-state-changed', function(event) {
     const detail = event.detail || {};
     const stateKeys = ['mode', 'plan_file', 'tasks', 'loaded_skills'];
     const hasStateSnapshot = stateKeys.some(key => Object.prototype.hasOwnProperty.call(detail, key));
 
     if (hasStateSnapshot) {
+        // Invalidate any in-flight loadAgentState() fetch: its response is now
+        // older than this snapshot and must not overwrite it.
+        _agentStateReq++;
         for (const key of stateKeys) {
             if (Object.prototype.hasOwnProperty.call(detail, key)) _sessionStateData[key] = detail[key];
         }
@@ -2311,9 +2276,8 @@ async function clearAllSessions() {
     const data = await res.json();
     if (data.success) {
         // Reset chat view
-        stopPolling();
+        disconnectSessionStream();
         currentSessionId = null;
-        lastChatTs = 0;
         allSessions = [];
         renderSessionList();
         document.getElementById('chat-header').classList.add('hidden');
@@ -2434,24 +2398,33 @@ startSidebarPolling();
 })();
 
 // Cleanup on page leave
-window.addEventListener('beforeunload', () => { stopPolling(); disconnectSessionStream(); clearTimeout(sidebarPollTimer); });
+window.addEventListener('beforeunload', () => { disconnectSessionStream(); clearTimeout(sidebarPollTimer); });
 
 // ==================== Plan File Modal ====================
 
 let _planModalFetchedFor = null; // track which plan file was last fetched (avoid re-fetch on re-open)
+let _planModalRawContent = null;  // raw markdown content for edit mode
+let _planModalCurrentTab = 'preview';  // active tab
 
 function openPlanModal(planFile) {
     if (!currentAgentId || !currentSessionId) return;
     const backdrop = document.getElementById('plan-modal-backdrop');
     const modal = document.getElementById('plan-modal');
-    const title = document.getElementById('plan-modal-title');
     const content = document.getElementById('plan-modal-content');
+    const textarea = document.getElementById('plan-modal-textarea');
+    const saveBtn = document.getElementById('plan-modal-save-btn');
+
+    // Reset to preview tab on open
+    switchPlanTab('preview', /* silent */ true);
 
     // Show modal immediately with loading state
     backdrop.classList.remove('hidden');
     modal.classList.remove('hidden');
-    title.textContent = '\uD83D\uDCCB ' + (planFile || 'Plan File');
     content.innerHTML = '<div class="flex items-center justify-center py-12 text-gray-400"><svg class="animate-spin h-6 w-6 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-sm">Loading plan...</span></div>';
+    textarea.value = '';
+    textarea.classList.add('hidden');
+    content.classList.remove('hidden');
+    saveBtn.classList.add('hidden');
 
     // Focus trap: focus the close button inside modal
     setTimeout(function() {
@@ -2460,7 +2433,11 @@ function openPlanModal(planFile) {
     }, 50);
 
     // Fetch plan file content from API (cache per file to avoid re-fetch)
-    if (_planModalFetchedFor === planFile) return;
+    if (_planModalFetchedFor === planFile) {
+        // Already cached — just re-render preview
+        textarea.value = _planModalRawContent || '';
+        return;
+    }
     _planModalFetchedFor = planFile;
 
     var url = '/api/agents/' + encodeURIComponent(currentAgentId) + '/plan-file?session_id=' + encodeURIComponent(currentSessionId);
@@ -2470,14 +2447,109 @@ function openPlanModal(planFile) {
             return res.json();
         })
         .then(function(data) {
+            _planModalRawContent = data.content || '';
+            textarea.value = _planModalRawContent;
             if (!data.content) {
                 content.innerHTML = '<div class="flex items-center justify-center py-12 text-gray-400"><span class="text-sm">\u26A0\uFE0F Plan file is empty.</span></div>';
                 return;
             }
             content.innerHTML = '<div class="recap-prose">' + marked.parse(data.content) + '</div>';
+            ui.addCopyButtons(content);
         })
         .catch(function(err) {
+            _planModalRawContent = null;
+            textarea.value = '';
             content.innerHTML = '<div class="flex items-center justify-center py-12 text-red-400"><span class="text-sm">\u26A0\uFE0F Failed to load plan file: ' + esc(err.message) + '</span></div>';
+        });
+}
+
+function switchPlanTab(tab, silent) {
+    var previewTab = document.getElementById('plan-tab-preview');
+    var editTab = document.getElementById('plan-tab-edit');
+    var content = document.getElementById('plan-modal-content');
+    var textarea = document.getElementById('plan-modal-textarea');
+    var saveBtn = document.getElementById('plan-modal-save-btn');
+    var closeBtn = document.getElementById('plan-modal-close-btn');
+
+    if (!previewTab || !editTab) return;
+
+    if (tab === 'edit') {
+        _planModalCurrentTab = 'edit';
+        previewTab.className = 'px-3 py-1 text-xs font-medium rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors';
+        editTab.className = 'px-3 py-1 text-xs font-medium rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 transition-colors';
+        content.classList.add('hidden');
+        textarea.classList.remove('hidden');
+        saveBtn.classList.remove('hidden');
+        if (closeBtn) closeBtn.classList.add('hidden');
+        // Populate textarea from cache if not already loaded
+        if (!textarea.value && _planModalRawContent) textarea.value = _planModalRawContent;
+        setTimeout(function() { textarea.focus(); }, 50);
+    } else {
+        _planModalCurrentTab = 'preview';
+        previewTab.className = 'px-3 py-1 text-xs font-medium rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 transition-colors';
+        editTab.className = 'px-3 py-1 text-xs font-medium rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors';
+        content.classList.remove('hidden');
+        textarea.classList.add('hidden');
+        saveBtn.classList.add('hidden');
+        if (closeBtn) closeBtn.classList.remove('hidden');
+    }
+}
+
+function savePlanFile() {
+    var textarea = document.getElementById('plan-modal-textarea');
+    var saveBtn = document.getElementById('plan-modal-save-btn');
+    var newContent = textarea.value;
+
+    if (!currentAgentId || !currentSessionId) {
+        alert('No active session.');
+        return;
+    }
+
+    // Show saving state
+    var originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Saving\u2026';
+    saveBtn.disabled = true;
+
+    var url = '/api/agents/' + encodeURIComponent(currentAgentId) + '/plan-file?session_id=' + encodeURIComponent(currentSessionId);
+    fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newContent })
+    })
+        .then(function(res) {
+            if (!res.ok) return res.json().then(function(err) { throw new Error(err.error || 'Save failed'); });
+            return res.json();
+        })
+        .then(function() {
+            _planModalRawContent = newContent;
+            // Re-render preview
+            var content = document.getElementById('plan-modal-content');
+            if (newContent) {
+                content.innerHTML = '<div class="recap-prose">' + marked.parse(newContent) + '</div>';
+                ui.addCopyButtons(content);
+            } else {
+                content.innerHTML = '<div class="flex items-center justify-center py-12 text-gray-400"><span class="text-sm">\u26A0\uFE0F Plan file is empty.</span></div>';
+            }
+            // Flash save button
+            var btnClasses = saveBtn.className;
+            saveBtn.textContent = '\u2713 Saved!';
+            saveBtn.style.backgroundColor = '#22c55e';
+            saveBtn.style.color = '#fff';
+            setTimeout(function() {
+                saveBtn.textContent = originalText;
+                saveBtn.disabled = false;
+                saveBtn.style.backgroundColor = '';
+                saveBtn.style.color = '';
+            }, 1500);
+            // Refresh session state
+            if (typeof refreshSessionState === 'function') {
+                refreshSessionState();
+            }
+        })
+        .catch(function(err) {
+            saveBtn.textContent = originalText;
+            saveBtn.disabled = false;
+            alert('Failed to save plan: ' + (err.message || 'Unknown error'));
         });
 }
 
@@ -2485,9 +2557,14 @@ function closePlanModal() {
     document.getElementById('plan-modal-backdrop').classList.add('hidden');
     document.getElementById('plan-modal').classList.add('hidden');
     _planModalFetchedFor = null;
+    _planModalRawContent = null;
+    // Reset to preview tab for next open
+    if (_planModalCurrentTab !== 'preview') {
+        switchPlanTab('preview', /* silent */ true);
+    }
 }
 
-// Escape key to close modals
+// Escape key to close modals, Ctrl+S / Cmd+S to save plan
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         var bgBackdrop = document.getElementById('bg-process-modal-backdrop');
@@ -2500,43 +2577,64 @@ document.addEventListener('keydown', function(e) {
             closePlanModal();
         }
     }
+    // Ctrl+S / Cmd+S to save in edit mode
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        var planBackdrop = document.getElementById('plan-modal-backdrop');
+        if (planBackdrop && !planBackdrop.classList.contains('hidden') && _planModalCurrentTab === 'edit') {
+            e.preventDefault();
+            savePlanFile();
+        }
+    }
 });
 </script>
 
 <!-- Plan File Modal -->
 <div id="plan-modal-backdrop" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4" onclick="closePlanModal()" role="presentation">
-    <div id="plan-modal" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Plan file viewer" onclick="event.stopPropagation()">
+    <div id="plan-modal" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden" style="max-height: 90vh;" role="dialog" aria-modal="true" aria-label="Plan file viewer" onclick="event.stopPropagation()">
+        <!-- Header with tabs -->
         <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-            <h3 id="plan-modal-title" class="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">📋 Plan File</h3>
-            <button onclick="closePlanModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close plan modal" title="Close (Esc)">
+            <div class="flex items-center gap-2 min-w-0">
+                <h3 id="plan-modal-title" class="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">📋 Plan File</h3>
+                <div class="flex items-center ml-3 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 flex-shrink-0">
+                    <button id="plan-tab-preview" onclick="switchPlanTab('preview')" class="px-3 py-1 text-xs font-medium rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 transition-colors">Preview</button>
+                    <button id="plan-tab-edit" onclick="switchPlanTab('edit')" class="px-3 py-1 text-xs font-medium rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Edit</button>
+                </div>
+            </div>
+            <button onclick="closePlanModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex-shrink-0" aria-label="Close plan modal" title="Close (Esc)">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
+        <!-- Preview content area -->
         <div id="plan-modal-content" class="p-5 overflow-y-auto flex-1">
             <div class="flex items-center justify-center py-12 text-gray-400">
                 <svg class="animate-spin h-6 w-6 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 <span class="text-sm">Loading plan...</span>
             </div>
         </div>
-        <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end flex-shrink-0">
-            <button onclick="closePlanModal()" class="px-4 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">Close</button>
+        <!-- Edit textarea -->
+        <textarea id="plan-modal-textarea" class="hidden flex-1 p-5 font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-0 outline-none resize-none overflow-y-auto" placeholder="Write your plan in Markdown..."></textarea>
+        <!-- Footer -->
+        <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0">
+            <span class="text-xs text-gray-400 dark:text-gray-500">Ctrl+S to save</span>
+            <div class="flex gap-2">
+                <button id="plan-modal-close-btn" onclick="closePlanModal()" class="px-4 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">Close</button>
+                <button id="plan-modal-save-btn" onclick="savePlanFile()" class="hidden px-4 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors">Save</button>
+            </div>
         </div>
     </div>
 </div>
 
 <!-- Background Process Modal -->
 <div id="bg-process-modal-backdrop" class="hidden fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" onclick="closeBgProcessModal()" role="presentation">
-    <div id="bg-process-modal" class="hidden flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 sm:max-h-[90vh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="bg-process-modal-title" aria-describedby="bg-process-modal-subtitle" onclick="event.stopPropagation()">
+    <div id="bg-process-modal" class="hidden flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 sm:max-h-[90vh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="bg-process-modal-title" onclick="event.stopPropagation()">
         <header class="relative flex flex-shrink-0 items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-white/10 sm:px-6 sm:py-5">
             <div class="flex min-w-0 items-center gap-4">
                 <span class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-gray-100 text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 sm:h-12 sm:w-12"><svg class="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg></span>
                 <div class="min-w-0">
                     <h3 id="bg-process-modal-title" class="truncate text-lg font-bold tracking-tight text-gray-900 dark:text-white sm:text-xl">Background Process</h3>
-                    <p id="bg-process-modal-subtitle" class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-slate-400">Process execution details</p>
                 </div>
             </div>
             <div class="flex flex-shrink-0 items-center gap-2 sm:gap-3">
-                <span id="bg-process-status-pill" class="hidden sm:inline-flex"></span>
                 <button type="button" onclick="closeBgProcessModal()" class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white dark:focus:ring-white/40" aria-label="Close background process details" title="Close (Esc)">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>

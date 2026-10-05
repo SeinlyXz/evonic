@@ -943,19 +943,111 @@ function highlightPython(code) {
     return result;
 }
 
+function _diffTokens(text) {
+    return text.match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) || [];
+}
+
+function _intralineDiff(oldText, newText) {
+    const oldTokens = _diffTokens(oldText);
+    const newTokens = _diffTokens(newText);
+    const cellCount = oldTokens.length * newTokens.length;
+
+    // Do not allocate a large LCS table for unusually long generated lines.
+    if (cellCount > 60000) return [escape(oldText), escape(newText)];
+
+    const dp = Array.from({ length: oldTokens.length + 1 }, () => new Int32Array(newTokens.length + 1));
+    for (let i = 1; i <= oldTokens.length; i++) {
+        for (let j = 1; j <= newTokens.length; j++) {
+            dp[i][j] = oldTokens[i - 1] === newTokens[j - 1]
+                ? dp[i - 1][j - 1] + 1
+                : Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+    }
+
+    const unchangedOld = new Set();
+    const unchangedNew = new Set();
+    for (let i = oldTokens.length, j = newTokens.length; i > 0 && j > 0;) {
+        if (oldTokens[i - 1] === newTokens[j - 1]) {
+            unchangedOld.add(--i);
+            unchangedNew.add(--j);
+        } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+            i--;
+        } else {
+            j--;
+        }
+    }
+
+    const render = (tokens, unchanged, className) => tokens.map((token, index) => {
+        const html = escape(token);
+        return unchanged.has(index) ? html : `<span class="${className}">${html}</span>`;
+    }).join('');
+    return [
+        render(oldTokens, unchangedOld, 'hl-diff-remove-change'),
+        render(newTokens, unchangedNew, 'hl-diff-add-change'),
+    ];
+}
+
+function _renderDiffLine(type, text, content = escape(text)) {
+    const className = type === 'add' ? 'hl-diff-add' : type === 'remove' ? 'hl-diff-remove' : 'hl-diff-context';
+    const prefix = type === 'add' ? '+' : type === 'remove' ? '-' : ' ';
+    return `<span class="${className}">${prefix}${content}</span>`;
+}
+
+function _renderDiffChangeBlock(removed, added) {
+    const rendered = [];
+    const pairs = Math.min(removed.length, added.length);
+    for (let i = 0; i < pairs; i++) {
+        const [oldHtml, newHtml] = _intralineDiff(removed[i], added[i]);
+        rendered.push(_renderDiffLine('remove', removed[i], oldHtml));
+        rendered.push(_renderDiffLine('add', added[i], newHtml));
+    }
+    for (let i = pairs; i < removed.length; i++) rendered.push(_renderDiffLine('remove', removed[i]));
+    for (let i = pairs; i < added.length; i++) rendered.push(_renderDiffLine('add', added[i]));
+    return rendered;
+}
+
 function highlightDiff(patch) {
     if (!patch) return '';
-    return escape(patch).split('\n').map(line => {
-        if (line.startsWith('@@'))   return `<span class="hl-diff-header">${line}</span>`;
-        if (line.startsWith('--- ') || line.startsWith('+++ ')) return `<span class="hl-diff-filename">${line}</span>`;
-        if (line.startsWith('+'))   return `<span class="hl-diff-add">${line}</span>`;
-        if (line.startsWith('-'))   return `<span class="hl-diff-remove">${line}</span>`;
-        if (line.startsWith('\\')) return `<span class="hl-diff-meta">${line}</span>`;
-        return `<span class="hl-diff-context">${line}</span>`;
-    }).join('\n');
+    const lines = String(patch).split('\n');
+    const rendered = [];
+    for (let index = 0; index < lines.length;) {
+        const line = lines[index];
+        if (line.startsWith('-') && !line.startsWith('--- ')) {
+            const removed = [];
+            while (index < lines.length && lines[index].startsWith('-') && !lines[index].startsWith('--- ')) {
+                removed.push(lines[index++].slice(1));
+            }
+            const added = [];
+            while (index < lines.length && lines[index].startsWith('+') && !lines[index].startsWith('+++ ')) {
+                added.push(lines[index++].slice(1));
+            }
+            rendered.push(..._renderDiffChangeBlock(removed, added));
+            continue;
+        }
+        if (line.startsWith('@@')) rendered.push(`<span class="hl-diff-header">${escape(line)}</span>`);
+        else if (line.startsWith('--- ') || line.startsWith('+++ ')) rendered.push(`<span class="hl-diff-filename">${escape(line)}</span>`);
+        else if (line.startsWith('+')) rendered.push(_renderDiffLine('add', line.slice(1)));
+        else if (line.startsWith('\\')) rendered.push(`<span class="hl-diff-meta">${escape(line)}</span>`);
+        else rendered.push(_renderDiffLine('context', line.slice(1)));
+        index++;
+    }
+    return rendered.join('\n');
 }
 
 // ── Tool result rendering helpers ─────────────────────────────────────────────
+
+function _summarizeToolResultValue(value) {
+    // Preserve concise scalar arrays (such as validation reason_code) while
+    // continuing to suppress nested objects and potentially verbose payloads.
+    if (value === null || value === undefined || typeof value === 'object' && !Array.isArray(value)) return null;
+    if (Array.isArray(value)) {
+        const scalarValues = value.filter(item => item !== null && item !== undefined && typeof item !== 'object');
+        if (!scalarValues.length) return null;
+        const summary = scalarValues.slice(0, 4).map(String).join(', ');
+        return scalarValues.length > 4 ? `${summary}, …` : summary;
+    }
+    return String(value);
+}
 
 function summarizeToolResult(result) {
     if (result === null || result === undefined) return 'OK';
@@ -972,8 +1064,8 @@ function summarizeToolResult(result) {
         if ('count'   in result && typeof result.count === 'number') return `${result.count} item${result.count !== 1 ? 's' : ''}`;
         const parts = [];
         for (const k of keys.slice(0, 3)) {
-            const v = result[k];
-            if (v !== null && v !== undefined && typeof v !== 'object') parts.push(`${k}: ${String(v)}`);
+            const summary = _summarizeToolResultValue(result[k]);
+            if (summary !== null) parts.push(`${k}: ${summary}`);
         }
         if (parts.length) return parts.join(' · ');
         return `${keys.length} field${keys.length !== 1 ? 's' : ''}`;
@@ -1231,12 +1323,18 @@ function _renderStrReplaceDiff(oldStr, newStr, filePath) {
         let oldC=0,newC=0;
         for (let k=lo;k<=hi;k++) { if(ops[k].type!=='add') oldC++; if(ops[k].type!=='remove') newC++; }
         html += `<span class="hl-diff-header">@@ -${oldLn},${oldC} +${newLn},${newC} @@</span>\n`;
-        for (let k=lo;k<=hi;k++) {
-            const {type,line} = ops[k];
-            const esc = escape(line);
-            if (type==='add') html += `<span class="hl-diff-add">+${esc}</span>\n`;
-            else if (type==='remove') html += `<span class="hl-diff-remove">-${esc}</span>\n`;
-            else html += `<span class="hl-diff-context"> ${esc}</span>\n`;
+        for (let k = lo; k <= hi;) {
+            const { type, line } = ops[k];
+            if (type === 'remove') {
+                const removed = [];
+                while (k <= hi && ops[k].type === 'remove') removed.push(ops[k++].line);
+                const added = [];
+                while (k <= hi && ops[k].type === 'add') added.push(ops[k++].line);
+                html += _renderDiffChangeBlock(removed, added).join('\n') + '\n';
+                continue;
+            }
+            html += _renderDiffLine(type, line) + '\n';
+            k++;
         }
     }
     return $('<pre class="diff-code-block mt-0.5" style="max-height:400px;overflow-y:auto">').html(html);
@@ -1684,8 +1782,14 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
         for (let slot = 1; slot <= imageUrls.length; slot++) {
             if (!referenced.has(slot)) addImage(slot);
         }
-        // Render non-image file badges
+        // Render non-image files. Stored attachments get the previewable card
+        // (view/download); optimistic entries built before the upload lands have
+        // no attachment_id yet, so they keep the plain badge.
         attachmentInfos.filter(info => info && !info.is_image).forEach(info => {
+            if (info.attachment_id != null) {
+                $bubble.prepend($('<div class="mb-2">').append(buildAttachmentCard(info)));
+                return;
+            }
             const $badge = $('<div class="flex items-center gap-1.5 mb-1 px-2 py-1 bg-white/20 rounded text-xs">')
                 .append($('<svg class="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Z"/></svg>'))
                 .append($('<span class="truncate">').text(info.filename));
@@ -2201,10 +2305,9 @@ async function _renderViewerContent($body, url, filename, category) {
 
 const SSE_EVENTS = [
     'turn_begin', 'turn_split', 'thinking', 'tool_call_started', 'tool_executed',
-    'state:changed', 'response_chunk', 'done', 'approval_required', 'approval_resolved', 'retry',
-    'message_injected', 'message_injection_applied', 'session_clear',
-    'state_changed',
-    'heartbeat',
+    'state:changed', 'tasks:auto_transition', 'tasks:stale', 'response_chunk', 'done', 'approval_required', 'approval_resolved', 'retry',
+    'message_injected', 'message_injection_applied', 'message_received', 'whatsapp_restriction_warning', 'session_clear',
+    'state_changed', 'turn_queued', 'ready', 'heartbeat', 'auth_expired',
 ];
 
 // If no event (including heartbeats) arrives within this window, the connection
@@ -2220,12 +2323,10 @@ class SSEAdapter {
         this._lastSeq = opts.afterSeq || 0;
         this._handler = null;
         this._es = null;
-        this._fillingGap = false;
-        this._pendingQueue = [];
         this._log = log('sse');
         this._lastEventAt = 0;
         this._livenessInterval = null;
-        this._usingUnified = false; // true when using unified /api/realtime/stream
+        this._usingUnified = url.indexOf('/api/realtime/stream') !== -1;
         this._reconnectAttempts = 0; // consecutive immediate failures (for backoff)
         this._connectStartTime = 0;  // when the current EventSource was opened
     }
@@ -2255,7 +2356,7 @@ class SSEAdapter {
             const agentId = this._agentId || (url.match(/\/agents\/([^/?]+)\//) || [])[1] || '';
             const sessionId = this._sessionId || u.searchParams.get('session_id') || '';
             const after = this._lastSeq;
-            let newUrl = '/api/realtime/stream?chat=1';
+            let newUrl = '/api/realtime/stream?chat=1&cursor_version=2&snapshot=1';
             if (agentId) newUrl += '&agent_id=' + encodeURIComponent(agentId);
             if (sessionId) newUrl += '&session_id=' + encodeURIComponent(sessionId);
             if (after > 0) newUrl += '&after=' + after;
@@ -2282,7 +2383,8 @@ class SSEAdapter {
                 if (this._usingUnified) {
                     const agentId = this._agentId || '';
                     const sessionId = this._sessionId || '';
-                    resumeUrl = '/api/realtime/stream?chat=1';
+                    resumeUrl = '/api/realtime/stream?chat=1&cursor_version=2&snapshot=' +
+                        (this._lastSeq > 0 ? '0' : '1');
                     if (agentId) resumeUrl += '&agent_id=' + encodeURIComponent(agentId);
                     if (sessionId) resumeUrl += '&session_id=' + encodeURIComponent(sessionId);
                     if (this._lastSeq > 0) resumeUrl += '&after=' + this._lastSeq;
@@ -2309,10 +2411,10 @@ class SSEAdapter {
 
         es.onerror = () => {
             this._log.warn('SSE error/closed', url);
-            console.warn('[sse] error/closed _lastSeq=', this._lastSeq, '_fillingGap=', this._fillingGap, '_pendingQueue=', this._pendingQueue.length);
+            console.warn('[sse] error/closed _lastSeq=', this._lastSeq);
             es.close();
             if (this._es === es) this._es = null;
-            // Only reconnect if this was NOT an intentional stop (e.g. after 'done')
+            // Only reconnect if this adapter was not explicitly stopped.
             if (this._intentionallyStopped) {
                 this._log.info('intentionally stopped — no reconnect');
                 return;
@@ -2343,7 +2445,8 @@ class SSEAdapter {
                 if (this._usingUnified) {
                     const agentId = this._agentId || '';
                     const sessionId = this._sessionId || '';
-                    resumeUrl = '/api/realtime/stream?chat=1';
+                    resumeUrl = '/api/realtime/stream?chat=1&cursor_version=2&snapshot=' +
+                        (this._lastSeq > 0 ? '0' : '1');
                     if (agentId) resumeUrl += '&agent_id=' + encodeURIComponent(agentId);
                     if (sessionId) resumeUrl += '&session_id=' + encodeURIComponent(sessionId);
                     if (this._lastSeq > 0) resumeUrl += '&after=' + this._lastSeq;
@@ -2353,7 +2456,7 @@ class SSEAdapter {
                     resumeUrl = u.pathname + u.search;
                 }
                 this._log.info('reconnecting from seq', this._lastSeq, resumeUrl);
-                console.warn('[sse] reconnecting _lastSeq=', this._lastSeq, '_fillingGap=', this._fillingGap, '_pendingQueue=', this._pendingQueue.length, 'url=', resumeUrl);
+                console.warn('[sse] reconnecting _lastSeq=', this._lastSeq, 'url=', resumeUrl);
                 this._connect(resumeUrl);
             }, delay);
         };
@@ -2361,95 +2464,37 @@ class SSEAdapter {
 
     _handleRaw(evtName, data) {
         const seq = data.seq || 0;
-
-        if (this._fillingGap) {
-            this._log.debug('queued while filling gap', evtName, 'seq', seq, 'queueLen', this._pendingQueue.length);
-            if (this._pendingQueue.length >= 1 && this._pendingQueue.length % 10 === 0) {
-                console.warn('[sse] pendingQueue grew to', this._pendingQueue.length, 'while filling gap — possible reconnect storm');
-            }
-            this._pendingQueue.push({ evtName, data });
-            return;
-        }
-
         if (seq && seq <= this._lastSeq) {
             this._log.debug('dedup skip', evtName, 'seq', seq, '≤ lastSeq', this._lastSeq);
-            console.log('[sse] dedup skip', evtName, 'seq=', seq, '_lastSeq=', this._lastSeq);
             return;
         }
-
-        if (seq && this._lastSeq > 0 && seq > this._lastSeq + 1) {
-            this._log.warn('seq gap detected', this._lastSeq, '→', seq, '— filling');
-            this._fillingGap = true;
-            this._pendingQueue.push({ evtName, data });
-            this._fillGap(this._lastSeq, seq).then(() => {
-                this._fillingGap = false;
-                console.warn('[sse] draining pendingQueue len=', this._pendingQueue.length, '_lastSeq=', this._lastSeq);
-                this._drainQueue();
-            });
-            return;
-        }
-
         if (seq) this._lastSeq = seq;
+        if (evtName === 'ready') return;
         this._dispatch(evtName, data);
     }
 
-    async _fillGap(afterSeq, upToSeq) {
-        try {
-            const agentId = this._agentId || this._url.match(/\/agents\/([^/?]+)\//)?.[1] || '';
-            const res = await $.getJSON(
-                `/api/agents/${encodeURIComponent(agentId)}/chat/events?session_id=${encodeURIComponent(this._sessionId)}&after=${afterSeq}&up_to=${upToSeq}`
-            );
-            const evts = res.events || [];
-            this._log.warn('gap-fill response: afterSeq=' + afterSeq + ' upToSeq=' + upToSeq + ' returned=' + evts.length + ' seqs=' + evts.map(e=>e.seq).join(','));
-            console.warn('[gap-fill] returned', evts.length, 'events for after=', afterSeq, 'up_to=', upToSeq, 'seqs:', evts.map(e=>e.seq).join(','));
-            for (const ev of evts) {
-                if (ev.seq <= this._lastSeq) continue;
-                this._lastSeq = ev.seq;
-                this._dispatch(ev.event, ev.data);
-            }
-        } catch (err) {
-            this._log.warn('gap-fill failed', err, '— skipping gap');
-            this._lastSeq = upToSeq - 1;
-        }
-    }
-
-    // Drain _pendingQueue asynchronously — one event per animation frame so we
-    // never block the main thread with a large synchronous burst.
-    _drainQueue() {
-        if (this._pendingQueue.length === 0) {
-            console.warn('[sse] queue drain done _lastSeq=', this._lastSeq);
-            return;
-        }
-        const item = this._pendingQueue.shift();
-        const itemSeq = item.data.seq || 0;
-        if (itemSeq && itemSeq <= this._lastSeq) {
-            console.log('[sse] queue dedup skip', item.evtName, 'seq=', itemSeq);
-            // Skip but continue draining without waiting — dedup is cheap
-            this._drainQueue();
-            return;
-        }
-        if (itemSeq) this._lastSeq = itemSeq;
-        this._dispatch(item.evtName, item.data);
-        // Yield to the browser between each real event
-        requestAnimationFrame(() => this._drainQueue());
-    }
-
     _dispatch(evtName, data) {
+        if (evtName === 'auth_expired') {
+            this.stop();
+            window.location.href = '/login';
+            return;
+        }
         if (evtName === 'state_changed') {
             // Not turn-scoped — bridge straight to the document-level event that
             // agent_detail.html / sessions.html already listen for (debounced refresh).
             document.dispatchEvent(new CustomEvent('evonic:agent-state-changed', { detail: data }));
             return;
         }
+        if (evtName === 'message_received') {
+            document.dispatchEvent(new CustomEvent('evonic:message-received', { detail: data }));
+            return;
+        }
         if (evtName === 'session_clear') {
             this._handler({ event: 'session_clear', data, seq: data.seq || 0 });
             return;
         }
-        // done: stop reconnecting after this
         if (evtName === 'done') {
-            console.warn('[sse] _dispatch done _lastSeq=', this._lastSeq, 'data.seq=', data.seq);
             this._handler({ event: 'done', data, seq: data.seq || 0 });
-            this.stop();
             return;
         }
         this._handler({ event: evtName, data, seq: data.seq || 0 });
@@ -2576,8 +2621,6 @@ class ReplayAdapter {
 
 // ── turn.js ─────────────────────────────────────────────────────
 
-const STALE_TIMEOUT_MS = 300_000; // 5 minutes — safety net for truly abandoned turns
-
 const TERMINAL_PHASES = new Set(['final', 'done', 'aborted']);
 
 function reduceTurn(phase, eventKind, isFinal = false) {
@@ -2653,7 +2696,6 @@ class Turn {
         this._lastSeq = 0;
         this._transports = [];
         this._timerInterval = null;
-        this._staleTimeout = null;
         this._scrollRAF = null;
         this._startTime = Date.now();
         this._finalized = false;
@@ -2667,7 +2709,6 @@ class Turn {
 
         this._buildDOM();
         this._startTimer();
-        this._armStaleTimeout();
     }
 
     // ── DOM ──────────────────────────────────────────────────────────────────
@@ -2729,16 +2770,8 @@ class Turn {
         }, 100);
     }
 
-    _armStaleTimeout() {
-        this._staleTimeout = setTimeout(() => {
-            this._log.warn('stale timeout reached, auto-finalizing', this.id);
-            this._finalizeBubble(null);
-        }, STALE_TIMEOUT_MS);
-    }
-
     _clearTimers() {
         if (this._timerInterval) { clearInterval(this._timerInterval); this._timerInterval = null; }
-        if (this._staleTimeout)  { clearTimeout(this._staleTimeout);   this._staleTimeout = null; }
         if (this._scrollRAF)     { cancelAnimationFrame(this._scrollRAF); this._scrollRAF = null; }
     }
 
@@ -2762,15 +2795,6 @@ class Turn {
             return;
         }
         if (seq) this._lastSeq = seq;
-
-        // Reset stale timeout on every live event — turn is clearly still active
-        if (this._staleTimeout) {
-            clearTimeout(this._staleTimeout);
-            this._staleTimeout = setTimeout(() => {
-                this._log.warn('stale timeout reached, auto-finalizing', this.id);
-                this._finalizeBubble(null);
-            }, STALE_TIMEOUT_MS);
-        }
 
         this._log.debug('ingest', evtName, seq, '→ phase was', this.phase, this.id);
 
@@ -2853,6 +2877,11 @@ class Turn {
             return;
         }
 
+        if (evtName === 'tasks:auto_transition' || evtName === 'tasks:stale') {
+            this._onTrigger(evtName, data);
+            return;
+        }
+
         if (evtName === 'response_chunk' && data.content) {
             // Render every response chunk in the trace (intermediate + final), matching
             // the history-render view. Only the FINAL chunk is stashed for the final
@@ -2883,7 +2912,7 @@ class Turn {
             console.warn('[turn] done event turn=%s _finalized=%s _finalContent=%s', this.id, this._finalized, !!this._finalContent);
             this._finalizeBubble(data.thinking_duration);
             // Fire final:response so page-level code can render the response bubble
-            // synchronously — no dependency on pollForResponse JSONL poll.
+            // synchronously from the durable stream.
             if (this._finalContent) {
                 console.warn('[turn] firing final:response turn=%s contentLen=%d', this.id, this._finalContent.length);
                 this._onTrigger('final:response', {
@@ -2896,9 +2925,12 @@ class Turn {
         }
 
         if (evtName === 'turn_split') {
-            this._finalizeBubble(null);
+            const splitDuration = data.timestamp && this._startTime
+                ? Math.max(0, (data.timestamp - this._startTime) / 1000)
+                : null;
+            this._finalizeBubble(splitDuration);
             // ChatUI will create a new Turn for the continuation
-            this._onTrigger('turn:split', { turnId: this.id });
+            this._onTrigger('turn:split', { turnId: this.id, timestamp: data.timestamp });
             return;
         }
 
@@ -3117,10 +3149,17 @@ class Turn {
         }
 
         if (codeSnippet) {
+            const highlights = (data.approval_info && data.approval_info.highlights) || null;
+            const $code = $('<code>');
+            if (highlights && highlights.length && typeof window.evHighlightCode === 'function') {
+                $code.html(window.evHighlightCode(codeSnippet, highlights));
+            } else {
+                $code.text(codeSnippet);
+            }
             $details.append(
                 $('<div class="mb-2">').append(
                     $('<div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">').text('Code ').append($('<span class="font-normal text-gray-400">').text('(' + codeLang + ')')),
-                    $('<pre class="text-xs bg-gray-900 text-gray-100 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap break-all">').append($('<code>').text(codeSnippet))
+                    $('<pre class="text-xs bg-gray-900 text-gray-100 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap break-all">').append($code)
                 )
             );
         }
@@ -3361,6 +3400,9 @@ class ChatUI {
                     // Keep the established page-level event for consumers that have
                     // not migrated to the more specific SSE event name yet.
                     document.dispatchEvent(new CustomEvent('evonic:agent-state-changed', { detail: data }));
+                }
+                if (evtName === 'tasks:auto_transition' || evtName === 'tasks:stale') {
+                    document.dispatchEvent(new CustomEvent('evonic:' + evtName, { detail: data }));
                 }
                 if (evtName === 'approval:required') {
                     document.dispatchEvent(new CustomEvent('evonic:approval-required', { detail: data }));
@@ -3670,6 +3712,7 @@ class ChatUI {
                     const $lastUser = this.$container.find('[data-msg-role="user"]').last();
                     const $anchor = $lastUser.length ? $lastUser : (opts.userMsgEl ? $(opts.userMsgEl) : turn.$anchor);
                     const newTurn = this.beginTurn($anchor);
+                    if (data.timestamp) newTurn._startTime = data.timestamp;
                     this._lastLiveTurnId = newTurn.id;
                     this.markQueuedAsDelivered();
                     // Re-route the SSE adapter to the new turn so subsequent events

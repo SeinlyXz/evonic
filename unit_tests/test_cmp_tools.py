@@ -1,9 +1,12 @@
 """Tests for the CMP navigation builtins (switch_path / new_path)."""
 
+from unittest.mock import patch
+
 from backend.agent_runtime.cmp import store
 from backend.agent_state import AgentState
 from backend.tools.registry import (
     _builtin_new_path_factory,
+    _builtin_read_transcript_factory,
     _builtin_switch_path_factory,
 )
 
@@ -57,6 +60,20 @@ def test_new_path_auto_inits_first_path_from_current_work():
     assert p1['atg']['status'] == 'done'
     # fresh plan cycle for the new path
     assert ms.mode == 'plan' and ms.atg is None and ms.plan_file is None
+    assert ms.auto_trivial is False
+
+
+def test_new_path_starts_trivial_task_in_execute_mode():
+    ms = AgentState(mode='execute')
+    ms.cmp = store.new_cmp(ms, title='earlier task', now_ts=1000)
+    _, new = _executors(_ctx(ms))
+    with patch('backend.task_classifier.classify_task', return_value='trivial'):
+        result = new({'title': 'Push origin dev',
+                      'goal': 'now please push to origin dev'})
+    assert result['path_id'] == 'A2'
+    assert 'execute mode' in result['result']
+    assert ms.mode == 'execute' and ms.auto_trivial is True
+    assert ms.plan_file is None and ms.atg is None
 
 
 def test_new_path_invalid_dependency():
@@ -93,3 +110,28 @@ def test_switch_path_invalid_target_lists_valid_ids():
     new({'title': 'second'})
     err = switch({'path_id': 'Z9'})['error']
     assert 'A1' in err  # grounding: valid ids listed
+
+
+def test_read_transcript_preserves_plural_attachment_metadata():
+    ms = AgentState()
+    ms.cmp = store.new_cmp(ms, title='image task', now_ts=1000)
+    entries = [{
+        'type': 'user', 'content': 'Compare the uploads.',
+        'metadata': {'attachment_infos': [
+            {'attachment_id': 117, 'filename': 'one.png', 'mime_type': 'image/png',
+             'size_bytes': 10, 'file_path': 'data/one.png'},
+            {'attachment_id': 118, 'filename': 'two.png', 'mime_type': 'image/png',
+             'size_bytes': 20, 'file_path': 'data/two.png'},
+        ]},
+    }]
+    fake_log = type('FakeLog', (), {
+        'get_entries_after_ts': lambda self, start: entries,
+        'get_entries_between_ts': lambda self, start, end: entries,
+    })()
+    with patch('models.chatlog.chatlog_manager.get', return_value=fake_log):
+        read = _builtin_read_transcript_factory(_ctx(ms))[1]
+        result = read({'path_id': 'A1'})['result']
+    assert '[Attachment #1: one.png' in result
+    assert 'Attachment ID: 117' in result
+    assert '[Attachment #2: two.png' in result
+    assert 'Attachment ID: 118' in result

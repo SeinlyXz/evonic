@@ -36,6 +36,8 @@ or `kernel.apparmor_restrict_unprivileged_userns` (Ubuntu 24.04+).
 """
 
 import atexit
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -46,6 +48,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -69,8 +72,12 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Directory containing the evonic helper package (bound into the sandbox).
+# Directory containing the evonic helper package. Bubblewrap cannot bind this
+# path when an ancestor (commonly the service user's home) is mode 0700, so a
+# content-addressed copy is staged under a traversable runtime directory first.
 _HELPERS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', 'runpy_helpers'))
+_HELPERS_RUNTIME_ROOT = os.path.join(tempfile.gettempdir(), f'evonic-bwrap-{os.getuid()}', 'helpers')
+_helpers_stage_lock = threading.Lock()
 # Helpers are bound at a top-level path: mount points inside read-only binds
 # (/usr, /opt, …) cannot be created by bwrap, but the sandbox root is a tmpfs
 # where top-level directories can.
@@ -90,6 +97,21 @@ _PATH_PREFIX = (
 _HOME_MOUNT = '/home/agent'
 _HOME_SUBDIR = '.home'  # host dir under the workspace backing /home/agent
 
+# Host artifact registry root.  save_artifact/list_artifacts/fetch_artifact and
+# the web UI all read/write BASE_DIR/shared/agents/<agent_id>/artifacts on the
+# HOST.  When an agent's workspace differs from BASE_DIR, the sandbox's
+# /workspace bind does NOT include that registry, so /workspace/shared/agents/
+# <id>/artifacts would silently resolve to a DIFFERENT directory than the one
+# the UI serves.  We bind the registry into the sandbox at the same relative
+# path and map it back in _to_host so bash/runpy and file tools stay
+# consistent with the host registry (prevents silent artifact divergence).
+_ARTIFACTS_ROOT = os.path.normpath(os.path.join(SANDBOX_WORKSPACE, 'shared', 'agents'))
+
+# Bump when the sandbox bind layout changes so existing keepers are recreated
+# with the new binds (keepers survive within a process lifetime, so an
+# in-memory version check is required to detect stale layouts).
+_KEEPER_LAYOUT_VERSION = 2
+
 _USERNS_HINT = (
     ' Hint: bubblewrap needs unprivileged user namespaces — check '
     '`sysctl kernel.unprivileged_userns_clone` (Debian) or '
@@ -97,11 +119,139 @@ _USERNS_HINT = (
 )
 
 
+_NSENTER_READY_TIMEOUT = 1.0
+_NSENTER_READY_INTERVAL = 0.01
+_NSENTER_EXEC_NOT_READY = 'failed to execute /usr/bin/bash: No such file or directory'
+
+
+def _helpers_digest(source: str) -> str:
+    digest = hashlib.sha256()
+    for root, dirs, files in os.walk(source):
+        dirs[:] = sorted(d for d in dirs if d != '__pycache__')
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, source).encode()
+            digest.update(rel + b'\0')
+            with open(path, 'rb') as handle:
+                for chunk in iter(lambda: handle.read(65536), b''):
+                    digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
+def _stage_helpers(source: str = _HELPERS_DIR, runtime_root: str = _HELPERS_RUNTIME_ROOT) -> str:
+    """Copy helpers to a traversable, immutable-by-convention bind source."""
+    digest = _helpers_digest(source)
+    destination = os.path.join(runtime_root, digest)
+    with _helpers_stage_lock:
+        os.makedirs(runtime_root, mode=0o755, exist_ok=True)
+        os.chmod(os.path.dirname(runtime_root), 0o755)
+        os.chmod(runtime_root, 0o755)
+        if not os.path.isdir(destination):
+            staging = tempfile.mkdtemp(prefix=f'.{digest}-', dir=runtime_root)
+            try:
+                shutil.copytree(source, staging, dirs_exist_ok=True,
+                                ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+                for root, dirs, files in os.walk(staging):
+                    os.chmod(root, 0o755)
+                    for name in files:
+                        path = os.path.join(root, name)
+                        os.chmod(path, 0o755 if os.access(path, os.X_OK) else 0o644)
+                try:
+                    os.rename(staging, destination)
+                except FileExistsError:
+                    shutil.rmtree(staging)
+            except Exception:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
+    return destination
+
+
 def _nsenter_probe_argv(inner_pid: int) -> list:
     """Build a minimal nsenter probe command — same namespace flags as _nsenter_argv."""
     return ['nsenter', '--preserve-credentials', '-U', '-m', '-u', '-i', '-p',
             '-t', str(inner_pid), '--',
             '/usr/bin/bash', '-c', 'exit 0']
+
+
+def _wait_for_nsenter_ready(inner_pid: int, timeout: float = _NSENTER_READY_TIMEOUT,
+                            interval: float = _NSENTER_READY_INTERVAL):
+    """Return ``(probe, failure)`` once a new bwrap child is nsenter-ready.
+
+    Bubblewrap can report its child PID just before its mount setup is visible.
+    Retry only that narrow startup signature; all other failures are final.
+    """
+    deadline = time.monotonic() + timeout
+    probe = None
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return probe, 'readiness'
+        try:
+            probe = subprocess.run(
+                _nsenter_probe_argv(inner_pid), capture_output=True, text=True,
+                timeout=max(0.001, remaining),
+            )
+        except subprocess.TimeoutExpired:
+            return None, 'timeout'
+        if probe.returncode == 0:
+            return probe, None
+        stderr = (probe.stderr or '').strip()
+        if _NSENTER_EXEC_NOT_READY.lower() not in stderr.lower():
+            return probe, None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return probe, 'readiness'
+        time.sleep(min(interval, remaining))
+
+
+def _nsenter_failure_message(probe, failure: str | None) -> str | None:
+    if failure == 'timeout':
+        return 'nsenter probe timed out — the bwrap sandbox may not be responding.'
+    if probe is None or probe.returncode == 0:
+        return None
+    stderr = (probe.stderr or '').strip()
+    if failure == 'readiness':
+        return (f'The bwrap sandbox did not finish initializing before the nsenter readiness deadline. '
+                f'Details: {stderr or "sandbox executable not ready"}.')
+    lowered = stderr.lower()
+    if any(phrase in lowered for phrase in ('operation not permitted', 'permission denied',
+                                              'reassociate to namespace')):
+        return (f'nsenter cannot join the bwrap sandbox namespaces on this host. '
+                f'Details: {stderr or "permission denied"}. '
+                f'The bwrap backend is incompatible with this environment '
+                f'(e.g. WSL2 has known namespace limitations).')
+    return (f'nsenter failed while checking bwrap sandbox readiness. '
+            f'Details: {stderr or "unknown nsenter failure"}.')
+
+
+def _exited_process_stderr(proc, wait_timeout: float = 0.1) -> str:
+    """Return stderr only when a process has exited (or exits promptly)."""
+    try:
+        if proc.poll() is None:
+            proc.wait(timeout=wait_timeout)
+        if proc.poll() is None:
+            return ''
+        return (proc.stderr.read() or '').strip()
+    except (AttributeError, OSError, ValueError, subprocess.TimeoutExpired):
+        return ''
+
+
+def _bwrap_startup_failure_message(stderr: str) -> str:
+    """Explain a primary bwrap startup failure without blaming nsenter."""
+    stderr = (stderr or '').strip()
+    match = re.search(r"Can't find source path (.+?): Permission denied(?:\n|$)", stderr,
+                      flags=re.IGNORECASE)
+    if match:
+        source = match.group(1).strip()
+        return (f'Bubblewrap could not access bind source {source}: permission denied. '
+                f'Check that the Evonic service user has execute/traverse permission on every '
+                f'parent directory leading to this source. A private parent directory (for '
+                f'example, a home directory with mode 0700) can make the source inaccessible '
+                f'after Bubblewrap enters its user namespace. Do not weaken filesystem '
+                f'permissions automatically; move or stage the bind source under a suitably '
+                f'traversable directory, or adjust permissions according to your security policy. '
+                f'Bubblewrap details: {stderr}')
+    return f'Bubblewrap keeper exited during startup. Details: {stderr or "no error output"}.'
 
 
 def _check_nsenter_capability() -> str | None:
@@ -136,25 +286,9 @@ def _check_nsenter_capability() -> str | None:
         _destroy_probe(proc, r_fd)
         return None       # bwrap failed — not a nsenter-compatibility issue
 
-    # Probe: can nsenter join all namespaces?
-    try:
-        probe = subprocess.run(
-            _nsenter_probe_argv(inner_pid),
-            capture_output=True, text=True, timeout=5,
-        )
-    except subprocess.TimeoutExpired:
-        _destroy_probe(proc, r_fd)
-        return 'nsenter probe timed out — the bwrap sandbox may not be responding.'
-
+    probe, failure = _wait_for_nsenter_ready(inner_pid)
     _destroy_probe(proc, r_fd)
-
-    if probe.returncode != 0:
-        stderr = (probe.stderr or '').strip()
-        return (f'nsenter cannot join the bwrap sandbox namespaces on this host. '
-                f'Details: {stderr or "permission denied"}. '
-                f'The bwrap backend is incompatible with this environment '
-                f'(e.g. WSL2 has known namespace limitations).')
-    return None
+    return _nsenter_failure_message(probe, failure)
 
 
 def _destroy_probe(proc, r_fd):
@@ -386,13 +520,17 @@ class BwrapBackend(LocalBackend):
 
     def __init__(self, session_id: str = '', workspace: str = None,
                  agent_id: str = '', agent_name: str = '', is_subagent: bool = False,
-                 is_explorer: bool = False):
+                 is_explorer: bool = False, artifacts_root: str = None):
         super().__init__(session_id=session_id, workspace=workspace, run_as_user=None)
         self._agent_id = agent_id
         self._hostname = _sanitize_hostname(agent_name or agent_id)
         self._is_subagent = is_subagent
         self._is_explorer = is_explorer
         self._dirs_ready = False
+        # Injectable host artifact-registry root.  Defaults to the live registry
+        # (<BASE_DIR>/shared/agents); a simulation injects a root inside its
+        # temp tree so the bind below never touches the authoritative copy.
+        self._artifacts_root = artifacts_root or _ARTIFACTS_ROOT
 
     # ------------------------------------------------------------------
     # Sandbox construction
@@ -407,8 +545,9 @@ class BwrapBackend(LocalBackend):
         # nsenter cd trampoline), not in the bound workspace — nothing to mkdir here.
         self._dirs_ready = True
 
-    def _bwrap_argv(self) -> list:
+    def _bwrap_argv(self, workspace_fd: int = None, home_fd: int = None) -> list:
         ws = self._cwd()
+        helpers_dir = _stage_helpers()
         argv = [
             'bwrap',
             '--ro-bind', '/usr', '/usr',
@@ -428,13 +567,40 @@ class BwrapBackend(LocalBackend):
         resolv = os.path.realpath('/etc/resolv.conf')
         if resolv != '/etc/resolv.conf':
             argv += ['--ro-bind-try', resolv, resolv]
+        workspace_bind = (['--bind-fd', str(workspace_fd), '/workspace'] if workspace_fd is not None
+                          else ['--bind', ws, '/workspace'])
+        home_bind = (['--bind-fd', str(home_fd), _HOME_MOUNT] if home_fd is not None
+                     else ['--bind', os.path.join(ws, _HOME_SUBDIR), _HOME_MOUNT])
+        # Bind the agent's host artifact registry into the sandbox at the same
+        # relative path the sandbox-visible path convention uses, so that
+        # /workspace/shared/agents/<id>/artifacts/ always points at the SAME
+        # directory the web UI / list_artifacts / fetch_artifact serve.
+        # Without this, agents whose workspace differs from BASE_DIR would
+        # silently append to a sandbox copy the UI never reads (artifact
+        # divergence bug).  The destination dir is created inside the sandbox
+        # (bwrap creates missing mount points); the host source is ensured by
+        # _ensure_dirs on the host side.
+        artifacts_binds = []
+        if self._agent_id and self._artifacts_root:
+            registry_dir = os.path.join(self._artifacts_root, self._agent_id, 'artifacts')
+            # Skip when the workspace bind already exposes the registry at the
+            # same sandbox path (workspace == BASE_DIR): binding a directory
+            # onto itself is redundant.
+            ws_relative = os.path.join(ws, 'shared', 'agents',
+                                       self._agent_id, 'artifacts')
+            if os.path.realpath(ws_relative) != os.path.realpath(registry_dir):
+                os.makedirs(registry_dir, exist_ok=True)
+                artifacts_binds = [
+                    '--bind', registry_dir, f'/workspace/shared/agents/{self._agent_id}/artifacts',
+                ]
         argv += [
             '--proc', '/proc',
             '--dev', '/dev',
             '--tmpfs', '/tmp',
-            '--bind', ws, '/workspace',
-            '--bind', os.path.join(ws, _HOME_SUBDIR), _HOME_MOUNT,
-            '--ro-bind', _HELPERS_DIR, _HELPERS_MOUNT,
+            *workspace_bind,
+            *artifacts_binds,
+            *home_bind,
+            '--ro-bind', helpers_dir, _HELPERS_MOUNT,
             '--unshare-pid', '--unshare-uts', '--unshare-ipc', '--unshare-user',
             '--hostname', self._hostname,
             '--die-with-parent',
@@ -474,6 +640,13 @@ class BwrapBackend(LocalBackend):
         # by the nsenter cd trampoline (tmpfs /tmp is empty at sandbox start).
         return scratch_dir(self._agent_id) if (self._is_subagent and not self._is_explorer) else '/workspace'
 
+    def _subprocess_identity_kwargs(self) -> dict:
+        if os.geteuid() != 0:
+            return {}
+        workspace_stat = os.stat(self._cwd())
+        return {'user': workspace_stat.st_uid, 'group': workspace_stat.st_gid,
+                'extra_groups': ()}
+
     # ------------------------------------------------------------------
     # Keeper lifecycle
     # ------------------------------------------------------------------
@@ -484,47 +657,67 @@ class BwrapBackend(LocalBackend):
         Returns (info_dict, None) on success or (None, error_message).
         """
         self._ensure_dirs()
+        ws = self._cwd()
+        bind_fds = []
+        try:
+            bind_fds = [
+                os.open(ws, os.O_RDONLY | os.O_DIRECTORY),
+                os.open(os.path.join(ws, _HOME_SUBDIR), os.O_RDONLY | os.O_DIRECTORY),
+            ]
+        except OSError as e:
+            for fd in bind_fds:
+                os.close(fd)
+            return None, f'Failed to open bwrap bind source: {e}'
         r_fd, w_fd = os.pipe()
-        cmd = self._bwrap_argv() + ['--json-status-fd', str(w_fd), 'sleep', 'infinity']
+        cmd = self._bwrap_argv(*bind_fds) + ['--json-status-fd', str(w_fd), 'sleep', 'infinity']
+        # A descriptor bypasses pathname traversal, but bwrap still opens
+        # /proc/self/fd/N after entering its user namespace. If Evonic runs as
+        # root and the private workspace belongs to another user, that owner is
+        # mapped to nobody and the reopened directory remains inaccessible.
+        # Launch bwrap as the workspace owner so its user namespace maps the
+        # bind source correctly and preserves normal workspace write access.
+        popen_kwargs = self._subprocess_identity_kwargs()
         try:
             proc = subprocess.Popen(
                 cmd,
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE, text=True,
                 env=self._base_env({}),
-                pass_fds=(w_fd,), start_new_session=True,
+                pass_fds=(w_fd, *bind_fds), start_new_session=True,
+                **popen_kwargs,
             )
         except OSError as e:
             os.close(r_fd)
             os.close(w_fd)
             return None, f'Failed to start bwrap keeper: {e}'
+        finally:
+            for fd in bind_fds:
+                os.close(fd)
         os.close(w_fd)  # our copy; bwrap holds its own
         inner_pid = _read_child_pid(r_fd, proc)
         if inner_pid is None:
-            stderr = ''
-            if proc.poll() is not None:
-                try:
-                    stderr = (proc.stderr.read() or '').strip()
-                except Exception:
-                    pass
-            try:
-                os.close(r_fd)
-            except OSError:
-                pass
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except (ProcessLookupError, OSError):
-                pass
-            msg = f'bwrap keeper failed to start: {stderr or "no child-pid reported"}'
-            if 'bwrap:' in stderr:
-                msg += _USERNS_HINT
-            return None, msg
+            stderr = _exited_process_stderr(proc)
+            _destroy_probe(proc, r_fd)
+            if stderr:
+                return None, f'bwrap keeper failed to start: {_bwrap_startup_failure_message(stderr)}'
+            return None, 'bwrap keeper failed to start: no child-pid reported'
+        probe, failure = _wait_for_nsenter_ready(inner_pid)
+        readiness_error = _nsenter_failure_message(probe, failure)
+        if readiness_error:
+            # bwrap may report its child PID and then fail while mounting sources.
+            # Its stderr is the primary cause; nsenter only sees the vanished child.
+            stderr = _exited_process_stderr(proc)
+            _destroy_probe(proc, r_fd)
+            if stderr:
+                return None, f'bwrap keeper failed to start: {_bwrap_startup_failure_message(stderr)}'
+            return None, f'bwrap keeper failed readiness check: {readiness_error}'
         now = time.time()
         # Keep r_fd open in the pool entry (closed in _destroy_keeper) so
         # bwrap never hits a broken pipe when writing its exit-status line.
         return {'proc': proc, 'inner_pid': inner_pid, 'status_fd': r_fd,
                 'created_at': now, 'last_used': now,
-                'workspace': self._cwd(), 'hostname': self._hostname}, None
+                'workspace': self._cwd(), 'hostname': self._hostname,
+                'layout_version': _KEEPER_LAYOUT_VERSION}, None
 
     def _get_or_create_keeper(self):
         """Return (inner_pid, None) or (None, error_message)."""
@@ -536,6 +729,9 @@ class BwrapBackend(LocalBackend):
                 if info['workspace'] != ws:
                     logger.info(f'Workspace changed for session {self._session_id[:12]} — recreating keeper')
                     stale = True
+                elif info.get('layout_version') != _KEEPER_LAYOUT_VERSION:
+                    logger.info(f'Sandbox layout changed for session {self._session_id[:12]} — recreating keeper')
+                    stale = True
                 elif not _keeper_alive(info):
                     logger.warning(f'bwrap keeper vanished for session {self._session_id[:12]} — recreating')
                     stale = True
@@ -546,7 +742,8 @@ class BwrapBackend(LocalBackend):
             _destroy_keeper(self._session_id)
         with _pool_lock:
             info = _keepers.get(self._session_id)  # re-check after re-acquire
-            if info is not None and _keeper_alive(info) and info['workspace'] == ws:
+            if info is not None and _keeper_alive(info) and info['workspace'] == ws \
+                    and info.get('layout_version') == _KEEPER_LAYOUT_VERSION:
                 info['last_used'] = time.time()
                 return info['inner_pid'], None
             new_info, err = self._spawn_keeper()
@@ -567,6 +764,7 @@ class BwrapBackend(LocalBackend):
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, cwd=self._cwd(), env=run_env,
             start_new_session=True,
+            **self._subprocess_identity_kwargs(),
         )
         process_tracker.register(self._session_id, proc, proc.pid,
                                  kill_method='killpg')
@@ -655,6 +853,15 @@ class BwrapBackend(LocalBackend):
         effective = self._cwd()
         if path.startswith(effective):
             return '/workspace' + path[len(effective):]
+        # The host artifact registry is bind-mounted into the sandbox at
+        # /workspace/shared/agents/<id>/artifacts; translate host registry
+        # paths to that sandbox path (file tools resolve the sandbox path to
+        # the host registry via resolve_workspace_path; _to_host maps back).
+        if self._agent_id and self._artifacts_root:
+            registry = os.path.join(self._artifacts_root, self._agent_id, 'artifacts')
+            if path == registry or path.startswith(registry + os.sep):
+                rel = path[len(registry):]
+                return f'/workspace/shared/agents/{self._agent_id}/artifacts{rel}'
         return path
 
     def _to_host(self, path: str) -> str:
@@ -668,35 +875,104 @@ class BwrapBackend(LocalBackend):
         agents should keep tool-visible files under /workspace or /home/agent.
         """
         ws = self._cwd()
+        # The artifact registry is bind-mounted into the sandbox at
+        # /workspace/shared/agents/<id>/artifacts; map sandbox-view paths
+        # under that prefix back to the HOST registry, not a workspace copy.
+        if self._agent_id and self._artifacts_root:
+            artifacts_rel = f'/workspace/shared/agents/{self._agent_id}/artifacts'
+            if path == artifacts_rel or path.startswith(artifacts_rel + '/'):
+                registry = os.path.join(self._artifacts_root, self._agent_id, 'artifacts')
+                return registry + path[len(artifacts_rel):]
         if path == '/workspace' or path.startswith('/workspace/'):
             return ws + path[len('/workspace'):]
         if path == _HOME_MOUNT or path.startswith(_HOME_MOUNT + '/'):
             return os.path.join(ws, _HOME_SUBDIR) + path[len(_HOME_MOUNT):]
         return path
 
+    def _is_scratch_path(self, path: str) -> bool:
+        root = scratch_dir(self._agent_id)
+        return path == root or path.startswith(root + '/')
+
+    def _scratch_python(self, code: str) -> dict:
+        result = self.run_python(code, 30, {})
+        if result.get('error') or result.get('exit_code', 0) != 0:
+            return {'error': result.get('error') or result.get('stderr', 'sandbox file operation failed')}
+        try:
+            return json.loads(result.get('stdout', '{}'))
+        except (TypeError, ValueError):
+            return {'error': 'Invalid response from sandbox file operation'}
+
+    @staticmethod
+    def _scratch_operation(path: str, operation: str, **values) -> str:
+        return (
+            'import base64, json, os\n'
+            f'p = {path!r}\n'
+            f'op = {operation!r}\n'
+            f'values = {values!r}\n'
+            'try:\n'
+            "    if op == 'exists': result = os.path.exists(p)\n"
+            "    elif op == 'stat':\n"
+            "        exists = os.path.isfile(p)\n"
+            "        chunk = open(p, 'rb').read(8192) if exists else b''\n"
+            "        result = {'exists': exists, 'size': os.path.getsize(p) if exists else 0, 'is_binary': b'\\x00' in chunk}\n"
+            "    elif op == 'read':\n"
+            "        with open(p, encoding='utf-8') as f: result = {'content': f.read()}\n"
+            "    elif op == 'mkdir': os.makedirs(p, exist_ok=True); result = {'ok': True}\n"
+            "    elif op == 'delete': os.remove(p); result = {'ok': True}\n"
+            "    elif op == 'read_bytes':\n"
+            "        with open(p, 'rb') as f: result = {'data': base64.b64encode(f.read()).decode('ascii')}\n"
+            "    elif op == 'write_bytes':\n"
+            "        if values['create_dirs']: os.makedirs(os.path.dirname(p), exist_ok=True)\n"
+            "        with open(p, 'wb') as f: f.write(base64.b64decode(values['data']))\n"
+            "        result = {'ok': True}\n"
+            "    print(json.dumps(result))\n"
+            'except Exception as e: print(json.dumps({\'error\': str(e)}))\n'
+        )
+
     def file_exists(self, path: str) -> bool:
-        return super().file_exists(self._to_host(path))
+        if not self._is_scratch_path(path):
+            return super().file_exists(self._to_host(path))
+        return self._scratch_python(self._scratch_operation(path, 'exists')) is True
 
     def file_stat(self, path: str) -> dict:
-        return super().file_stat(self._to_host(path))
+        if not self._is_scratch_path(path):
+            return super().file_stat(self._to_host(path))
+        return self._scratch_python(self._scratch_operation(path, 'stat'))
 
     def read_file(self, path: str) -> dict:
-        return super().read_file(self._to_host(path))
+        if not self._is_scratch_path(path):
+            return super().read_file(self._to_host(path))
+        return self._scratch_python(self._scratch_operation(path, 'read'))
 
     def write_file(self, path: str, content: str, create_dirs: bool = True) -> dict:
-        return super().write_file(self._to_host(path), content, create_dirs)
+        if not self._is_scratch_path(path):
+            return super().write_file(self._to_host(path), content, create_dirs)
+        return self.write_file_bytes(path, content.encode('utf-8'), create_dirs)
 
     def make_dirs(self, path: str) -> dict:
-        return super().make_dirs(self._to_host(path))
+        if not self._is_scratch_path(path):
+            return super().make_dirs(self._to_host(path))
+        return self._scratch_python(self._scratch_operation(path, 'mkdir'))
 
     def cat_file_bytes(self, path: str) -> dict:
-        return super().cat_file_bytes(self._to_host(path))
+        if not self._is_scratch_path(path):
+            return super().cat_file_bytes(self._to_host(path))
+        result = self._scratch_python(self._scratch_operation(path, 'read_bytes'))
+        if 'data' in result:
+            return {'bytes': base64.b64decode(result['data'])}
+        return result
 
     def delete_file(self, path: str) -> dict:
-        return super().delete_file(self._to_host(path))
+        if not self._is_scratch_path(path):
+            return super().delete_file(self._to_host(path))
+        return self._scratch_python(self._scratch_operation(path, 'delete'))
 
     def write_file_bytes(self, path: str, data: bytes, create_dirs: bool = True) -> dict:
-        return super().write_file_bytes(self._to_host(path), data, create_dirs)
+        if not self._is_scratch_path(path):
+            return super().write_file_bytes(self._to_host(path), data, create_dirs)
+        return self._scratch_python(self._scratch_operation(
+            path, 'write_bytes', data=base64.b64encode(data).decode('ascii'), create_dirs=create_dirs,
+        ))
 
     # ------------------------------------------------------------------
     # Lifecycle

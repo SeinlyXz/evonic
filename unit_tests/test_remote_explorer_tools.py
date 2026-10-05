@@ -74,6 +74,25 @@ def test_remote_read_glob_and_grep(remote):
     assert grep['matches'][0]['file'] == 'src/app.py'
 
 
+def test_remote_read_accepts_path_alias(remote):
+    _, agent = remote
+    result = TOOLS_MODULES['Read'].execute(agent, {'path': 'src/app.py'})
+    assert '1: alpha' in result['content']
+
+
+def test_remote_read_prefers_file_path_over_path(remote):
+    _, agent = remote
+    result = TOOLS_MODULES['Read'].execute(agent, {
+        'file_path': 'src/app.py', 'path': '../outside.txt'
+    })
+    assert '1: alpha' in result['content']
+
+
+def test_remote_read_requires_path_argument(remote):
+    _, agent = remote
+    assert TOOLS_MODULES['Read'].execute(agent, {}) == {'error': 'file_path is required'}
+
+
 def test_remote_boundary_rejects_traversal(remote):
     _, agent = remote
     result = TOOLS_MODULES['Read'].execute(agent, {'file_path': '../outside.txt'})
@@ -95,3 +114,38 @@ def test_local_backend_behavior(remote):
     result = TOOLS_MODULES['Read'].execute(agent, {'file_path': 'src/app.py', 'offset': 2})
     assert result['shown_start'] == 2
     assert '2: beta alpha' in result['content']
+
+
+def test_remote_glob_caps_at_max_files(remote):
+    """Recursive glob over a large tree must cap results, not blow the stdout limit."""
+    workspace, agent = remote
+    many = workspace / 'many'
+    many.mkdir()
+    for i in range(1005):
+        (many / f'f{i:04d}.txt').write_text('x')
+    total = 1005 + 1  # + src/app.py
+    glob = TOOLS_MODULES['Glob'].execute(agent, {'path': '.', 'pattern': '**'})
+    assert 'error' not in glob
+    assert len(glob['files']) == 1000
+    assert glob['count'] == total
+    assert glob['truncated'] is True
+
+
+def test_run_python_json_raises_on_truncated_output():
+    """_run_python_json must surface backend stdout truncation clearly."""
+    class TruncatedBackend:
+        def run_python(self, code, timeout, env):
+            return {'stdout': '{"files": ["a"' + '\n[truncated]', 'stderr': '', 'exit_code': 0}
+
+    with pytest.raises(RuntimeError, match='truncated'):
+        TOOLS_MODULES['_utils']._run_python_json(TruncatedBackend(), 'code')
+
+
+def test_run_python_json_reports_unparseable_stdout():
+    """Non-truncated invalid JSON should report the actual decode error."""
+    class BadBackend:
+        def run_python(self, code, timeout, env):
+            return {'stdout': 'not json at all', 'stderr': '', 'exit_code': 0}
+
+    with pytest.raises(RuntimeError, match='unparseable'):
+        TOOLS_MODULES['_utils']._run_python_json(BadBackend(), 'code')

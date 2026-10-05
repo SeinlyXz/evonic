@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
@@ -28,9 +29,12 @@ def _token_count(text: str) -> int:
     return len(_TIKTOKEN_ENCODING.encode(text))
 
 from models.db import db
+from models.boolean import message_wrapper_enabled
+from models.chat import is_human_facing_external_user_id
 from backend.tools import tool_registry
 from backend.tools.registry import BUILTIN_TOOL_IDS
 from backend.skills_manager import SkillsManager, skills_manager
+from backend.agent_runtime import simulation_spec as sim_spec
 from backend.agent_runtime.evomem_client import (
     get_evomem_db_mtime,
 )
@@ -68,6 +72,14 @@ def _effective_id(agent: Dict[str, Any]) -> str:
 
 def _system_prompt_path(agent_id: str) -> str:
     return os.path.join(_AGENTS_DIR, agent_id, 'SYSTEM.md')
+
+
+def _kb_dir(agent: Dict[str, Any], eid: str) -> str:
+    """KB directory for *agent*: under the simulation tree for sim agents."""
+    if sim_spec.is_simulation(agent):
+        from backend.tools.lib import simulation_scope as _sim_scope
+        return os.path.join(_sim_scope.agents_dir(agent), eid, 'kb')
+    return os.path.join(_AGENTS_DIR, eid, 'kb')
 
 
 def _get_mtime(path: str) -> float:
@@ -270,7 +282,7 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
             parts.append(f"\n## Language\n{_lang_text}")
 
     # Inject system_prompt from assigned tool definitions
-    assigned_ids = set(db.get_agent_tools(eid))
+    assigned_ids = set(sim_spec.tools(agent, eid))
 
     if assigned_ids:
         seen_fn_names = set()
@@ -307,22 +319,22 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
             "- Only durable, intentional deliverables belong outside the scratchpad."
         )
 
-    # Message Wrapper Protocol
-    parts.append("")
-    parts.append("## Message Wrapper Protocol")
-    parts.append(
-        "After EVERY user message, before your main response, you MUST:"
-    )
-    parts.append(
-        "1. Scan the message for any new preference, instruction, rule, or personal fact."
-    )
-    parts.append(
-        "2. If found: store it immediately via remember() (factual data), "
-        "store it as a preference via remember() for non-factual style notes, or update SYSTEM.md (critical rules)."
-    )
-    parts.append(
-        "3. This applies to BOTH explicit and implicit cues. Even casual mentions count."
-    )
+    if message_wrapper_enabled(agent, db):
+        parts.append("")
+        parts.append("## Message Wrapper Protocol")
+        parts.append(
+            "After EVERY user message, before your main response, you MUST:"
+        )
+        parts.append(
+            "1. Scan the message for any new preference, instruction, rule, or personal fact."
+        )
+        parts.append(
+            "2. If found: store it immediately via remember() (factual data), "
+            "store it as a preference via remember() for non-factual style notes, or update SYSTEM.md (critical rules)."
+        )
+        parts.append(
+            "3. This applies to BOTH explicit and implicit cues. Even casual mentions count."
+        )
 
     # Memory Retrieval Protocol — coach the agent on the retrieval side of
     # long-term memory (the capture side is covered above). Memories are NOT
@@ -332,6 +344,10 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
     parts.append(
         "You have long-term memory that persists across conversations. You MUST use "
         "the `recall` tool to look up past facts — nothing is injected automatically."
+    )
+    parts.append(
+        "- `recall(query=\"<key>\", mode=\"key\")` — exact current value of a keyed "
+        "fact. Fastest and most precise; prefer it whenever the key is listed below."
     )
     parts.append(
         "- `recall(query=\"...\")` — fast keyword lookup of a specific stored fact "
@@ -363,10 +379,25 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
         "resort to filesystem exploration."
     )
 
-    # List available skills with SYSTEM.md so the agent knows what it can load
+    # Keys-only memory index: show WHAT the agent knows (a few tokens per key)
+    # without paying for the contents. Enables precise recall(mode='key') and
+    # keeps remember() key naming consistent (the agent reuses listed keys).
+    try:
+        _mem_keys = db.get_active_dimensions(aid, limit=50)
+    except Exception:
+        _mem_keys = []
+    if _mem_keys:
+        parts.append(
+            "Known memory keys (current value via `recall(query=\"<key>\", "
+            "mode=\"key\")`; reuse a listed key in remember() to update that fact):"
+        )
+        parts.append("`" + "`, `".join(_mem_keys) + "`")
+
+    # List available lazy skills so the agent knows what it can load. SYSTEM.md
+    # is optional: a lazy skill can expose tools without additional instructions.
     skills_mgr = skills_manager
-    _allowed_skills = None if agent.get('is_super') else set(db.get_agent_skills(eid))
-    skills_with_system_md = []
+    _allowed_skills = None if agent.get('is_super') else set(sim_spec.skills(agent, eid))
+    lazy_skills = []
     skill_briefs = []
     for skill in skills_mgr.list_skills():
         if not skills_mgr.is_skill_enabled(skill.get('id', '')):
@@ -380,19 +411,16 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
         # Only list lazy skills — eager skills' tools are already in the tool list
         if not skill.get('lazy_tools', False):
             continue
-        skill_dir = skill.get('_dir', os.path.join(_BASE_DIR, 'skills', skill['id']))
-        system_md_path = os.path.join(skill_dir, 'SYSTEM.md')
-        if os.path.isfile(system_md_path):
-            skills_with_system_md.append(skill['id'])
-            # brief is for agents; fall back to description if no brief defined
-            brief = skill.get('brief', '').strip() or skill.get('description', '').strip()
-            if brief:
-                skill_briefs.append(brief)
+        lazy_skills.append(skill['id'])
+        # brief is for agents; fall back to description if no brief defined
+        brief = skill.get('brief', '').strip() or skill.get('description', '').strip()
+        if brief:
+            skill_briefs.append(brief)
 
-    if skills_with_system_md:
+    if lazy_skills:
         parts.append("\n## Skills")
         parts.append("You have these skills that can be loaded using `use_skill` tool:")
-        for skill_id in skills_with_system_md:
+        for skill_id in lazy_skills:
             parts.append(f"- `{skill_id}`")
         # Inject skill briefs — short usage hints defined in skill.json
         if skill_briefs:
@@ -478,7 +506,7 @@ def _build_static_prompt(agent: Dict[str, Any]) -> str:
 
     # List available agent variables (names only, never values) so the LLM
     # knows to reference $VAR_NAME in bash/runpy instead of literal secrets.
-    agent_vars = db.get_agent_variables(eid)
+    agent_vars = sim_spec.variables(agent, eid)
     if agent_vars:
         parts.append("\n## Environment Variables")
         parts.append(
@@ -504,7 +532,7 @@ def _cache_key_valid(agent: Dict[str, Any], cache_entry: Dict[str, Any]) -> bool
         return False
 
     # Check KB dir mtime
-    kb_dir = os.path.join(_AGENTS_DIR, eid, 'kb')
+    kb_dir = _kb_dir(agent, eid)
     if _get_mtime(kb_dir) != cache_entry['kb_mtime']:
         return False
 
@@ -513,7 +541,7 @@ def _cache_key_valid(agent: Dict[str, Any], cache_entry: Dict[str, Any]) -> bool
         return False
 
     # Check tools hash (assigned tool IDs)
-    assigned_ids = frozenset(db.get_agent_tools(eid))
+    assigned_ids = frozenset(sim_spec.tools(agent, eid))
     if str(sorted(assigned_ids)) != cache_entry['tools_hash']:
         return False
 
@@ -526,7 +554,7 @@ def _cache_key_valid(agent: Dict[str, Any], cache_entry: Dict[str, Any]) -> bool
         return False
 
     # Check agent variables hash (adding/removing/changing variables must invalidate)
-    current_vars = db.get_agent_variables(eid)
+    current_vars = sim_spec.variables(agent, eid)
     vars_key = str(sorted((v['key'], v.get('is_secret', False)) for v in current_vars))
     if hashlib.sha256(vars_key.encode()).hexdigest() != cache_entry.get('vars_hash', ''):
         return False
@@ -543,7 +571,30 @@ def _cache_key_valid(agent: Dict[str, Any], cache_entry: Dict[str, Any]) -> bool
     if _resolve_workspace(agent) != cache_entry.get('workspace'):
         return False
 
+    if message_wrapper_enabled(agent, db) != cache_entry.get('message_wrapper_enabled'):
+        return False
+
     return True
+
+
+def trail_history_kwargs(agent_id: str) -> dict:
+    """Extra kwargs for chatlog.get_entries_for_llm_trail().
+
+    Normally empty, so trail history keeps its default 50-message sliding
+    window. For agent ids listed in the `trail_history_full_agents` setting,
+    raise the message limit to `trail_history_limit` (default 1_000_000), i.e.
+    TRUE full history — the whole transcript is sent every turn until the model
+    hits its context ceiling. Used by the CMP endurance benchmark to run a
+    genuine full-history baseline against the bounded windowed/CMP arms.
+    """
+    try:
+        from models.db import db
+        full = (db.get_setting('trail_history_full_agents', '') or '')
+        if agent_id and agent_id in {a.strip() for a in full.split(',') if a.strip()}:
+            return {'limit': int(db.get_setting('trail_history_limit', '1000000') or 1000000)}
+    except Exception:
+        pass
+    return {}
 
 
 def build_system_prompt(agent: Dict[str, Any], injected_system_vars: Dict[str, str] = None) -> str:
@@ -566,13 +617,13 @@ def build_system_prompt(agent: Dict[str, Any], injected_system_vars: Dict[str, s
 
         # Build mtime snapshot for cache validation
         sp_path = _system_prompt_path(eid)
-        kb_dir = os.path.join(_AGENTS_DIR, eid, 'kb')
+        kb_dir = _kb_dir(agent, eid)
         skills_hash = _get_skills_mtime_hash()
 
-        assigned_ids = frozenset(db.get_agent_tools(eid))
+        assigned_ids = frozenset(sim_spec.tools(agent, eid))
 
         # Compute variables hash for cache invalidation
-        current_vars = db.get_agent_variables(eid)
+        current_vars = sim_spec.variables(agent, eid)
         vars_key = str(sorted((v['key'], v.get('is_secret', False)) for v in current_vars))
         vars_hash = hashlib.sha256(vars_key.encode()).hexdigest()
 
@@ -588,6 +639,7 @@ def build_system_prompt(agent: Dict[str, Any], injected_system_vars: Dict[str, s
             'vars_hash': vars_hash,
             'run_as_user': agent.get('run_as_user'),
             'workspace': _resolve_workspace(agent),
+            'message_wrapper_enabled': message_wrapper_enabled(agent, db),
         }
 
     prompt = static_prompt
@@ -730,9 +782,11 @@ def build_system_prompt(agent: Dict[str, Any], injected_system_vars: Dict[str, s
         ("/help", "Show available commands"),
         ("/summary", "Force regenerate session summary"),
         ("/stop", "Stop the agent's current processing loop"),
-        ("/detach", "Move the running long-running process (build/download) to the background so we can keep chatting — tracking is persistent (survives restarts) and you'll be notified to report the result when it finishes; the watcher is removed automatically, no cleanup needed"),
-        ("/jobs", "List background jobs for this session"),
+        ("/detach", "Stop waiting on the running long-running process and attach an on-exit monitor to it, so we can keep chatting and you report back once it finishes (persistent, survives restarts; the monitor removes itself)"),
+        ("/jobs", "List background jobs for this session and any monitors attached to them"),
         ("/dump", "Dump current session as JSONL file for download"),
+        ("/model", "Show or switch LLM model"),
+        ("/fast", "Show or set Codex Fast mode for this session"),
     ]
     slash_commands.append(("/plan", "Switch to plan mode"))
     slash_commands.append(("/unfocus", "Force-clear focus mode — use when agent is stuck in focus after a failed task"))
@@ -755,6 +809,34 @@ def build_system_prompt(agent: Dict[str, Any], injected_system_vars: Dict[str, s
         slash_commands.append(("/shutdown", "Shut down the Evonic server completely (super agent only)"))
     # /autopilot is not yet implemented, omit from listing
 
+    # Filter slash commands based on per-agent hidden/disabled settings.
+    # Super agents are exempt — they always see all commands.
+    if not is_super:
+        all_cmd_names = {name for name, _desc in slash_commands}
+
+        def _expand(raw_value: str) -> set:
+            if not raw_value or not raw_value.strip():
+                return set()
+            raw = raw_value.strip()
+            if raw == '*':
+                return set(all_cmd_names)
+            if raw.startswith('!'):
+                allowed = {c.strip() for c in raw[1:].split(',') if c.strip()}
+                return set(all_cmd_names) - allowed
+            return {c.strip() for c in raw.split(',') if c.strip()}
+
+        hidden = _expand(agent.get('hidden_slash_commands', ''))
+        disabled = _expand(agent.get('disabled_slash_commands', ''))
+        remove_set = hidden | disabled
+        if remove_set:
+            slash_commands = [(n, d) for n, d in slash_commands if n not in remove_set]
+
+    # Hide /help from the advertised command list when the per-agent help
+    # toggle is off — the command is silently ignored at runtime (no reply,
+    # no LLM fallthrough), so advertising it would be misleading.
+    if not bool(agent.get('help_enabled', True)):
+        slash_commands = [(n, d) for n, d in slash_commands if n != '/help']
+
     if slash_commands:
         prompt += "\n\n## Slash Commands\n\n**Available commands:**\n"
         for name, desc in slash_commands:
@@ -765,30 +847,26 @@ def build_system_prompt(agent: Dict[str, Any], injected_system_vars: Dict[str, s
         if agent.get('sandbox_enabled'):
             artifacts_path = os.path.join('/workspace/shared/agents', aid, 'artifacts')
             artifacts_note = (
-                f"Your artifacts directory is: `{artifacts_path}`\n"
-                "Files you save here will appear in the Artifacts tab on your agent detail page.\n"
-                "Use `save_artifact(source_path=\"...\")` for files already on disk (binaries, images, PDFs) "
-                "or `save_artifact(content=\"...\")` for text generated in your response.\n"
-                "You can also access it via `/_self/artifacts/` with any file tool.\n\n"
-                f"**Artifact public URL**: `/api/agents/{aid}/artifacts/<filename>`\n"
-                "This URL serves the file directly in the browser (no download prompt for images).\n"
-                "To display an image inline in chat, save it via `save_artifact(source_path=\"...\")` "
-                f"then embed in your markdown response: `<img src=\"/api/agents/{aid}/artifacts/filename.webp\" alt=\"...\">`\n\n"
-                "**Important**: `/_self/` paths only work with file tools (`read_file`, `write_file`, `patch`, `str_replace`) "
-                "— NOT with `bash` or `runpy`. When saving from bash/runpy, use the full workspace path "
-                f"`{artifacts_path}` or the `save_artifact` tool."
+                f"Directory: `{artifacts_path}` (also `/_self/artifacts/` via file tools only). "
+                "Save with `save_artifact(content=\"...\")` or `save_artifact(source_path=\"...\")`; "
+                "files appear in the Artifacts tab. "
+                f"Public URL: `/api/agents/{aid}/artifacts/<filename>`. "
+                f"Embed images with `<img src=\"/api/agents/{aid}/artifacts/filename.webp\" alt=\"...\">`. "
+                "Deliver files to the user with `send_file` (or `save_artifact` for the Artifacts tab). "
+                "Never give local filesystem paths (e.g. `/home/...`, `sandbox:...`) as chat links — "
+                "the user cannot open them. "
+                f"`bash`/`runpy` must use `{artifacts_path}`, not `/_self/`."
             )
         else:
             artifacts_note = (
-                f"Your artifacts are served at: `/api/agents/{aid}/artifacts/<filename>`\n"
-                "Use the `save_artifact` tool to save files. "
-                "Use `save_artifact(source_path=\"...\")` for files already on disk (binaries, images) "
-                "or `save_artifact(content=\"...\")` for text generated in your response. "
-                "You can also access the directory via `/_self/artifacts/` with file tools.\n\n"
-                "To display an image inline in chat: save it via `save_artifact(source_path=\"...\")` "
-                f"then embed in your markdown response: `<img src=\"/api/agents/{aid}/artifacts/filename.webp\" alt=\"...\">`\n\n"
-                "**Important**: `/_self/` paths only work with file tools (`read_file`, `write_file`, `patch`, `str_replace`) "
-                "— NOT with `bash` or `runpy`."
+                f"Public URL: `/api/agents/{aid}/artifacts/<filename>`. "
+                "Save with `save_artifact(content=\"...\")` or `save_artifact(source_path=\"...\")`; "
+                "files are also available at `/_self/artifacts/` via file tools. "
+                f"Embed images with `<img src=\"/api/agents/{aid}/artifacts/filename.webp\" alt=\"...\">`. "
+                "Deliver files to the user with `send_file` (or `save_artifact` for the Artifacts tab). "
+                "Never give local filesystem paths (e.g. `/home/...`, `sandbox:...`) as chat links — "
+                "the user cannot open them. "
+                "`bash`/`runpy` cannot use `/_self/`."
             )
         prompt += "\n\n## Artifacts Directory\n" + artifacts_note
 
@@ -813,7 +891,13 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
             if fn_name and fn_name not in seen_fn_names:
                 seen_fn_names.add(fn_name)
                 tools.append(tool_def)
-        return tools
+        return compact_tool_definitions(tools)
+
+    # Resolve explicit assignments before adding messaging definitions so the LLM
+    # sees only messaging tools the agent can actually execute. Sub-agents inherit
+    # their parent's assignments.
+    eid = _effective_id(agent)
+    assigned_ids = set(sim_spec.tools(agent, eid))
 
     # Built-in tools (use_skill, set_mode, remember, recall, etc.)
     # Can be disabled per-agent via builtin_tools_enabled advanced setting.
@@ -821,8 +905,10 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
         'id': agent['id'],
         'is_super': bool(agent.get('is_super')),
         'workplace_id': agent.get('workplace_id'),
+        'send_file_allowed_path_regex': agent.get('send_file_allowed_path_regex', ''),
         'enable_atg': bool(agent.get('enable_atg')) and bool(agent.get('enable_agent_state')),
         'enable_cmp': bool(agent.get('enable_cmp')) and bool(agent.get('enable_agent_state')),
+        'always_execute': bool(agent.get('always_execute')),
     }
     if agent.get('builtin_tools_enabled', True):
         tools.extend(tool_registry.get_builtin_tools(agent_context))
@@ -838,6 +924,8 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
             continue
         if fn_name not in BUILTIN_TOOL_IDS:
             continue
+        if fn_name == 'save_artifact' and not agent.get('artifacts_enabled', True):
+            continue
         if fn_name in seen_fn_names:
             continue
         seen_fn_names.add(fn_name)
@@ -851,45 +939,27 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
         from backend.tools.super_agent_tools import get_super_agent_tool_defs
         tools.extend(get_super_agent_tool_defs())
 
-    # Super agent gets ALL skill tools automatically — no per-skill assignment needed
-    if agent.get('is_super'):
-        seen_fn_names = {t['function']['name'] for t in tools if t.get('function', {}).get('name')}
-        for tool_def in tool_registry.get_all_tool_defs():
-            tool_id = tool_def.get('id', '')
-            fn_name = tool_def.get('function', {}).get('name', '')
-            if not tool_id.startswith('skill:') or not fn_name:
-                continue
-            if fn_name in seen_fn_names:
-                continue
-            seen_fn_names.add(fn_name)
-            tools.append({
-                "type": "function",
-                "function": tool_def['function']
-            })
-
-    # Agent messaging tools — available to super agent and agents with messaging enabled
+    # Agent messaging tools are gated by messaging enablement and assignment.
+    # This keeps definitions advertised to the LLM aligned with runtime
+    # authorization, while super agents retain access to the full messaging set.
     if agent.get('is_super') or agent.get('agent_messaging_enabled') != 0:
         from backend.tools.agent_messaging import get_agent_messaging_tool_defs
-        tools.extend(get_agent_messaging_tool_defs())
-
-    # Explorers use their own configured tool set (no parent inheritance), and
-    # their tools may come from a LAZY skill — so resolve the defs directly
-    # (get_all_tool_defs omits lazy skills) and return.
-    if agent.get('is_explorer'):
-        from backend.agent_runtime import explorer as _explorer
         seen_fn_names = {t['function']['name'] for t in tools if t.get('function', {}).get('name')}
-        for tool_def in _explorer.tool_defs(agent):
+        for tool_def in get_agent_messaging_tool_defs():
             fn_name = tool_def.get('function', {}).get('name', '')
             if not fn_name or fn_name in seen_fn_names:
                 continue
+            # send_agent_message is the core inter-agent communication tool: an
+            # enabled agent receives it without a separate tool assignment. The
+            # remaining messaging tools retain assignment-based exposure.
+            if (not agent.get('is_super')
+                    and fn_name != 'send_agent_message'
+                    and fn_name not in assigned_ids):
+                continue
             seen_fn_names.add(fn_name)
             tools.append(tool_def)
-        return tools
 
-    # Add assigned tools from the registry (including skill tools)
-    # Sub-agents inherit parent's tool assignments.
-    eid = _effective_id(agent)
-    assigned_ids = set(db.get_agent_tools(eid))
+    # Add assigned tools from the registry (including skill tools).
 
     # Auto-assign describe_image for vision-enabled agents.
     # Mirrors the auto-assignment in runtime.py and prefetch.py so that
@@ -900,6 +970,11 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
     # Auto-assign transcribe_audio for audio-enabled agents.
     if agent.get('audio_enabled'):
         assigned_ids.add('transcribe_audio')
+
+    # Auto-assign monitor wherever bash is available — it is the opt-in way to
+    # be notified about background processes, which only bash can start.
+    if 'bash' in assigned_ids:
+        assigned_ids.add('monitor')
 
     if assigned_ids:
         seen_fn_names = {t['function']['name'] for t in tools if t.get('function', {}).get('name')}
@@ -921,31 +996,30 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
     # This ensures that when an agent has a skill assigned in agent_skills and that skill
     # is eagerly loaded (no lazy_tools=true), the tools are available without manual
     # tool assignment in agent_tools.
-    if not agent.get('is_super'):
-        assigned_skill_ids = set(db.get_agent_skills(eid))
-        if assigned_skill_ids:
-            for skill in skills_manager.list_skills():
-                skill_id = skill.get('id', '')
-                if skill_id not in assigned_skill_ids:
+    assigned_skill_ids = set(sim_spec.skills(agent, eid))
+    if assigned_skill_ids:
+        for skill in skills_manager.list_skills():
+            skill_id = skill.get('id', '')
+            if skill_id not in assigned_skill_ids:
+                continue
+            # Skip lazy-loaded skills — their tools are injected via use_skill
+            if skill.get('lazy_tools', False):
+                continue
+            # Skip super_only skills for non-super agents
+            if skill.get('super_only', False) and not agent.get('is_super'):
+                continue
+            defs = skills_manager.get_skill_tool_defs(skill_id)
+            for tool_def in defs:
+                fn_name = tool_def.get('function', {}).get('name', '')
+                if not fn_name:
                     continue
-                # Skip lazy-loaded skills — their tools are injected via use_skill
-                if skill.get('lazy_tools', False):
+                # Avoid duplicates
+                if any(t['function']['name'] == fn_name for t in tools):
                     continue
-                # Skip super_only skills for non-super agents
-                if skill.get('super_only', False):
-                    continue
-                defs = skills_manager.get_skill_tool_defs(skill_id)
-                for tool_def in defs:
-                    fn_name = tool_def.get('function', {}).get('name', '')
-                    if not fn_name:
-                        continue
-                    # Avoid duplicates
-                    if any(t['function']['name'] == fn_name for t in tools):
-                        continue
-                    tools.append({
-                        "type": "function",
-                        "function": tool_def['function']
-                    })
+                tools.append({
+                    "type": "function",
+                    "function": tool_def['function']
+                })
 
     # ── Patch /workspace and Docker/container references for non-sandbox agents ──
     # Tool JSON definitions contain /workspace paths and Docker/container
@@ -982,17 +1056,31 @@ def build_tools(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
                         desc = desc.replace(old, new)
                     param_def['description'] = desc
 
-    # Strip empty description strings from all tool definitions.
-    # OpenAI function calling spec treats description as optional;
-    # removing empty strings saves tokens without losing information.
-    for tool in tools:
-        func = tool.get('function', {})
-        if isinstance(func.get('description'), str) and func['description'] == '':
-            del func['description']
-        for param_def in func.get('parameters', {}).get('properties', {}).values():
-            if isinstance(param_def, dict) and isinstance(param_def.get('description'), str) and param_def['description'] == '':
-                del param_def['description']
+    compact_tool_definitions(tools)
+    return tools
 
+
+def compact_tool_definitions(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Remove schema fields that carry no constraint or model-facing information.
+
+    The input is updated in place to preserve ``build_tools`` compatibility. Only
+    empty descriptions and empty ``required`` arrays are removed; names, types,
+    properties, enums, non-empty constraints, and tool availability are unchanged.
+    """
+    def _compact(value: Any) -> None:
+        if isinstance(value, dict):
+            if value.get('description') == '':
+                del value['description']
+            if value.get('required') == []:
+                del value['required']
+            for nested in value.values():
+                _compact(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                _compact(nested)
+
+    for tool in tools:
+        _compact(tool)
     return tools
 
 
@@ -1103,35 +1191,94 @@ def build_attachment_note(attachment_info: dict,
 def build_attachment_notes(attachment_infos: list,
                            has_describe_image: bool = True,
                            audio_enabled: bool = False) -> str:
-    """Render notes for multiple attachments, numbered when more than one.
-
-    Mirrors ``runtime._append_attachment_context`` so a DB-reconstructed message
-    and a freshly-handled one produce identical model-visible context.  Each note
-    starts with ``\\n\\n`` so callers can append with ``content.rstrip() + notes``.
-    """
+    """Render notes for multiple attachments, numbered when more than one."""
     notes = []
     count = len(attachment_infos)
     for index, info in enumerate(attachment_infos, 1):
-        file_path = info.get('file_path', '')
-        if file_path and not os.path.isabs(file_path):
-            file_path = os.path.abspath(os.path.join(_BASE_DIR, file_path))
-        filename = info.get('filename', '')
-        mime_type = info.get('mime_type', '')
-        size_bytes = int(info.get('size_bytes', 0) or 0)
-        if size_bytes >= 1048576:
-            size_str = f"{size_bytes / 1048576:.1f} MB"
-        elif size_bytes >= 1024:
-            size_str = f"{size_bytes / 1024:.1f} KB"
-        else:
-            size_str = f"{size_bytes} B"
-        label = f"Attachment #{index}" if count > 1 else "Attachment"
-        note = f"\n\n[{label}: {filename} ({mime_type}, {size_str})]\nFile path: {file_path}"
-        if mime_type.startswith('image/') and has_describe_image:
-            note += "\nUse the `describe_image` tool to view and analyze this image."
-        if mime_type.startswith('audio/') and audio_enabled:
-            note += "\nUse the `transcribe_audio` tool to listen to this audio."
+        note = build_attachment_note(
+            info,
+            has_describe_image=has_describe_image,
+            audio_enabled=audio_enabled,
+        )
+        if count > 1:
+            note = note.replace('[Attachment:', f'[Attachment #{index}:', 1)
         notes.append(note)
     return ''.join(notes)
+
+
+def attachment_infos_from_metadata(metadata: dict) -> list:
+    """Return valid plural attachment metadata with a legacy singular fallback."""
+    if not isinstance(metadata, dict):
+        return []
+    infos = metadata.get('attachment_infos')
+    if not isinstance(infos, list):
+        infos = []
+    infos = [info for info in infos if isinstance(info, dict)]
+    legacy = metadata.get('attachment_info')
+    return infos or ([legacy] if isinstance(legacy, dict) else [])
+
+
+def build_session_attachment_manifest(session_id: str, agent_id: str,
+                                      exclude_ids=None) -> str:
+    """Build a compact, authoritative metadata-only index of live session files."""
+    excluded = {str(value) for value in (exclude_ids or ())}
+    lines = []
+    try:
+        records = reversed(db.list_session_attachments(session_id, agent_id))
+    except Exception:
+        _logger.warning("Failed to load attachment manifest for session %s", session_id,
+                        exc_info=True)
+        return ''
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        attachment_id = record.get('id')
+        if attachment_id is None or str(attachment_id) in excluded:
+            continue
+        file_path = record.get('file_path') or ''
+        if file_path and not os.path.isabs(file_path):
+            file_path = os.path.abspath(os.path.join(_BASE_DIR, file_path))
+        if not file_path or not os.path.isfile(file_path):
+            continue
+        filename = re.sub(r'[\r\n|]+', '_', str(
+            record.get('filename') or record.get('original_filename') or ''))
+        mime_type = re.sub(r'[\r\n|]+', '_', str(
+            record.get('mime_type') or 'application/octet-stream'))
+        size_bytes = int(record.get('size_bytes') or 0)
+        lines.append(
+            f"- id={attachment_id} | filename={filename} | mime={mime_type} | "
+            f"size={size_bytes} B | path={file_path}"
+        )
+    if not lines:
+        return ''
+    return (
+        "## Session Attachments\n"
+        "Persistent metadata for files uploaded in this session (no binary content):\n" +
+        '\n'.join(lines)
+    )
+
+
+def sync_session_attachment_manifest(messages: list, session_id: str,
+                                     agent_id: str) -> None:
+    """Replace any cached manifest with a fresh one, excluding visible attachment notes."""
+    messages[:] = [
+        msg for msg in messages
+        if not (msg.get('role') == 'system' and
+                str(msg.get('content') or '').startswith('## Session Attachments\n'))
+    ]
+    visible_ids = set()
+    pattern = re.compile(r'^Attachment ID:\s*(\d+)\s*$', re.MULTILINE)
+    for msg in messages:
+        content = msg.get('content')
+        if isinstance(content, str):
+            visible_ids.update(pattern.findall(content))
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and isinstance(part.get('text'), str):
+                    visible_ids.update(pattern.findall(part['text']))
+    manifest = build_session_attachment_manifest(session_id, agent_id, visible_ids)
+    if manifest:
+        messages.insert(1, {'role': 'system', 'content': manifest})
 
 
 def append_attachment_note(msg: dict,
@@ -1230,33 +1377,35 @@ def build_message_entry(msg: dict, agent: dict, has_describe_image: bool = True)
     return entry
 
 
-def build_user_identity_context(channel_id: str, external_user_id: str):
-    """Look up the channel user's display name and build an identity context block.
-
-    Returns a string for insertion into the LLM conversation context, or None
-    when the channel has no display name on file for this user.
-    """
-    if not channel_id or not external_user_id:
+def build_user_identity_context(channel_id: str | None, external_user_id: str):
+    """Build trusted sender context for eligible human-facing sessions."""
+    if not is_human_facing_external_user_id(external_user_id):
         return None
 
-    try:
-        display_name = db.get_user_display_name(channel_id, external_user_id)
-    except Exception:
-        _logger.warning(
-            "Failed to look up display name for channel=%s user=%s",
-            channel_id, external_user_id, exc_info=True,
-        )
-        return None
+    display_name = None
+    if channel_id:
+        try:
+            display_name = db.get_user_display_name(channel_id, external_user_id)
+        except Exception:
+            _logger.warning(
+                "Failed to look up display name for channel=%s user=%s",
+                channel_id, external_user_id, exc_info=True,
+            )
 
+    sender_line = f"Channel sender ID: `{external_user_id}`."
     if not display_name or display_name == 'unknown':
-        return None
+        return (
+            "## Current User\n"
+            f"{sender_line}\n"
+            "This identifier is trusted channel metadata for this session, not "
+            "proof of identity or authorization."
+        )
 
     return (
         "## Current User\n"
-        f"You are currently speaking with: **{display_name}** "
-        f"(channel user ID: `{external_user_id}`).\n"
+        f"You are currently speaking with: **{display_name}**. {sender_line}\n"
         "This identity is provided by the chat channel and is authoritative "
         "for this session. If you have previously remembered a different name "
         "for this user — disregard it. Always address this user as "
         f"**{display_name}** throughout this conversation."
-    )
+        )

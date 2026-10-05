@@ -323,3 +323,16 @@ backend/promptpurify/model.int8.onnx
 
 # Local tooling (standalone tailwindcss binary)
 .local/
+
+# -------------------------------
+# Agent templates (per-install data, NOT source)
+# Keep the directory itself, never index its contents. The three versioned
+# examples below are shipped product fixtures; all other local templates remain
+# untracked.
+# -------------------------------
+agent_templates/*
+!agent_templates/.gitkeep
+!agent_templates/support_triage_bot/
+!agent_templates/support_triage_bot/**
+!agent_templates/data_analyst.json
+!agent_templates/hello_world_showcase.json

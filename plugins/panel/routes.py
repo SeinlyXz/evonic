@@ -293,7 +293,7 @@ def _render_panel_html(agent_id: str, agent: dict, actions: list) -> str:
   .pnl-search-wrap > svg { position:absolute; left:.625rem; top:50%; transform:translateY(-50%); width:1rem; height:1rem; color:#9ca3af; pointer-events:none; }
   .pnl-search { width:100%; box-sizing:border-box; padding:.5rem .75rem .5rem 2rem; border-radius:.5rem; border:1px solid #d1d5db; background:#fff; color:#111827; font-size:.8125rem; }
   .pnl-search:focus { outline:none; border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.15); }
-  .pnl-btn-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:.5rem; }
+  .pnl-btn-grid { display:grid; grid-template-columns:1fr; gap:.5rem; }
   .panel-btn { display:flex; align-items:center; gap:.5rem; color:#fff; font-weight:500; font-size:.8125rem; padding:.625rem .75rem; border-radius:.5rem; border:none; cursor:pointer; text-align:left; width:100%; min-width:0; box-sizing:border-box; transition:background-color .15s, transform .05s; }
   .panel-btn:active { transform:translateY(1px); }
   .panel-btn .pnl-dot { width:.5rem; height:.5rem; border-radius:9999px; flex:0 0 auto; background:rgba(255,255,255,.75); }
@@ -310,6 +310,7 @@ def _render_panel_html(agent_id: str, agent: dict, actions: list) -> str:
   .btn-disabled { opacity:.5; cursor:not-allowed; }
   .pnl-hidden { display:none !important; }
   .pnl-empty { color:#6b7280; font-size:.8125rem; padding:1rem; text-align:center; border:1px dashed #d1d5db; border-radius:.5rem; }
+  .panel-btn .pnl-cmd { margin-left:auto; flex:0 0 auto; font-size:.6875rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; padding:.0625rem .375rem; border-radius:.25rem; background:rgba(255,255,255,.18); }
   .pnl-btn-grid .pnl-empty { grid-column:1 / -1; }
   .pnl-term { display:flex; flex-direction:column; background:#0f172a; border:1px solid #1e293b; border-radius:.75rem; overflow:hidden; height:72vh; min-height:360px; }
   .pnl-term-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.5rem .75rem; background:#1e293b; border-bottom:1px solid #334155; }
@@ -385,7 +386,14 @@ def _render_panel_html(agent_id: str, agent: dict, actions: list) -> str:
             disabled_attr = "disabled"
             disabled_class = " btn-disabled"
 
-        html += f"""      <button class="panel-btn {color_class}{disabled_class}" data-action-id="{aid}" data-action-type="{atype}" data-label="{label}" data-search="{label_lower}" {disabled_attr}><span class="pnl-dot"></span><span class="pnl-hour">&#8987;</span><span class="pnl-label">{label}</span></button>
+        slash_command = (action.get("slash_command") or "").strip()
+        cmd_badge = ""
+        if slash_command:
+            cmd = _escape_html(slash_command)
+            label_lower = f"{label_lower} /{_escape_html(slash_command.lower())}"
+            cmd_badge = f'<span class="pnl-cmd" title="Run from chat with /{cmd}">/{cmd}</span>'
+
+        html += f"""      <button class="panel-btn {color_class}{disabled_class}" data-action-id="{aid}" data-action-type="{atype}" data-label="{label}" data-search="{label_lower}" {disabled_attr}><span class="pnl-dot"></span><span class="pnl-hour">&#8987;</span><span class="pnl-label">{label}</span>{cmd_badge}</button>
 """
 
     if not actions:
@@ -636,7 +644,7 @@ def _render_panel_html(agent_id: str, agent: dict, actions: list) -> str:
 
   // ── Button click handler ──────────────────────────────────────────
   document.querySelectorAll('.panel-btn:not([disabled])').forEach(function(btn) {
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', async function() {
       const actionId = parseInt(btn.dataset.actionId);
       const actionType = btn.dataset.actionType;
       const action = actions.find(function(a) { return a.id === actionId; });
@@ -645,6 +653,17 @@ def _render_panel_html(agent_id: str, agent: dict, actions: list) -> str:
       if (actionType === 'prompt') {
         executeAction(actionId, null);
         return;
+      }
+
+      // Confirm dialog for destructive operations
+      if (action.confirm_dialog === 1 && window.ui && window.ui.confirm) {
+        const ok = await window.ui.confirm({
+          title: action.label || 'Confirm',
+          message: 'Are you sure you want to run this action?',
+          confirmText: 'Run',
+          danger: true
+        });
+        if (!ok) return;
       }
 
       let paramsDef = [];
@@ -833,7 +852,8 @@ def _escape_html(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 def start_script_execution(agent_id: str, agent: dict, action: dict,
-                           user_params: dict):
+                           user_params: dict, session_id: str = None,
+                           notify_on_complete: threading.Event = None):
     """Start a script action in a background daemon thread.
 
     Returns (execution_id, err). err is None on success, or:
@@ -860,7 +880,8 @@ def start_script_execution(agent_id: str, agent: dict, action: dict,
 
     thread = threading.Thread(
         target=_run_script,
-        args=(agent_id, agent, action, user_params, execution_id, lock),
+        args=(agent_id, agent, action, user_params, execution_id, lock,
+              session_id, notify_on_complete),
         daemon=True,
     )
     thread.start()
@@ -868,8 +889,33 @@ def start_script_execution(agent_id: str, agent: dict, action: dict,
     return execution_id, None
 
 
+def _notify_script_completion(agent_id: str, action: dict, exit_code,
+                              output: str, session_id: str):
+    """Best-effort push of a finished script result to the originating chat.
+
+    Only used when the slash handler already replied "still running in the
+    background" (i.e. the synchronous wait timed out). Failures here must
+    never break the execution flow, so everything is swallowed.
+    """
+    try:
+        from backend.agent_runtime.notifier import notify_agent
+        notify_agent(
+            agent_id=agent_id,
+            tag="Panel",
+            message=(f"**{action['label']}** finished (exit {exit_code}):\n"
+                     f"```\n{output or '(no output)'}\n```"),
+            session_id=session_id,
+            dedup=False,
+            trigger_llm=True,
+        )
+    except Exception:
+        pass  # Best-effort; never break the execution flow
+
+
 def _run_script(agent_id: str, agent: dict, action: dict, user_params: dict,
-                execution_id: str, lock: threading.Lock):
+                execution_id: str, lock: threading.Lock,
+                session_id: str = None,
+                notify_on_complete: threading.Event = None):
     """
     Execute a script action in a background daemon thread.
 
@@ -961,6 +1007,12 @@ def _run_script(agent_id: str, agent: dict, action: dict, user_params: dict,
         except Exception:
             pass  # Best-effort logging
 
+        # If the slash handler already replied "still running in the
+        # background", push the final result to the originating chat session.
+        if notify_on_complete is not None and notify_on_complete.is_set():
+            _notify_script_completion(agent_id, action, exit_code,
+                                      log_text[-2000:], session_id)
+
     except Exception as e:
         with _buffers_lock:
             buf = _execution_buffers.get(execution_id)
@@ -968,6 +1020,11 @@ def _run_script(agent_id: str, agent: dict, action: dict, user_params: dict,
                 buf["status"] = "error"
                 buf["output_lines"].append(f"\n[Execution error: {str(e)}]\n")
                 buf["exit_code"] = -1
+
+        if notify_on_complete is not None and notify_on_complete.is_set():
+            _notify_script_completion(
+                agent_id, action, -1,
+                f"[Execution error: {str(e)}]", session_id)
 
     finally:
         lock.release()
@@ -1031,43 +1088,70 @@ def _slug(s: str) -> str:
     return re.sub(r"\s+", "-", (s or "").strip().lower())
 
 
-def _panel_slash_handler(session_id, agent_id, external_user_id, channel_id, args):
-    """Handle /panel (list actions) and /panel:<action> (execute) from chat."""
+def _usage_line(command_name: str, params_def: list) -> str:
+    """Render `/cmd <required> [optional]` from a param definition list."""
+    parts = [f"/{command_name}"]
+    for p in params_def:
+        name = p.get("name", "arg")
+        parts.append(f"<{name}>" if p.get("required") else f"[{name}]")
+    return " ".join(parts)
+
+
+def _map_positional_args(action: dict, command_name: str, args: str):
+    """Map whitespace-separated args onto the action's param defs.
+
+    Returns (params_dict, error_message). Values are substituted through the
+    existing shlex.quote path, so no new injection surface is added.
+    """
+    params_def = _parse_params(action.get("params"))
+    if not params_def:
+        return {}, None
+
+    try:
+        tokens = shlex.split(args or "")
+    except ValueError as e:
+        return None, f"Could not parse arguments: {e}"
+
+    values = {}
+    for i, p in enumerate(params_def):
+        name = p.get("name")
+        if not name:
+            continue
+        if i < len(tokens):
+            values[name] = tokens[i]
+        elif p.get("default") not in (None, ""):
+            values[name] = p["default"]
+        elif p.get("required"):
+            return None, (f"**{action['label']}** needs more arguments.\n"
+                          f"Usage: `{_usage_line(command_name, params_def)}`")
+    return values, None
+
+
+def _run_panel_action(agent_id: str, action: dict, session_id=None, params: dict = None) -> str:
+    """Execute a panel action from chat and return the reply text."""
     db = panel_db_factory(agent_id)
-    actions = [a for a in db.list_actions() if a.get("enabled")]
-
-    sub = (args or "").strip()
-    if not sub:
-        if not actions:
-            return "No panel actions configured for this agent."
-        lines = ["**Panel actions:**"]
-        for a in actions:
-            lines.append(f"- `/panel:{_slug(a['label'])}` — {a['label']} ({a['action_type']})")
-        return "\n".join(lines)
-
-    target = _slug(sub.split()[0])
-    action = next((a for a in actions if _slug(a["label"]) == target), None)
-    if not action:
-        return f"No panel action matching '{target}'. Use `/panel` to list actions."
+    params = params or {}
 
     if action["action_type"] == "prompt":
-        _send_prompt_to_agent(agent_id, action, session_id=session_id)
+        _send_prompt_to_agent(agent_id, action, session_id=session_id, params=params)
         db.log_execution(action_id=action["id"], action_label=action["label"],
-                         action_type="prompt", params_used=None,
-                         result="Prompt sent via /panel", status="success")
+                         action_type="prompt", params_used=params or None,
+                         result="Prompt sent via slash command", status="success")
         return f"Panel action **{action['label']}** sent to agent."
-
-    # Script action
-    if _parse_params(action.get("params")):
-        return (f"Action **{action['label']}** requires parameters — "
-                f"run it from the Panel tab instead.")
 
     from models.db import db as models_db
     agent = models_db.get_agent(agent_id)
     if not agent:
         return f"Agent '{agent_id}' not found."
 
-    execution_id, err = start_script_execution(agent_id, agent, action, {})
+    # Arm a completion notification only if the bounded wait below times out:
+    # short scripts already return their output inline, and arming for those
+    # would produce a duplicate follow-up message.
+    notify_on_complete = threading.Event()
+
+    execution_id, err = start_script_execution(
+        agent_id, agent, action, params,
+        session_id=session_id, notify_on_complete=notify_on_complete)
     if err == "busy":
         return (f"Cannot run **{action['label']}**: a script is already "
                 "running for this agent.")
@@ -1083,8 +1167,91 @@ def _panel_slash_handler(session_id, agent_id, external_user_id, channel_id, arg
             return (f"**{action['label']}** finished (exit {buf.get('exit_code')}):\n"
                     f"```\n{output or '(no output)'}\n```")
         time.sleep(0.5)
+
+    # Final check right before arming: closes the race where the script
+    # finishes between the last loop iteration and the event being set.
+    with _buffers_lock:
+        buf = dict(_execution_buffers.get(execution_id) or {})
+    if buf.get("status") in ("completed", "error"):
+        output = "".join(buf.get("output_lines", []))[-2000:]
+        return (f"**{action['label']}** finished (exit {buf.get('exit_code')}):\n"
+                f"```\n{output or '(no output)'}\n```")
+
+    notify_on_complete.set()
     return (f"**{action['label']}** is still running in the background — "
-            "the result will be recorded in the panel execution log.")
+            "the result will be sent here when it finishes.")
+
+
+def _panel_slash_handler(session_id, agent_id, external_user_id, channel_id, args):
+    """Handle /panel (list actions) and /panel:<action> (execute) from chat."""
+    db = panel_db_factory(agent_id)
+    actions = [a for a in db.list_actions() if a.get("enabled")]
+
+    sub = (args or "").strip()
+    if not sub:
+        if not actions:
+            return "No panel actions configured for this agent."
+        lines = ["**Panel actions:**"]
+        for a in actions:
+            assigned = (a.get("slash_command") or "").strip()
+            alias = f" — also `/{assigned}`" if assigned else ""
+            lines.append(f"- `/panel:{_slug(a['label'])}` — {a['label']} ({a['action_type']}){alias}")
+        return "\n".join(lines)
+
+    target = _slug(sub.split()[0])
+    action = next((a for a in actions if _slug(a["label"]) == target), None)
+    if not action:
+        return f"No panel action matching '{target}'. Use `/panel` to list actions."
+
+    # Params can't be collected through /panel:<action> — those need the Panel
+    # tab, or a dedicated slash command that takes positional arguments.
+    if action["action_type"] == "script" and _parse_params(action.get("params")):
+        assigned = (action.get("slash_command") or "").strip()
+        if assigned:
+            params_def = _parse_params(action.get("params"))
+            return (f"Action **{action['label']}** requires parameters — run it as "
+                    f"`{_usage_line(assigned, params_def)}` or from the Panel tab.")
+        return (f"Action **{action['label']}** requires parameters — "
+                f"run it from the Panel tab instead.")
+
+    return _run_panel_action(agent_id, action, session_id=session_id)
+
+
+def _panel_command_provider(agent_id: str) -> list:
+    """Expose each panel action with an assigned slash command to the registry."""
+    from backend.slash_commands import SlashCommand
+
+    commands = []
+    for action in panel_db_factory(agent_id).list_actions():
+        name = (action.get("slash_command") or "").strip().lower()
+        if not name or not action.get("enabled"):
+            continue
+
+        params_def = _parse_params(action.get("params")) or []
+        parameters = [{
+            "name": p.get("name", "arg"),
+            "required": bool(p.get("required")),
+            "description": p.get("label") or p.get("name", ""),
+        } for p in params_def]
+
+        def _handler(session_id, agent_id, external_user_id, channel_id, args,
+                     _action_id=action["id"], _name=name):
+            # Re-read the action so an edit between listing and execution is honored.
+            live = panel_db_factory(agent_id).get_action(_action_id)
+            if not live or not live.get("enabled"):
+                return f"Panel action for `/{_name}` no longer exists."
+            params, err = _map_positional_args(live, _name, args)
+            if err:
+                return err
+            return _run_panel_action(agent_id, live, session_id=session_id, params=params)
+
+        commands.append(SlashCommand(
+            name,
+            _handler,
+            f"{action['label']} (panel {action['action_type']})",
+            parameters,
+        ))
+    return commands
 
 
 try:
@@ -1093,7 +1260,9 @@ try:
         "panel",
         _panel_slash_handler,
         "Execute panel actions — /panel to list, /panel:<action> to run",
+        [{"name": "action", "required": False, "description": "Panel action ID; omit to list actions"}],
     )
+    command_registry.register_provider("panel", _panel_command_provider)
 except Exception as _e:
     from backend.logging_config import get_logger
     get_logger(__name__).error("Failed to register /panel slash command: %s", _e)

@@ -434,6 +434,9 @@ class TelegramChannel(BaseChannel):
             "- Use indentation with spaces for structure\n"
             "- Use plain URLs without markdown link syntax\n"
             "- Write code inline with clear labels like \"CODE:\" prefix\n"
+            "- NEVER embed images with HTML `<img>` tags or Markdown image embeds "
+            "(`![alt](url)`) - Telegram renders them as raw text. To send images or files, "
+            "ALWAYS use the `send_file` tool so they arrive as attachments\n"
             "- Keep responses clean and readable in plain text"
         )
 
@@ -597,7 +600,20 @@ class TelegramChannel(BaseChannel):
 
                 # Check if bot is enabled for this session
                 if not db.is_session_bot_enabled(session_id, agent_id=agent_id):
-                    db.add_chat_message(session_id, 'user', text or '[Image]', agent_id=agent_id)
+                    stored = text or '[Image]'
+                    message_id = db.add_chat_message(session_id, 'user', stored, agent_id=agent_id)
+                    message_id = message_id if type(message_id) in (int, str) else None
+                    from models.chatlog import chatlog_manager
+                    chatlog_manager.get(agent_id, session_id).append({
+                        'type': 'user', 'session_id': session_id, 'content': stored,
+                        'sender_id': user_id, 'message_id': message_id,
+                    })
+                    from backend.event_stream import event_stream
+                    event_stream.emit('message_received', {
+                        'agent_id': agent_id, 'session_id': session_id,
+                        'external_user_id': user_id, 'channel_id': channel_id,
+                        'message': stored, 'message_id': message_id, 'role': 'user',
+                    })
                     return
 
                 # Detect reply/quote: include replied message content as context
@@ -626,6 +642,7 @@ class TelegramChannel(BaseChannel):
                 result = agent_runtime.handle_message(
                     agent_id, user_id, final_text, channel_id,
                     image_url=image_url, video_url=video_url,
+                    metadata={"channel_message_id": str(update.message.message_id)},
                 )
                 if result.get('buffered'):
                     return  # message buffered, response will come from the first caller
@@ -737,10 +754,15 @@ class TelegramChannel(BaseChannel):
             desc = info.get('description', 'This action requires careful consideration.')
             reasons_str = ', '.join(reasons) if reasons else '-'
             tool_args = data.get('tool_args') or {}
-            code_snippet = tool_args.get('script') or tool_args.get('code') or ''
             code_lang = 'bash' if 'script' in tool_args else 'python'
-            if code_snippet and len(code_snippet) > 500:
-                code_snippet = code_snippet[:500] + '\n... (truncated)'
+            # Prefer the focused snippet (window centered on the dangerous line with a
+            # marker) so the risky code is always visible even when the full script is
+            # long. Fall back to head-truncation only when no focus snippet is present.
+            code_snippet = info.get('focus_snippet') or ''
+            if not code_snippet:
+                code_snippet = tool_args.get('script') or tool_args.get('code') or ''
+                if code_snippet and len(code_snippet) > 500:
+                    code_snippet = code_snippet[:500] + '\n... (truncated)'
             code_block = f"\n\n```{code_lang}\n{code_snippet}\n```" if code_snippet else ''
             source_agent = data.get('source_agent_name')
             header = f"\u26a0\ufe0f Approval Required(agent: {source_agent})" if source_agent else "\u26a0\ufe0f Approval Required"

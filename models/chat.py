@@ -364,39 +364,32 @@ class AgentChatDB:
             return rows
 
     def get_latest_agent_request_metadata(self, session_id: str, sender_agent_id: str = None) -> Optional[dict]:
-        """Return metadata of the most recent user message with agent_message=true in the session.
+        """Return the newest reply-capable agent request in a session.
 
-        Used by auto-forward to locate report_to_id even when the originating
-        message falls outside the recent-message window.
-
-        Args:
-            sender_agent_id: If provided, only match messages where
-                metadata->from_agent_id equals this value.
+        Only user-role rows are candidates. Invalid JSON, non-agent messages,
+        sender mismatches, and requests without either a human route or a
+        synchronous reply ID are skipped so background notifications cannot
+        shadow an active delegation.
         """
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            if sender_agent_id:
-                cursor.execute("""
-                    SELECT metadata FROM chat_messages
-                    WHERE session_id = ? AND role = 'user'
-                      AND metadata LIKE '%"agent_message"%'
-                      AND metadata LIKE ?
-                    ORDER BY created_at DESC LIMIT 1
-                """, (session_id, f'%"from_agent_id": "{sender_agent_id}"%'))
-            else:
-                cursor.execute("""
-                    SELECT metadata FROM chat_messages
-                    WHERE session_id = ? AND role = 'user' AND metadata LIKE '%"agent_message"%'
-                    ORDER BY created_at DESC LIMIT 1
-                """, (session_id,))
-            row = cursor.fetchone()
-            if not row or not row['metadata']:
-                return None
-            try:
-                return json.loads(row['metadata'])
-            except (json.JSONDecodeError, TypeError):
-                return None
+            rows = conn.execute("""
+                SELECT metadata FROM chat_messages
+                WHERE session_id = ? AND role = 'user' AND metadata IS NOT NULL
+                ORDER BY created_at DESC, id DESC
+            """, (session_id,))
+            for row in rows:
+                try:
+                    metadata = json.loads(row['metadata'])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if not isinstance(metadata, dict) or metadata.get('agent_message') is not True:
+                    continue
+                if sender_agent_id and metadata.get('from_agent_id') != sender_agent_id:
+                    continue
+                if metadata.get('report_to_id') or metadata.get('reply_to_id'):
+                    return metadata
+        return None
 
     def add_chat_message(self, session_id: str, role: str, content: str = None,
                           tool_calls=None, tool_call_id: str = None,
@@ -1029,6 +1022,17 @@ class AgentChatDB:
                 "SELECT id, content, category, source_session_id, created_at, updated_at, expired, dimension, superseded_by FROM memories WHERE dimension IS NULL AND expired = 0 AND superseded_by IS NULL ORDER BY updated_at DESC LIMIT 10000")
             return [dict(r) for r in cursor.fetchall()]
 
+    def get_active_dimensions(self, limit: int = 50) -> List[str]:
+        """Distinct dimensions (keys) of active memories, most recently updated first."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT dimension, MAX(updated_at) AS mu FROM memories "
+                "WHERE dimension IS NOT NULL AND expired = 0 AND superseded_by IS NULL "
+                "GROUP BY dimension ORDER BY mu DESC LIMIT ?",
+                (limit,))
+            return [r[0] for r in cursor.fetchall()]
+
     def supersede_memory(self, old_memory_id: int, new_memory_id: int):
         """Mark old_memory_id as superseded by new_memory_id."""
         with self._connect() as conn:
@@ -1067,6 +1071,20 @@ class AgentChatManager:
                 if agent_id not in self._dbs:
                     self._dbs[agent_id] = AgentChatDB(agent_id)
         return self._dbs[agent_id]
+
+    def drop(self, agent_id: str) -> None:
+        """Drop a cached AgentChatDB (e.g. when the agent is deleted).
+
+        Closes the persistent connection first so it cannot keep reading a
+        chat.db inode that is about to be unlinked from disk. Without this,
+        recreating an agent with the same id returns the stale cached
+        instance whose connection points at the deleted file → queries
+        fail with 'no such table: chat_sessions'.
+        """
+        with self._lock:
+            db = self._dbs.pop(agent_id, None)
+        if db is not None:
+            db.close()
 
 
 agent_chat_manager = AgentChatManager()

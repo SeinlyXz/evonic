@@ -383,15 +383,24 @@ class SchemaMixin:
                 ("sandbox_enabled", "BOOLEAN DEFAULT 0"),
                 ("attachments_enabled", "BOOLEAN DEFAULT 0"),
                 ("attachment_max_size_mb", "INTEGER DEFAULT 20"),
+                ("send_file_allowed_path_regex", "TEXT DEFAULT ''"),
                 ("audio_enabled", "BOOLEAN DEFAULT 0"),
                 ("video_enabled", "BOOLEAN DEFAULT 0"),
                 ("enable_atg", "BOOLEAN DEFAULT 0"),
                 ("enable_cmp", "BOOLEAN DEFAULT 0"),
+                # dm_only: agent hanya melayani pesan pribadi (DM); pesan grup ditolak.
+                ("dm_only", "INTEGER DEFAULT 0"),
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE agents ADD COLUMN {col} {defn}")
                 except sqlite3.OperationalError:
                     pass
+
+            # Migration: add always_execute to decouple CMP from plan/execute mode.
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN always_execute BOOLEAN DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
 
             # Migration: add artifacts_enabled (default ON for all agents)
             try:
@@ -774,11 +783,43 @@ class SchemaMixin:
                 "auth_type TEXT DEFAULT 'api_key'",
                 "refresh_token TEXT",
                 "token_expires_at INTEGER",
+                "credential_source TEXT DEFAULT 'api_key'",
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE providers ADD COLUMN {col}")
                 except sqlite3.OperationalError:
                     pass
+
+            # Built-in subscription providers. Kept outside the one-shot seed
+            # migration so existing installations receive them too.
+            cursor.executemany(
+                "INSERT OR IGNORE INTO providers "
+                "(id, name, type, base_url, api_format, auth_type, credential_source) "
+                "VALUES (?, ?, 'remote', ?, ?, ?, ?)",
+                [
+                    (
+                        "openai-codex",
+                        "OpenAI Codex",
+                        "https://chatgpt.com/backend-api/codex",
+                        "codex",
+                        "",
+                        "",
+                    ),
+                    (
+                        "anthropic",
+                        "Anthropic / Claude Code",
+                        "https://api.anthropic.com/v1",
+                        "anthropic",
+                        "api_key",
+                        "api_key",
+                    ),
+                ],
+            )
+            cursor.execute(
+                "UPDATE providers SET credential_source = "
+                "CASE WHEN COALESCE(api_key, '') <> '' THEN 'evonic_oauth' ELSE '' END "
+                "WHERE api_format = 'codex' AND credential_source = 'api_key'"
+            )
 
             # ==================== LLM Models Table ====================
 
@@ -1019,6 +1060,21 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration: slash command visibility control
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN hidden_slash_commands TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN disabled_slash_commands TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            # Migration: per-agent /help command toggle (1 = respond to /help, 0 = ignore)
+            try:
+                cursor.execute("ALTER TABLE agents ADD COLUMN help_enabled BOOLEAN DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
+
             # Migration: relax connector_token NOT NULL so NULL is allowed before pairing completes
             try:
                 col_info = cursor.execute("PRAGMA table_info(tunnel_connectors)").fetchall()
@@ -1158,6 +1214,30 @@ class SchemaMixin:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_index_agent ON session_index(agent_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_index_updated ON session_index(updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_index_external ON session_index(external_user_id)")
+
+            # Durable correlation for delegated-agent questions sent to a human.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_escalations (
+                    id TEXT PRIMARY KEY,
+                    requesting_agent_id TEXT NOT NULL,
+                    requesting_session_id TEXT NOT NULL,
+                    originating_agent_id TEXT NOT NULL,
+                    originating_session_id TEXT NOT NULL,
+                    delivery_session_id TEXT NOT NULL,
+                    external_user_id TEXT NOT NULL,
+                    channel_id TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    metadata TEXT DEFAULT '{}',
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    expires_at REAL NOT NULL,
+                    answered_at REAL
+                )
+            """)
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_user_escalations_pending "
+                "ON user_escalations(originating_session_id, status, created_at)"
+            )
 
             # ==================== System Alerts Table ====================
             cursor.execute("""

@@ -5,10 +5,13 @@ Agents use this tool to analyze images rather than having images auto-fed to the
 main LLM. The vision model is selected via a configurable priority chain:
   1. agent-level `vision_model_id` column
   2. system config `vision_model_id` (app_settings)
-  3. agent's current model (if vision_supported)
-  4. all enabled models with `vision_supported = 1` in `llm_models`
+  3. system fallback `vision_fallback_model_id` (app_settings)
+  4. system fallback `vision_fallback_model_2_id` (app_settings)
+  5. agent's current model (if vision_supported)
+  6. all enabled models with `vision_supported = 1` in `llm_models`
 
-On connection errors, the tool automatically falls back to the next
+On connection errors, rate limits (HTTP 429), provider errors, timeouts,
+and auth errors, the tool automatically falls back to the next
 vision-capable model in priority order.
 
 The `vision_enabled` flag on the agent gates access to this tool entirely:
@@ -21,7 +24,9 @@ import base64
 import difflib
 import mimetypes
 import os
-from typing import Any, Dict, Optional
+import shutil
+import subprocess
+from typing import Any, Dict, Optional, Tuple
 
 from backend.llm_client import LLMClient
 
@@ -34,6 +39,129 @@ _SUPPORTED_IMAGE_TYPES = frozenset({
     "image/bmp",
 })
 
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+try:
+    from config import SANDBOX_WORKSPACE as _WORKSPACE_ROOT
+except ImportError:
+    _WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+# Cached check for ffmpeg availability (lazy, checked once at module level).
+_ffmpeg_path: Optional[str] = None
+_ffmpeg_checked: bool = False
+
+# Size threshold for auto-conversion (bytes).
+_PREPROCESS_SIZE_THRESHOLD = 3 * 1024 * 1024  # 3 MB
+
+# JPEG quality (ffmpeg -q:v range 2-31, lower = better; PIL 1-100, higher = better).
+_JPEG_FFMPEG_QUALITY = "3"
+_JPEG_PIL_QUALITY = 85
+
+
+def _ensure_ffmpeg() -> Optional[str]:
+    """Return the path to ffmpeg if available, or None.
+
+    The result is cached at module level so we only probe once per process.
+    """
+    global _ffmpeg_path, _ffmpeg_checked
+    if _ffmpeg_checked:
+        return _ffmpeg_path
+    _ffmpeg_checked = True
+    _ffmpeg_path = shutil.which("ffmpeg")
+    return _ffmpeg_path
+
+
+def _preprocess_image(
+    image_data: bytes,
+    mime_type: str,
+    file_size: int,
+) -> Tuple[bytes, str]:
+    """Auto-convert and compress an image to JPEG if needed.
+
+    Pass-through conditions:
+    - MIME type is JPEG or PNG **and** file_size <= 3 MB → returned unchanged.
+
+    Otherwise the image is converted to JPEG using **ffmpeg** (primary) or
+    **Pillow** (fallback).  The returned MIME type is always "image/jpeg"
+    after conversion.
+
+    Args:
+        image_data: Raw bytes read from the image file.
+        mime_type: Detected MIME type (e.g. "image/webp").
+        file_size: File size in bytes.
+
+    Returns:
+        (bytes, str): Preprocessed image bytes and their MIME type.
+    """
+    _MIME_JPEG = "image/jpeg"
+    _MIME_PNG = "image/png"
+
+    is_jpeg_or_png = mime_type in (_MIME_JPEG, _MIME_PNG, "image/jpg")
+    if is_jpeg_or_png and file_size <= _PREPROCESS_SIZE_THRESHOLD:
+        return image_data, mime_type
+
+    # --- Try ffmpeg first ---
+    ffmpeg = _ensure_ffmpeg()
+    if ffmpeg:
+        try:
+            proc = subprocess.run(
+                [
+                    ffmpeg,
+                    "-i", "pipe:0",
+                    "-q:v", _JPEG_FFMPEG_QUALITY,
+                    "-f", "image2pipe",
+                    "pipe:1",
+                ],
+                input=image_data,
+                capture_output=True,
+                timeout=30,
+            )
+            if proc.returncode == 0 and proc.stdout:
+                return proc.stdout, _MIME_JPEG
+        except (subprocess.TimeoutExpired, OSError):
+            pass  # Fall through to PIL
+
+    # --- Fallback: Pillow ---
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+    except ImportError:
+        # Neither ffmpeg nor Pillow available — return original as last resort.
+        return image_data, mime_type
+
+    try:
+        img = Image.open(BytesIO(image_data))
+    except Exception:
+        return image_data, mime_type
+
+    # Convert to RGB (JPEG does not support alpha / palette / CMYK).
+    mode = img.mode
+    if mode in ("RGBA", "LA", "PA"):
+        background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        if mode == "RGBA":
+            background.paste(img, mask=img.split()[3])
+        else:
+            background.paste(img)
+        img = background.convert("RGB")
+    elif mode == "P":
+        img = img.convert("RGBA")
+        background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        background.paste(img, mask=img)
+        img = background.convert("RGB")
+    elif mode == "CMYK":
+        img = img.convert("RGB")
+    elif mode not in ("RGB",):
+        img = img.convert("RGB")
+
+    # Animated GIF: extract first frame.
+    if getattr(img, "is_animated", False) and hasattr(img, "seek"):
+        img.seek(0)
+
+    out_buf = BytesIO()
+    img.save(out_buf, format="JPEG", quality=_JPEG_PIL_QUALITY, optimize=True)
+    return out_buf.getvalue(), _MIME_JPEG
+
 
 def _resolve_vision_models(agent: dict) -> tuple[list, Optional[str]]:
     """Resolve vision models to use for image description, ordered by priority.
@@ -43,8 +171,10 @@ def _resolve_vision_models(agent: dict) -> tuple[list, Optional[str]]:
     Priority:
       1. Agent-level vision_model_id (from agent_context)
       2. System config vision_model_id (app_settings)
-      3. Agent's current model (if vision_supported)
-      4. All enabled models with vision_supported = 1
+      3. System fallback vision_fallback_model_id (app_settings)
+      4. System fallback vision_fallback_model_2_id (app_settings)
+      5. Agent's current model (if vision_supported)
+      6. All enabled models with vision_supported = 1
 
     Returns:
         (models_list, error_string).  Exactly one will be non-None/empty.
@@ -66,23 +196,31 @@ def _resolve_vision_models(agent: dict) -> tuple[list, Optional[str]]:
     vision_model_id = agent.get("vision_model_id")
     if vision_model_id:
         model = db.get_model_by_id(vision_model_id)
-        if model and model.get("enabled"):
+        if model and model.get("enabled") and model.get("vision_supported"):
             _add_model(model)
 
     # Priority 2: system config
     system_vision_id = db.get_setting("vision_model_id")
     if system_vision_id and system_vision_id != vision_model_id:
         model = db.get_model_by_id(system_vision_id)
-        if model and model.get("enabled"):
+        if model and model.get("enabled") and model.get("vision_supported"):
             _add_model(model)
 
-    # Priority 3: agent's current model (natural fallback before global auto-detect).
+    # Priority 3-4: explicitly configured fallback chain.
+    for setting_key in ("vision_fallback_model_id", "vision_fallback_model_2_id"):
+        fallback_vision_id = db.get_setting(setting_key)
+        if fallback_vision_id and fallback_vision_id not in seen_ids:
+            model = db.get_model_by_id(fallback_vision_id)
+            if model and model.get("enabled") and model.get("vision_supported"):
+                _add_model(model)
+
+    # Priority 5: agent's current model (natural fallback before global auto-detect).
     _agent_db_id = agent.get("_db_agent_id") or agent.get("id")
     agent_model = db.get_agent_model(_agent_db_id)
     if agent_model and agent_model.get("vision_supported"):
         _add_model(agent_model)
 
-    # Priority 4: all enabled vision-capable models
+    # Priority 5: all enabled vision-capable models
     all_models = db.get_enabled_llm_models()
     for model in all_models:
         if model.get("vision_supported"):
@@ -95,6 +233,13 @@ def _resolve_vision_models(agent: dict) -> tuple[list, Optional[str]]:
         "No vision-capable model is available. "
         "Please configure a vision model in System Settings (requires vision_supported=1)."
     )
+
+
+def _format_vision_model_label(index: int, model: dict) -> str:
+    """Return a user-facing fallback position and identifier for a vision model."""
+    position = "primary model" if index == 0 else f"fallback model {index}"
+    identifier = model.get("name") or model.get("id") or "unknown"
+    return f"{position} ({identifier})"
 
 
 def _find_closest_attachment(agent_id: str, orig_path: str) -> Optional[str]:
@@ -122,6 +267,80 @@ def _find_closest_attachment(agent_id: str, orig_path: str) -> Optional[str]:
     if best_ratio > 0.7 and best_path:
         return best_path
     return None
+
+
+def _read_image(agent: dict, path: str) -> tuple[Optional[bytes], Optional[str], Optional[str]]:
+    """Read an image from the host first, then the agent's execution backend."""
+    from backend.tools._workspace import (
+        effective_agent_id,
+        is_self_path,
+        resolve_self_path,
+        resolve_workspace_path,
+    )
+
+    agent = agent or {}
+    host_path = path
+    self_path = is_self_path(path)
+    if self_path:
+        host_path = resolve_self_path(effective_agent_id(agent), path)
+        if not host_path:
+            return None, None, "Error: Access denied — path escapes agent directory."
+
+    if os.path.isfile(host_path):
+        try:
+            file_size = os.path.getsize(host_path)
+            if file_size > _MAX_IMAGE_BYTES:
+                return None, None, (
+                    f"Error: Image file is {file_size / (1024 * 1024):.1f} MB, "
+                    "which exceeds the 10 MB limit."
+                )
+            with open(host_path, "rb") as handle:
+                image_data = handle.read(_MAX_IMAGE_BYTES + 1)
+        except PermissionError:
+            return None, None, f"Error: Permission denied — cannot read: {path}"
+        except Exception as exc:
+            return None, None, f"Error: Failed to read image: {exc}"
+        if len(image_data) > _MAX_IMAGE_BYTES:
+            return None, None, "Error: Image file exceeds the 10 MB limit."
+        return image_data, host_path, None
+
+    if self_path:
+        return None, None, f"Error: File not found: {path}"
+
+    try:
+        from backend.tools.lib.exec_backend import registry
+
+        backend = registry.get_backend(agent.get("session_id") or "default", agent)
+        target = resolve_workspace_path(agent, path, _WORKSPACE_ROOT)
+        target = backend.resolve_path(target)
+        stat = backend.file_stat(target)
+    except Exception as exc:
+        return None, None, f"Error: Failed to access execution environment: {exc}"
+
+    if not stat.get("exists"):
+        suggestion = _find_closest_attachment(agent.get("id", ""), path)
+        suffix = f". Did you mean: {suggestion}?" if suggestion else ""
+        return None, None, f"Error: File not found: {path}{suffix}"
+
+    file_size = int(stat.get("size") or 0)
+    if file_size > _MAX_IMAGE_BYTES:
+        return None, None, (
+            f"Error: Image file is {file_size / (1024 * 1024):.1f} MB, "
+            "which exceeds the 10 MB limit."
+        )
+
+    try:
+        result = backend.cat_file_bytes(target)
+    except Exception as exc:
+        return None, None, f"Error: Failed to read image: {exc}"
+    if "error" in result:
+        return None, None, f"Error: Failed to read image: {result['error']}"
+    image_data = result.get("bytes")
+    if not isinstance(image_data, bytes):
+        return None, None, "Error: Failed to read image: execution backend returned invalid data."
+    if len(image_data) > _MAX_IMAGE_BYTES:
+        return None, None, "Error: Image file exceeds the 10 MB limit."
+    return image_data, None, None
 
 
 def execute(agent: dict, args: dict) -> Any:
@@ -152,43 +371,31 @@ def execute(agent: dict, args: dict) -> Any:
         return (
             "Error: Image analysis is not enabled for this agent "
             "(vision_enabled=0). Enable it in the agent's settings to use "
-            "the describe_image tool."
+            "the describe_image tool. "
+            "Troubleshooting: https://evonic.dev/troubleshooting/agent-vision/"
         )
 
     # --- Validate path ---
     if not path:
         return "Error: 'path' parameter is required. Provide the file path to the image."
 
-    # Resolve /_self/ virtual paths (e.g. /_self/artifacts/foo.webp)
-    agent_id = (agent or {}).get("id", "")
-    if agent_id:
-        from backend.tools._workspace import is_self_path, resolve_self_path, effective_agent_id
-        if is_self_path(path):
-            resolved = resolve_self_path(effective_agent_id(agent), path)
-            if resolved:
-                path = resolved
-
-    if not os.path.isfile(path):
-        suggestion = _find_closest_attachment(agent_id, path)
-        if suggestion:
-            return f"Error: File not found: {path}. Did you mean: {suggestion}?"
-        return f"Error: File not found: {path}"
+    image_data, host_path, read_error = _read_image(agent, path)
+    if read_error:
+        return read_error
 
     # If the agent operates in a remote workplace (SSH/tunnel/etc.), ensure the
-    # image file is also available on the remote filesystem so the agent can
-    # reference it via bash, runpy, or other backend-routed tools.
-    try:
-        from backend.tools._ensure_workplace_file import ensure_workplace_file
-        ensure_workplace_file(path, agent)
-    except (ImportError, RuntimeError):
-        pass  # Non-critical: file is already accessible from the host side
+    # host image is also available there. Backend images need no staging.
+    if host_path:
+        try:
+            from backend.tools._ensure_workplace_file import ensure_workplace_file
+            ensure_workplace_file(host_path, agent)
+        except (ImportError, RuntimeError):
+            pass
 
-    file_size = os.path.getsize(path)
-    if file_size > 10 * 1024 * 1024:  # 10 MB
-        return f"Error: Image file is {file_size / (1024*1024):.1f} MB, which exceeds the 10 MB limit."
+    file_size = len(image_data)
 
     # --- Detect MIME type ---
-    mime_type, _ = mimetypes.guess_type(path)
+    mime_type, _ = mimetypes.guess_type(host_path or path)
     # mimetypes may not know .webp or other newer formats on some systems.
     # Fall back to extension-based detection when mimetypes returns unknown.
     if not mime_type:
@@ -199,7 +406,7 @@ def execute(agent: dict, args: dict) -> Any:
             '.webp': 'image/webp',
             '.bmp': 'image/bmp',
         }
-        mime_type = _ext_map.get(os.path.splitext(path)[1].lower())
+        mime_type = _ext_map.get(os.path.splitext(host_path or path)[1].lower())
     if not mime_type or mime_type not in _SUPPORTED_IMAGE_TYPES:
         detected = mime_type or "unknown"
         return (
@@ -207,14 +414,8 @@ def execute(agent: dict, args: dict) -> Any:
             f"Supported formats: JPEG, PNG, GIF, WebP, BMP."
         )
 
-    # --- Read image and encode as base64 ---
-    try:
-        with open(path, "rb") as f:
-            image_data = f.read()
-    except PermissionError:
-        return f"Error: Permission denied — cannot read: {path}"
-    except Exception as e:
-        return f"Error: Failed to read image: {e}"
+    # --- Auto-convert / compress to JPEG if needed ---
+    image_data, resolved_mime = _preprocess_image(image_data, mime_type, file_size)
 
     image_b64 = base64.b64encode(image_data).decode("utf-8")
 
@@ -224,9 +425,7 @@ def execute(agent: dict, args: dict) -> Any:
         return f"Error: {error}"
 
     # --- Build the vision request ---
-    # Use base64 JPEG encoding for the data URL regardless of source format;
-    # most vision models handle the standard image/jpeg MIME fine.
-    data_url = f"data:image/jpeg;base64,{image_b64}"
+    data_url = f"data:{resolved_mime};base64,{image_b64}"
 
     system_prompt = (
         "You are a helpful image analysis assistant. "
@@ -252,13 +451,28 @@ def execute(agent: dict, args: dict) -> Any:
         },
     ]
 
-    # --- Call vision models with fallback on connection errors ---
+    # --- Call vision models with fallback on transient/provider errors ---
     result = None
-    connection_failures = 0
+    failures = 0
     last_error = None
 
-    for vision_model in vision_models:
-        model_name = vision_model.get("name", vision_model.get("id", "unknown"))
+    # Errors that are safe to fall back to the next vision-capable model:
+    # network/connection failures, 5xx API errors, rate limits (HTTP 429),
+    # provider errors, timeouts, and auth errors on a single provider — a
+    # later model in the chain (e.g. a local Ollama model) may still succeed.
+    _FALLBACK_ERROR_TYPES = frozenset({
+        "connection_error",
+        "api_error",
+        "provider_error",
+        "rate_limit_error",
+        "timeout_error",
+        "request_timeout",
+        "generation_timeout",
+        "auth_error",
+    })
+
+    for model_index, vision_model in enumerate(vision_models):
+        model_label = _format_vision_model_label(model_index, vision_model)
         try:
             client = LLMClient(model_config=vision_model)
             # Enforce a 2-minute (120s) maximum timeout for vision model calls,
@@ -270,32 +484,35 @@ def execute(agent: dict, args: dict) -> Any:
                 enable_thinking=False,  # No need for reasoning on vision task
             )
         except Exception as e:
-            # Unexpected exception — treat as connection failure and try next
-            connection_failures += 1
-            last_error = str(e)
+            # Unexpected exception — treat as transient failure, try next
+            failures += 1
+            last_error = f"{model_label}: {e}"
             continue
 
         if result.get("success"):
             break  # Success — use this result
 
-        # Check if this is a connection error we should fallback from
+        # Fallback-eligible error — try the next model in the chain.
         error_type = result.get("error_type", "")
         error_detail = result.get("error_detail", "")
-        if error_type == "connection_error":
-            connection_failures += 1
-            last_error = error_detail or f"connection to {model_name}"
+        if error_type in _FALLBACK_ERROR_TYPES:
+            failures += 1
+            last_error = f"{model_label}: {error_detail or error_type}"
             continue  # Try next model
 
-        # Non-connection error — fail immediately (auth, rate limit, API error, etc.)
-        return f"Error: Vision model call failed ({error_type}): {error_detail}"
+        # Non-recoverable error (e.g. malformed request, unsupported content) —
+        # fail immediately.
+        return (
+            f"Error: Vision model call failed for {model_label} "
+            f"({error_type}): {error_detail}"
+        )
 
     if result is None or not result.get("success"):
-        if connection_failures >= len(vision_models):
-            return (
-                "Error: All vision-capable models failed with connection errors. "
-                "Please check your network and LLM server status."
-            )
-        return f"Error: Vision model call failed: {last_error or 'unknown error'}"
+        return (
+            "Error: All vision-capable models failed "
+            f"({failures} model(s) tried). Last error: {last_error or 'unknown error'}. "
+            "Troubleshooting: https://evonic.dev/troubleshooting/agent-vision/"
+        )
 
     # Extract text content from the nested API response.
     # result["response"] is the raw API dict: {"choices": [{"message": {"content": "..."}}]}

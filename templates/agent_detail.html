@@ -47,6 +47,19 @@ html.dark #agent-state-card .text-gray-400 { color: #6b7280 !important; }
 html.dark #agent-state-card .text-gray-600 { color: #d1d5db !important; }
 html.dark #agent-state-card .border-gray-100 { border-color: #374151 !important; }
 html.dark #summary-card { background: #1f2937; border-color: #374151; }
+/* Prevent pre/code overflow in right sidebar panels */
+#agent-state-card pre,
+#agent-state-card code,
+#summary-card pre,
+#summary-card code,
+#mobile-agent-state-content pre,
+#mobile-agent-state-content code,
+#mobile-summary-content pre,
+#mobile-summary-content code {
+    white-space: pre-wrap !important;
+    word-break: break-all;
+    overflow-wrap: break-word;
+}
 /* Dark mode: Channels tab (channel type badges) */
 html.dark #channels-list .bg-blue-100 { background: #172554 !important; color: #93c5fd !important; }
 html.dark #channels-list .bg-green-100 { background: #052e16 !important; color: #86efac !important; }
@@ -132,6 +145,92 @@ html.dark #tab-artifacts .text-gray-600 { color: #d1d5db !important; }
 html.dark #tab-artifacts .text-red-500 { color: #f87171 !important; }
 html.dark #tab-artifacts .hover\:text-red-700:hover { color: #fca5a5 !important; }
 html.dark #tab-artifacts .bg-red-50 { background: #451a1a !important; }
+/* Artifacts tab: Finder-style browser — file pane (icons or list) + an always-on preview pane */
+#tab-artifacts {
+    --af-border: #e5e7eb; --af-text: #1f2937; --af-muted: #6b7280; --af-subtle: #9ca3af;
+    --af-pane: #f9fafb; --af-hover: #f3f4f6; --af-stripe: #fafafa;
+    --af-sel: #eef2ff; --af-sel-border: #a5b4fc; --af-accent: #4f46e5;
+}
+html.dark #tab-artifacts {
+    --af-border: #374151; --af-text: #f3f4f6; --af-muted: #9ca3af; --af-subtle: #6b7280;
+    --af-pane: #111827; --af-hover: #374151; --af-stripe: rgba(255,255,255,.02);
+    --af-sel: rgba(99,102,241,.18); --af-sel-border: #6366f1; --af-accent: #a5b4fc;
+}
+.af-view-toggle { display: inline-flex; padding: 2px; border: 1px solid var(--af-border); border-radius: 8px; background: var(--af-pane); }
+.af-view-toggle button { display: flex; align-items: center; justify-content: center; width: 30px; height: 26px; border-radius: 6px; color: var(--af-muted); cursor: pointer; }
+.af-view-toggle button svg { width: 16px; height: 16px; }
+.af-view-toggle button:hover { color: var(--af-text); }
+.af-view-toggle button.is-active { background: var(--af-sel); color: var(--af-accent); }
+.af-browser { display: flex; gap: 16px; align-items: flex-start; }
+.af-files { flex: 1; min-width: 0; }
+.af-name { display: flex; min-width: 0; max-width: 100%; }
+.af-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-name > span:last-child { flex-shrink: 0; white-space: nowrap; }
+.af-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.af-tile:hover .af-actions, .af-row:hover .af-actions, .af-tile.is-selected .af-actions, .af-row.is-selected .af-actions { opacity: 1; }
+.af-actions button { padding: 5px; border-radius: 6px; color: var(--af-muted); cursor: pointer; }
+.af-actions button svg { width: 15px; height: 15px; }
+.af-actions button:hover { background: var(--af-hover); color: var(--af-accent); }
+.af-actions button.af-danger:hover { color: #ef4444; }
+/* Icon view */
+.af-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 6px; }
+.af-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px 10px; border: 1px solid transparent; border-radius: 10px; cursor: pointer; user-select: none; }
+.af-tile:hover { background: var(--af-hover); }
+.af-tile.is-selected { background: var(--af-sel); border-color: var(--af-sel-border); }
+.af-tile .af-actions { position: absolute; top: 4px; right: 4px; }
+.af-thumb { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 64px; height: 64px; border-radius: 12px; overflow: hidden; flex-shrink: 0; }
+.af-thumb svg { width: 26px; height: 26px; }
+.af-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.af-thumb-ext { font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+/* Icon view names wrap to two lines like Finder; long ones are middle-truncated in JS */
+.af-tile-name { max-width: 100%; font-size: 13px; font-weight: 500; line-height: 1.3; text-align: center; color: var(--af-text); word-break: break-all; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.af-tile .af-meta { font-size: 11px; color: var(--af-subtle); }
+/* List view */
+.af-list { border: 1px solid var(--af-border); border-radius: 10px; overflow: hidden; }
+.af-list-head, .af-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px 80px 150px 64px; align-items: center; gap: 12px; padding: 0 12px; }
+.af-list-head { height: 32px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--af-muted); background: var(--af-pane); border-bottom: 1px solid var(--af-border); }
+.af-row { height: 40px; font-size: 13px; color: var(--af-text); cursor: pointer; user-select: none; }
+.af-row:nth-child(even) { background: var(--af-stripe); }
+.af-row:hover { background: var(--af-hover); }
+.af-row.is-selected { background: var(--af-sel); box-shadow: inset 3px 0 0 var(--af-sel-border); }
+.af-row-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 500; }
+.af-row-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0; }
+.af-row-icon svg { width: 14px; height: 14px; }
+.af-row .af-col-dim { color: var(--af-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.af-col-right { text-align: right; }
+.af-row .af-actions { justify-content: flex-end; }
+@media (max-width: 640px) {
+    .af-list-head, .af-row { grid-template-columns: minmax(0, 1fr) 64px 56px; }
+    .af-col-kind, .af-col-date { display: none; }
+}
+/* Preview pane: hidden on small screens, where a click opens the full viewer instead.
+   On large screens the card fills the tab and both panes scroll on their own, like Finder. */
+.af-preview { display: none; }
+@media (min-width: 1024px) {
+    .af-card { height: 100%; display: flex; flex-direction: column; }
+    .af-browser { flex: 1; min-height: 420px; align-items: stretch; }
+    .af-files { overflow-y: auto; }
+    .af-preview { display: flex; flex-direction: column; width: 360px; flex-shrink: 0; border: 1px solid var(--af-border); border-radius: 10px; background: var(--af-pane); overflow: hidden; }
+}
+@media (min-width: 1536px) { .af-preview { width: 460px; } }
+.af-preview-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; color: var(--af-subtle); }
+.af-preview-empty svg { width: 44px; height: 44px; opacity: .6; }
+.af-preview-empty p { font-size: 13px; }
+.af-preview-empty small { font-size: 11px; }
+.af-preview-head { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--af-border); }
+.af-preview-title { flex: 1; min-width: 0; }
+.af-preview-title h4 { font-size: 14px; font-weight: 600; color: var(--af-text); overflow-wrap: anywhere; line-height: 1.35; }
+.af-preview-title p { font-size: 12px; color: var(--af-muted); margin-top: 2px; }
+.af-preview-head .af-actions { opacity: 1; flex-shrink: 0; }
+.af-preview-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; }
+.af-preview-body iframe { min-height: 0 !important; height: 100%; }
+.af-preview-body pre { max-height: none !important; font-size: 12px !important; }
+.af-preview-body img, .af-preview-body video { max-height: none !important; }
+.af-preview-info { border-top: 1px solid var(--af-border); padding: 10px 14px; font-size: 12px; }
+.af-preview-info h5 { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--af-muted); margin-bottom: 6px; }
+.af-preview-info dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; }
+.af-preview-info dt { color: var(--af-muted); }
+.af-preview-info dd { color: var(--af-text); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Dark mode: Artifact viewer modal */
 html.dark #artifact-viewer-modal > div { background: #1f2937; }
 html.dark #artifact-viewer-modal .border-gray-200 { border-color: #374151; }
@@ -309,6 +408,10 @@ html.dark .agent-tab.active {
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     Clone
                 </button>
+                <button onclick="exportAgent()" class="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    Export Agent
+                </button>
                 <button onclick="toggleEnabled()" id="toggle-enabled-btn" class="w-full text-left flex items-center gap-2 px-4 py-2 text-sm {{ 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600' if agent.enabled != 0 else 'text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300' }} transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M5.636 5.636a9 9 0 1 0 12.728 0M12 3v9"/></svg>
                     <span>{{ 'Disable' if agent.enabled != 0 else 'Enable' }}</span>
@@ -329,8 +432,8 @@ html.dark .agent-tab.active {
         <button class="agent-tab tab-btn" onclick="showTab('general')" data-tab="general"><i data-lucide="sliders-horizontal"></i><span>Settings</span></button>
         <button class="agent-tab tab-btn" onclick="showTab('knowledge')" data-tab="knowledge"><i data-lucide="book-open"></i><span>Knowledge</span></button>
         <button class="agent-tab tab-btn" onclick="showTab('tools')" data-tab="tools"><i data-lucide="wrench"></i><span>Tools</span></button>
-        {# Always rendered (hidden for super) so softSwitchAgent can toggle without a full reload #}
-        <button class="agent-tab tab-btn{{ ' hidden' if agent.is_super else '' }}" onclick="showTab('skills')" data-tab="skills"><i data-lucide="sparkles"></i><span>Skills</span></button>
+        {# Always rendered so softSwitchAgent can toggle without a full reload #}
+        <button class="agent-tab tab-btn" onclick="showTab('skills')" data-tab="skills"><i data-lucide="sparkles"></i><span>Skills</span></button>
         <button class="agent-tab tab-btn" onclick="showTab('channels')" data-tab="channels"><i data-lucide="radio"></i><span>Channels</span></button>
         <button class="agent-tab tab-btn" onclick="showTab('portals')" data-tab="portals"><i data-lucide="folder-symlink"></i><span>Portals</span></button>
         {% if agent.artifacts_enabled %}
@@ -479,7 +582,7 @@ html.dark .agent-tab.active {
                     </div>
                 </label>
             </div>
-            <button id="saveGeneralBtn" onclick="saveGeneral()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed">Save Changes</button>
+
         </div>
         <!-- Right column -->
         <div class="space-y-6">
@@ -563,6 +666,16 @@ html.dark .agent-tab.active {
                     </div>
                     <div>
                         <label class="flex items-center gap-3 cursor-pointer select-none">
+                            {{ toggle_widget(id='agent-always-execute', checked=agent.always_execute) }}
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Always Execute</span>
+                                <p class="text-xs text-gray-400 mt-0.5">Force agent to stay in execute mode — bypasses plan/execute blocking. Write tools are always available while CMP and ATG remain active. Requires Agent State.</p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none">
                             {{ toggle_widget(id='agent-parallel-exec', checked=(agent.disable_parallel_tool_execution if agent.disable_parallel_tool_execution is not none else False)) }}
                             <div>
                                 <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Disable Parallel Tool Execution</span>
@@ -623,7 +736,7 @@ html.dark .agent-tab.active {
                             {{ toggle_widget(id='agent-safety-checker', checked=(agent.safety_checker_enabled is none or agent.safety_checker_enabled)) }}
                             <div>
                                 <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Safety Checker</span>
-                                <p class="text-xs text-gray-400 mt-0.5">Heuristic safety check on Bash/Python scripts. Disable for full autopilot — agent runs all code without approval prompts.</p>
+                                <p class="text-xs text-gray-400 mt-0.5">Heuristic safety check on Bash/Python scripts. Disable to skip its approval prompts (destructive-command and custom-rule checks). Two system-level guards are separate and still apply regardless: the root filesystem scan guard (<code>find /</code>, <code>tree /</code>) and the long-running build command guard — disable those with the <code>RFS_GUARD_DISABLED</code> / <code>LR_GUARD_DISABLED</code> env vars or System &rarr; Settings.</p>
                             </div>
                         </label>
                     </div>
@@ -657,9 +770,36 @@ html.dark .agent-tab.active {
                     </div>
 
                     <div>
+                        <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Allowed send_file path regex</label>
+                        <input type="text" id="agent-send-file-allowed-path-regex" value="{{ agent.send_file_allowed_path_regex or '' }}" placeholder="Empty disables the policy" class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
+                        <p class="text-xs text-gray-400 mt-1">Optional regex matched against the canonical path before file metadata or content is exposed. Traversal and symlink aliases are resolved first.</p>
+                    </div>
+
+                    <div>
                         <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Run As User</label>
                         <input type="text" id="agent-run-as-user" value="{{ agent.run_as_user or '' }}" placeholder="e.g. webdev" class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
                         <p class="text-xs text-gray-400 mt-1">Linux username to execute bash/python commands as (via <code>sudo -u</code>). Only applies when sandbox is disabled. Leave empty to run as the default process user. Only super agents can set this.</p>
+                    </div>
+
+                    <div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none">
+                            {{ toggle_widget(id='agent-help-enabled', checked=(agent.help_enabled is none or agent.help_enabled)) }}
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Respond to <code>/help</code> Command</span>
+                                <p class="text-xs text-gray-400 mt-0.5">When enabled (default), the agent replies to <code>/help</code> with the list of available commands. When disabled, incoming <code>/help</code> messages are ignored entirely — no reply is sent and the message is not processed by the agent. Takes effect immediately.</p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Hidden Slash Commands</label>
+                        <input type="text" id="agent-hidden-slash-commands" value="{{ agent.hidden_slash_commands or '' }}" placeholder="e.g. help,summary" class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
+                        <p class="text-xs text-gray-400 mt-1">Comma-separated list of <!-- --><code>/commands</code> to hide from this agent's system prompt (still executable by the user). Use <code>*</code> for all, or <code>!</code> prefix for inverse mode (e.g. <code>!clear,model</code> = only <code>/clear</code> &amp; <code>/model</code> visible). No effect on super agents. Available commands: clear, help, summary, investigate, stop, cwd, cd, restart, shutdown, plan, exec, unfocus, status, model, sub, detach, jobs, kb-organize, dump.</p>
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Disabled Slash Commands</label>
+                        <input type="text" id="agent-disabled-slash-commands" value="{{ agent.disabled_slash_commands or '' }}" placeholder="e.g. restart,shutdown" class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
+                        <p class="text-xs text-gray-400 mt-1">Comma-separated list of <!-- --><code>/commands</code> to disable entirely (treated as regular chat, not executed). Same <code>*</code> wildcard and <code>!</code> inverse syntax as above. No effect on super agents.</p>
                     </div>
 
                     <div>
@@ -670,9 +810,7 @@ html.dark .agent-tab.active {
                         <textarea id="agent-summarize-prompt" rows="10" class="w-full p-2.5 border border-gray-300 rounded-md text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 {{ 'opacity-50' if not agent.summarize_prompt else '' }}" {{ '' if agent.summarize_prompt else 'disabled' }}>{{ agent.summarize_prompt or DEFAULT_SUMMARIZE_PROMPT }}</textarea>
                         <p class="text-xs text-gray-400 mt-1">Unchecked: the built-in default prompt is used (kept up to date automatically — recommended). Check to provide your own. Use <code>{existing_summary_section}</code> and <code>{messages_text}</code> placeholders.</p>
                     </div>
-                    <div class="pt-2">
-                        <button id="saveAdvancedBtn" onclick="saveAdvanced()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed">Save Advanced</button>
-                    </div>
+
                 </div>
             </div>
             <!-- Variables Card -->
@@ -732,7 +870,7 @@ html.dark .agent-tab.active {
             <!-- Overlay: Search bar + type filters (top-left, stacked) -->
             <div class="absolute top-4 left-4 z-10 flex flex-col items-start gap-1.5">
                 <div class="relative">
-                    <input type="text" id="kb-graph-search" placeholder="Search nodes..." autocomplete="off"
+                    <input type="search" id="kb-graph-search" name="agent_kb_graph_query" placeholder="Search nodes..." autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"
                            class="pl-3 pr-8 py-2 w-48 sm:w-64 bg-white/80 dark:bg-gray-800 backdrop-blur-sm border border-gray-200 dark:border-gray-600 rounded-lg text-sm shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/50 dark:text-gray-100 dark:placeholder-gray-400"
                            oninput="searchKBGraph(this.value)">
                     <button id="kb-graph-search-clear" onclick="clearKBGraphSearch()" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer hidden" type="button">
@@ -796,7 +934,7 @@ html.dark .agent-tab.active {
                         </label>
                     </div>
                 </div>
-                <input type="text" id="kb-filter" placeholder="Filter files..." autocomplete="off"
+                <input type="search" id="kb-filter" name="agent_kb_files_query" placeholder="Filter files..." autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"
                        class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 mb-4"
                        oninput="filterKBFiles()">
                 <p class="text-xs text-gray-400 mb-4">Files stored in <code>agents/{{ agent.id }}/kb/</code> — the agent can read these using <code>read_file(file_path="/_self/kb/filename.md")</code>.</p>
@@ -841,7 +979,7 @@ html.dark .agent-tab.active {
             <p class="text-xs text-gray-400 mb-4">Toggle tools on/off to assign them to this agent. {% if agent.builtin_tools_enabled is not false %}Built-in tools are always available.{% else %}Built-in tools are currently disabled — enable them in the Advanced tab.{% endif %} Click a tool name to view details.</p>
             <!-- Filter bar -->
             <div class="flex flex-wrap items-center gap-2 mb-4">
-                <input type="text" id="tool-filter" placeholder="Filter tools..." autocomplete="off"
+                <input type="search" id="tool-filter" name="agent_tools_query" placeholder="Filter tools..." autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"
                        class="flex-1 min-w-0 w-full sm:w-auto p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
                        oninput="filterToolsList()">
                 <div class="flex rounded-md border border-gray-200 overflow-hidden text-xs font-medium flex-shrink-0 w-full sm:w-auto dark:border-gray-600">
@@ -904,9 +1042,13 @@ html.dark .agent-tab.active {
 
     <!-- Artifacts Tab -->
     <div id="tab-artifacts" class="tab-content hidden flex-1 min-h-0 overflow-y-auto">
-        <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 max-w-5xl">
+        <div class="af-card bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Artifacts</h3>
+                <div class="af-view-toggle" role="group" aria-label="View">
+                    <button type="button" data-view="icons" onclick="setArtifactView('icons')" title="Icons" aria-label="Icon view"><i data-lucide="layout-grid"></i></button>
+                    <button type="button" data-view="list" onclick="setArtifactView('list')" title="List" aria-label="List view"><i data-lucide="list"></i></button>
+                </div>
             </div>
 
             <!-- Search & Sort Bar -->
@@ -938,10 +1080,10 @@ html.dark .agent-tab.active {
                 <button class="artifacts-filter-chip px-3 py-1.5 text-xs font-medium rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700" data-type="data" onclick="setArtifactFilter('data')">Data / Other</button>
             </div>
 
-            <!-- Artifacts Grid -->
-            <div id="artifacts-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                <!-- Artifacts loaded dynamically -->
-            </div>
+            <div class="af-browser">
+            <div class="af-files">
+            <!-- Artifacts (icon or list view, rendered by renderArtifacts) -->
+            <div id="artifacts-grid"></div>
 
             <!-- Pagination Controls -->
             <div id="artifacts-pagination" class="hidden flex items-center justify-between mt-4 pt-3 border-t border-gray-200 dark:border-gray-600">
@@ -976,6 +1118,11 @@ html.dark .agent-tab.active {
                 </svg>
                 <p class="text-sm">No artifacts yet.</p>
                 <p class="text-xs mt-1">Artifacts are files that agents save during their work. When an agent produces a report, analysis, or any output, it can be saved here.</p>
+            </div>
+            </div>
+
+            <!-- Preview pane: always visible on large screens, filled by selectArtifact() -->
+            <aside id="artifacts-preview" class="af-preview" aria-label="Preview"></aside>
             </div>
         </div>
     </div>
@@ -1083,6 +1230,7 @@ html.dark .agent-tab.active {
                             oninput="chatInputChanged(this)"></textarea>
                             <div id="chat-bash-hint" class="hidden" aria-live="polite">! Bash mode: shell command</div>
                             <div id="chat-command-menu" class="hidden absolute left-0 right-0 z-50 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800" style="bottom: calc(100% + 0.5rem);" role="listbox" aria-label="Available slash commands"></div>
+                            <div id="chat-command-hint" class="hidden mt-1 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></div>
                         </div>
                         <button onclick="handleChatBtn()" id="chat-send-btn" title="Send" class="bg-indigo-500 hover:bg-indigo-600 text-white p-2.5 rounded-md text-sm transition-colors flex items-center justify-center"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button>
                     </div>
@@ -1117,7 +1265,7 @@ html.dark .agent-tab.active {
             <div class="hidden lg:flex flex-col gap-3 flex-shrink-0 min-h-0 min-w-0 overflow-hidden w-80">
                 <!-- Agent State Card -->
                 {% if agent.enable_agent_state %}
-                <div id="agent-state-card" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 flex-col flex-shrink-0" style="min-height:0;">
+                <div id="agent-state-card" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 flex-col flex-shrink-0 min-w-0 overflow-hidden" style="min-height:0;">
                     <div class="flex justify-between items-center px-4 pt-4 pb-2 flex-shrink-0">
                         <div class="flex items-center gap-2">
                             <h3 class="font-semibold text-gray-800 dark:text-gray-100">Agent State</h3>
@@ -1178,7 +1326,7 @@ html.dark .agent-tab.active {
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l-.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm-10.625-2.85a5.5 5.5 0 0 1 9.201-2.465l.312.31H11.767a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V3.535a.75.75 0 0 0-1.5 0v2.033l-.312-.31A7 7 0 0 0 2.627 8.396a.75.75 0 0 0 1.449.39l.611.789Z" clip-rule="evenodd"/></svg>
                     </button>
                 </div>
-                <div id="mobile-agent-state-content" class="p-4">
+                <div id="mobile-agent-state-content" class="p-4 overflow-x-hidden break-words">
                     <p class="text-sm text-gray-400 italic">No state yet.</p>
                 </div>
             </div>
@@ -1188,7 +1336,7 @@ html.dark .agent-tab.active {
                 <div class="flex justify-between items-center px-4 py-2 border-b border-gray-100">
                     <h5 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Session State</h5>
                 </div>
-                <div id="mobile-summary-content" class="p-4">
+                <div id="mobile-summary-content" class="p-4 overflow-x-hidden break-words">
                     <p class="text-sm text-gray-400 italic">No summary yet. Start chatting to generate one.</p>
                 </div>
             </div>
@@ -1539,6 +1687,29 @@ html.dark .agent-tab.active {
     </div>
 </div>
 
+<!-- Per-channel WhatsApp Debug Listener Modal -->
+<div id="channel-debug-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onclick="if(event.target===this) channelDebugListener.close()">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col" style="max-height:85vh" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">WhatsApp Debug Listener</h3>
+                <p id="channel-debug-status" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    <span class="inline-block w-2 h-2 rounded-full bg-gray-400 mr-1.5"></span>Disconnected
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="channelDebugListener.clear()" class="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Clear</button>
+                <button onclick="channelDebugListener.close()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
+            </div>
+        </div>
+        <div id="channel-debug-log" class="flex-1 overflow-y-auto px-6 py-4 space-y-2 bg-gray-50 dark:bg-gray-900/50" style="min-height:300px"></div>
+        <div class="px-6 py-3 border-t border-gray-100 dark:border-gray-700 flex-shrink-0 flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+            <span id="channel-debug-count">0 messages</span>
+            <span>Max 500 &middot; newest first</span>
+        </div>
+    </div>
+</div>
+
 <!-- Drop File Confirmation Modal -->
 <div id="chat-drop-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4">
     <div class="bg-white dark:bg-gray-800 rounded-xl w-[66%] max-w-[420px] shadow-xl flex flex-col" style="max-height:85vh">
@@ -1631,8 +1802,8 @@ html.dark .agent-tab.active {
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=59" defer></script>
-<script src="{{ url_for('static', filename='js/agent-state.js') }}?v=5" defer></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=64" defer></script>
+<script src="{{ url_for('static', filename='js/agent-state.js') }}?v=6" defer></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
 function showToast(message, type = 'success') {
@@ -2188,130 +2359,224 @@ async function saveAgentSafetyRules() {
     } catch(e) { console.error('Failed to save agent safety rules:', e); }
 }
 
-const SPINNER_SVG = '<svg class="animate-spin h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
-
-function setSaveLoading(btnId, loading) {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    if (loading) {
-        btn.disabled = true;
-        btn.dataset.originalText = btn.textContent;
-        btn.innerHTML = '<span class="inline-flex items-center">' + SPINNER_SVG + 'Saving...</span>';
-    } else {
-        btn.disabled = false;
-        btn.textContent = btn.dataset.originalText || btn.textContent;
-    }
-}
-
-async function saveGeneral() {
-    const btnId = 'saveGeneralBtn';
-    setSaveLoading(btnId, true);
-    let workspaceChanged = false;
-    try {
-    const homeSel = document.getElementById('agent-workplace-id');
-    const selectedOpt = homeSel ? homeSel.options[homeSel.selectedIndex] : null;
-    const homeType = selectedOpt ? selectedOpt.dataset.type : '';
-    const sandboxForced = (homeType === 'remote' || homeType === 'tunnel' || homeType === 'bwrap');
-    const newWorkspace = document.getElementById('agent-workspace').value || null;
-    workspaceChanged = (newWorkspace || null) !== (ORIGINAL_WORKSPACE || null);
+// ==================== Settings auto-save ====================
+// Every control in the Settings tab persists on change/blur — no Save button,
+// mirroring System Settings > General. Selects/toggles save immediately;
+// text/number/textarea debounce on input then flush on blur. Feedback renders
+// as a small inline status appended to each field's label.
+async function putAgent(body) {
     const res = await fetch(`/api/agents/${AGENT_ID}`, {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            name: document.getElementById('agent-name').value,
-            description: document.getElementById('agent-desc').value,
-            workspace: newWorkspace,
-            workplace_id: homeSel ? homeSel.value || null : null,
-            system_prompt: document.getElementById('agent-system-prompt').value,
-            vision_enabled: document.getElementById('agent-vision').checked ? 1 : 0,
-            audio_enabled: document.getElementById('agent-audio').checked ? 1 : 0,
-            video_enabled: document.getElementById('agent-video').checked ? 1 : 0,
-            attachments_enabled: document.getElementById('agent-attachments').checked ? 1 : 0,
-            attachment_max_size_mb: Math.min(20, Math.max(1, parseInt(document.getElementById('agent-attachment-max-mb').value) || 20)),
-            sandbox_enabled: sandboxForced ? 0 : (document.getElementById('agent-sandbox').checked ? 1 : 0),
-            inject_agent_id: document.getElementById('agent-inject-id').checked ? 1 : 0,
-            inject_datetime: document.getElementById('agent-inject-datetime').checked ? 1 : 0,
-        })
+        body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!data.success) { showToast("Failed to save settings.", "error"); return; }
+    if (!data.success) throw new Error(data.error || 'Save failed');
+    return data;
+}
 
-    const selectedModelId = document.getElementById('agent-model-select').value || null;
-    const selectedFallbackModelId = document.getElementById('agent-fallback-model-select').value || null;
-    await fetch(`/api/agents/${AGENT_ID}/model`, {
+async function saveAgentModel() {
+    const model_id = document.getElementById('agent-model-select').value || null;
+    const fallback_model_id = document.getElementById('agent-fallback-model-select').value || null;
+    const res = await fetch(`/api/agents/${AGENT_ID}/model`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ model_id: selectedModelId, fallback_model_id: selectedFallbackModelId })
-    });
-
-    if (workspaceChanged) {
-        location.reload();
-        return;
-    }
-    showToast("Settings saved successfully!", "success");
-    loadTools();
-    } finally {
-        if (!workspaceChanged) setSaveLoading(btnId, false);
-    }
-}
-
-async function saveAdvanced() {
-    const btnId = 'saveAdvancedBtn';
-    const oldBuiltinTools = document.getElementById('agent-builtin-tools').checked;
-    setSaveLoading(btnId, true);
-    try {
-    const res = await fetch(`/api/agents/${AGENT_ID}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            summarize_threshold: parseInt(document.getElementById('agent-summarize-threshold').value) || 0,
-            summarize_tail: parseInt(document.getElementById('agent-summarize-tail').value) || 5,
-            summarize_prompt: document.getElementById('agent-summarize-prompt-override').checked
-                ? (document.getElementById('agent-summarize-prompt').value || null)
-                : null,
-            message_buffer_seconds: parseFloat(document.getElementById('agent-buffer-seconds').value) || 0,
-            send_intermediate_responses: document.getElementById('agent-send-intermediate').checked ? 1 : 0,
-            enable_agent_state: document.getElementById('agent-state-enabled').checked ? 1 : 0,
-            enable_atg: document.getElementById('agent-atg-enabled').checked ? 1 : 0,
-            enable_cmp: document.getElementById('agent-cmp-enabled').checked ? 1 : 0,
-            disable_parallel_tool_execution: document.getElementById('agent-parallel-exec').checked ? 1 : 0,
-            disable_turn_prefetch: document.getElementById('agent-prefetch').checked ? 1 : 0,
-            agent_messaging_enabled: document.getElementById('agent-messaging-enabled').checked ? 1 : 0,
-            inter_agent_clear_context: document.getElementById('agent-inter-agent-clear').checked ? 1 : 0,
-            builtin_tools_enabled: document.getElementById('agent-builtin-tools').checked ? 1 : 0,
-            artifacts_enabled: document.getElementById('agent-artifacts').checked ? 1 : 0,
-            safety_checker_enabled: document.getElementById('agent-safety-checker').checked ? 1 : 0,
-            bash_exec_enabled: document.getElementById('agent-bash-exec').checked ? 1 : 0,
-            message_wrapper_enabled: document.getElementById('agent-message-wrapper').checked ? 1 : 0,
-            run_as_user: document.getElementById('agent-run-as-user').value.trim() || null,
-            memory_engine: document.getElementById('agent-memory-engine').value || null,
-            kb_organizer_mode: document.getElementById('agent-kb-organizer').value || null,
-        })
+        body: JSON.stringify({ model_id, fallback_model_id }),
     });
     const data = await res.json();
-    if (!data.success) { showToast("Failed to save advanced settings.", "error"); return; }
-
-    // Persist variables + injection guard flag. collectVariables() embeds the
-    // toggle state (canonical lowercase, once), so no manual merge is needed.
-    try {
-        await fetch(`/api/agents/${AGENT_ID}/variables`, {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ variables: collectVariables() })
-        });
-    } catch (e) {
-        console.error('Failed to save injection guard state:', e);
-    }
-
-    showToast("Advanced settings saved!", "success");
-    // Refresh tools list if builtin_tools_enabled toggled
-    if (oldBuiltinTools !== document.getElementById('agent-builtin-tools').checked) {
-        loadTools();
-    }
-    } finally {
-        setSaveLoading(btnId, false);
-    }
+    if (!data.success) throw new Error(data.error || 'Failed to set model');
 }
+
+async function saveSummarizePrompt() {
+    const override = document.getElementById('agent-summarize-prompt-override').checked;
+    const val = override ? (document.getElementById('agent-summarize-prompt').value || null) : null;
+    await putAgent({ summarize_prompt: val });
+}
+
+const AS_SPINNER = '<svg class="animate-spin h-4 w-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+const AS_CHECK = '<svg class="h-4 w-4 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>';
+const AS_ERROR = '<svg class="h-4 w-4 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+
+const AgentAutoSave = {
+    DEBOUNCE_MS: 700,
+    _timers: {},
+    _handlers: {},
+
+    // Controls whose value maps directly to an agent column via PUT /api/agents.
+    FIELDS: [
+        { id: 'agent-name', key: 'name', type: 'str' },
+        { id: 'agent-desc', key: 'description', type: 'str' },
+        { id: 'agent-system-prompt', key: 'system_prompt', type: 'str' },
+        { id: 'agent-vision', key: 'vision_enabled', type: 'bool' },
+        { id: 'agent-audio', key: 'audio_enabled', type: 'bool' },
+        { id: 'agent-video', key: 'video_enabled', type: 'bool' },
+        { id: 'agent-attachments', key: 'attachments_enabled', type: 'bool' },
+        { id: 'agent-sandbox', key: 'sandbox_enabled', type: 'bool' },
+        { id: 'agent-inject-id', key: 'inject_agent_id', type: 'bool' },
+        { id: 'agent-inject-datetime', key: 'inject_datetime', type: 'bool' },
+        { id: 'agent-workplace-id', key: 'workplace_id', type: 'selnull' },
+        { id: 'agent-summarize-threshold', key: 'summarize_threshold', type: 'int', def: 0 },
+        { id: 'agent-summarize-tail', key: 'summarize_tail', type: 'int', def: 5 },
+        { id: 'agent-buffer-seconds', key: 'message_buffer_seconds', type: 'float' },
+        { id: 'agent-send-intermediate', key: 'send_intermediate_responses', type: 'bool' },
+        { id: 'agent-state-enabled', key: 'enable_agent_state', type: 'bool' },
+        { id: 'agent-atg-enabled', key: 'enable_atg', type: 'bool' },
+        { id: 'agent-cmp-enabled', key: 'enable_cmp', type: 'bool' },
+        { id: 'agent-always-execute', key: 'always_execute', type: 'bool' },
+        { id: 'agent-parallel-exec', key: 'disable_parallel_tool_execution', type: 'bool' },
+        { id: 'agent-prefetch', key: 'disable_turn_prefetch', type: 'bool' },
+        { id: 'agent-messaging-enabled', key: 'agent_messaging_enabled', type: 'bool' },
+        { id: 'agent-inter-agent-clear', key: 'inter_agent_clear_context', type: 'bool' },
+        { id: 'agent-artifacts', key: 'artifacts_enabled', type: 'bool' },
+        { id: 'agent-safety-checker', key: 'safety_checker_enabled', type: 'bool' },
+        { id: 'agent-bash-exec', key: 'bash_exec_enabled', type: 'bool' },
+        { id: 'agent-message-wrapper', key: 'message_wrapper_enabled', type: 'bool' },
+        { id: 'agent-run-as-user', key: 'run_as_user', type: 'strnull' },
+        { id: 'agent-memory-engine', key: 'memory_engine', type: 'selnull' },
+        { id: 'agent-kb-organizer', key: 'kb_organizer_mode', type: 'selnull' },
+        { id: 'agent-send-file-allowed-path-regex', key: 'send_file_allowed_path_regex', type: 'str' },
+        { id: 'agent-hidden-slash-commands', key: 'hidden_slash_commands', type: 'str' },
+        { id: 'agent-disabled-slash-commands', key: 'disabled_slash_commands', type: 'str' },
+        { id: 'agent-help-enabled', key: 'help_enabled', type: 'bool' },
+        // Special-handled controls (persist fn registered below); listed here so
+        // they still get change/blur listeners wired.
+        { id: 'agent-model-select' },
+        { id: 'agent-fallback-model-select' },
+        { id: 'agent-workspace' },
+        { id: 'agent-attachment-max-mb' },
+        { id: 'agent-builtin-tools' },
+        { id: 'agent-summarize-prompt-override' },
+        { id: 'agent-summarize-prompt' },
+        { id: 'agent-injection-guard' },
+    ],
+
+    init() {
+        if (this._inited) return; // idempotent — safe across soft agent switches
+        this._inited = true;
+        // Composite model save (primary + fallback together).
+        this._handlers['agent-model-select'] = saveAgentModel;
+        this._handlers['agent-fallback-model-select'] = saveAgentModel;
+        // Workspace change requires a reload (affects sandbox paths) — parity
+        // with the old saveGeneral behavior.
+        this._handlers['agent-workspace'] = async (el) => {
+            const newWorkspace = el.value || null;
+            await putAgent({ workspace: newWorkspace });
+            if ((newWorkspace || null) !== (ORIGINAL_WORKSPACE || null)) location.reload();
+        };
+        this._handlers['agent-attachment-max-mb'] = async (el) => {
+            const v = Math.min(20, Math.max(1, parseInt(el.value) || 20));
+            el.value = v;
+            await putAgent({ attachment_max_size_mb: v });
+        };
+        this._handlers['agent-builtin-tools'] = async (el) => {
+            await putAgent({ builtin_tools_enabled: el.checked ? 1 : 0 });
+            loadTools();
+        };
+        this._handlers['agent-summarize-prompt-override'] = saveSummarizePrompt;
+        this._handlers['agent-summarize-prompt'] = saveSummarizePrompt;
+        // Injection guard is stored as an agent variable, not a column.
+        this._handlers['agent-injection-guard'] = async () => { await saveVariables(true); };
+        // Re-fetch slash command list after saving hidden/disabled settings
+        // so the chat autocomplete reflects the change immediately.
+        this._handlers['agent-hidden-slash-commands'] = async (el) => {
+            await putAgent({ hidden_slash_commands: el.value });
+            loadChatCommands();
+        };
+        this._handlers['agent-disabled-slash-commands'] = async (el) => {
+            await putAgent({ disabled_slash_commands: el.value });
+            loadChatCommands();
+        };
+
+        this.FIELDS.forEach((f) => this._bind(f));
+    },
+
+    _bind(f) {
+        const el = document.getElementById(f.id);
+        if (!el) return;
+        el._asField = f;
+        if (el.type === 'checkbox' || el.tagName === 'SELECT') {
+            el.addEventListener('change', () => this._persist(el, f));
+        } else {
+            el._asLast = this._value(el, f.type);
+            el.addEventListener('input', () => this._queue(el, f));
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && el.tagName !== 'TEXTAREA') el.blur();
+            });
+            el.addEventListener('blur', () => this._flush(el, f));
+        }
+    },
+
+    _queue(el, f) {
+        clearTimeout(this._timers[f.id]);
+        this._timers[f.id] = setTimeout(() => this._flush(el, f), this.DEBOUNCE_MS);
+    },
+
+    _flush(el, f) {
+        clearTimeout(this._timers[f.id]);
+        const v = this._value(el, f.type);
+        if (el._asLast === v) return; // nothing changed
+        el._asLast = v;
+        this._persist(el, f);
+    },
+
+    async _persist(el, f) {
+        this._status(el, 'saving');
+        try {
+            const handler = this._handlers[f.id];
+            if (handler) {
+                await handler(el);
+            } else {
+                await putAgent({ [f.key]: this._value(el, f.type) });
+            }
+            this._status(el, 'saved');
+        } catch (e) {
+            this._status(el, 'error', e.message || 'Save failed');
+        }
+    },
+
+    _value(el, type) {
+        switch (type) {
+            case 'bool': return el.checked ? 1 : 0;
+            case 'int': { const n = parseInt(el.value, 10); return isNaN(n) ? (el._asField ? el._asField.def : 0) : n; }
+            case 'float': return parseFloat(el.value) || 0;
+            case 'strnull': return el.value.trim() || null;
+            case 'selnull': return el.value || null;
+            default: return el.value;
+        }
+    },
+
+    _host(el) {
+        if (el.type === 'checkbox') {
+            const lbl = el.closest('label');
+            if (lbl) return lbl;
+        }
+        const explicit = document.querySelector(`label[for="${el.id}"]`);
+        if (explicit) return explicit;
+        const block = el.closest('.mb-4') || el.parentElement;
+        return block ? block.querySelector('label') : null;
+    },
+
+    _status(el, state, msg) {
+        const host = this._host(el);
+        if (!host) return;
+        let s = host.querySelector(':scope > .as-status');
+        if (!s) {
+            s = document.createElement('span');
+            s.className = 'as-status ml-2 inline-flex items-center align-middle';
+            host.appendChild(s);
+        }
+        clearTimeout(s._fade);
+        if (state === 'saving') {
+            s.innerHTML = AS_SPINNER;
+        } else if (state === 'saved') {
+            s.innerHTML = AS_CHECK;
+            s._fade = setTimeout(() => { s.innerHTML = ''; }, 1600);
+        } else if (state === 'error') {
+            s.innerHTML = AS_ERROR;
+            if (msg) showToast(msg, 'error');
+        }
+    },
+};
 
 // ==================== Plugin Settings (per-agent) ====================
 async function loadPluginSettings() {
@@ -2553,6 +2818,7 @@ function switchKBTab(tab) {
         // Re-render preview from current textarea content
         const textarea = document.getElementById('kb-editor-content');
         document.getElementById('kb-editor-preview').innerHTML = renderKBPreview(textarea.value);
+        ui.addCopyButtons(document.getElementById('kb-editor-preview'));
         editPanel.classList.add('hidden');
         previewPanel.classList.remove('hidden');
         editBtn.className = editBtn.className.replace(activeClass, inactiveClass);
@@ -2706,6 +2972,7 @@ async function editFile(filename) {
     document.getElementById('kb-editor-modal').classList.remove('hidden');
     // Render preview and show Preview tab by default
     document.getElementById('kb-editor-preview').innerHTML = renderKBPreview(data.content);
+    ui.addCopyButtons(document.getElementById('kb-editor-preview'));
     document.getElementById('kb-editor-preview').classList.remove('hidden');
     document.getElementById('kb-editor-edit-panel').classList.add('hidden');
     document.getElementById('kb-tab-preview').className = 'px-4 py-2 text-sm font-medium border-b-2 border-indigo-500 text-indigo-600 transition-colors';
@@ -2717,6 +2984,19 @@ function autoGrowKBTextarea(el) {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, window.innerHeight * 0.65) + 'px';
     el.style.overflowY = el.scrollHeight > window.innerHeight * 0.65 ? 'auto' : 'hidden';
+}
+
+function setSaveLoading(btnId, loading) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    if (loading) {
+        btn.dataset.origText = btn.textContent;
+        btn.textContent = "Saving...";
+        btn.disabled = true;
+    } else {
+        btn.textContent = btn.dataset.origText || "Save";
+        btn.disabled = false;
+    }
 }
 
 function closeEditor() {
@@ -2900,26 +3180,43 @@ async function syncKB(btn) {
     }
 }
 
-function toggleKBGraphView() {
+// Applies container visibility + toggle-button label for the current kbGraphMode.
+function applyKBViewMode() {
     const toggleBtn = document.getElementById('kb-graph-toggle');
     const graphContainer = document.getElementById('kb-graph-container');
     const listContainer = document.getElementById('kb-list-container');
 
-    if (kbGraphMode === 'graph') {
-        kbGraphMode = 'list';
+    if (kbGraphMode === 'list') {
         if (toggleBtn) toggleBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg> Graph';
         graphContainer.classList.add('hidden');
         listContainer.classList.remove('hidden');
-        loadKBFiles();
     } else {
-        kbGraphMode = 'graph';
         if (toggleBtn) toggleBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg> List';
         listContainer.classList.add('hidden');
         graphContainer.classList.remove('hidden');
+    }
+}
+
+function toggleKBGraphView() {
+    kbGraphMode = kbGraphMode === 'graph' ? 'list' : 'graph';
+    try { localStorage.setItem('evonic-kb-view-mode', kbGraphMode); } catch (e) {}
+    applyKBViewMode();
+    if (kbGraphMode === 'list') {
+        loadKBFiles();
+    } else {
         if (kbGraphData) renderKBGraph();
         else loadKBGraph();
     }
 }
+
+// Restore the last-used KB view mode (graph/list) on page load. Runs before the
+// hash-based tab restore below, so showTab('knowledge') loads matching data.
+(function() {
+    let saved = null;
+    try { saved = localStorage.getItem('evonic-kb-view-mode'); } catch (e) {}
+    if (saved === 'list' || saved === 'graph') kbGraphMode = saved;
+    applyKBViewMode();
+})();
 
 function toggleOrphans() {
     kbGraphShowOrphans = document.getElementById('kb-graph-show-orphans').checked;
@@ -3366,7 +3663,7 @@ let currentFilterMode = 'assigned';
 async function loadTools() {
     const epoch = window._agentEpoch;
     const [toolsRes, agentToolsRes] = await Promise.all([
-        fetch('/api/settings/tools'),
+        fetch(`/api/settings/tools?agent_id=${encodeURIComponent(AGENT_ID)}`),
         fetch(`/api/agents/${AGENT_ID}/tools`)
     ]);
     const toolsDefs = (await toolsRes.json()).tools || [];
@@ -4084,8 +4381,12 @@ async function loadChannels() {
         const toggleBtn = running
             ? `<button onclick="event.stopPropagation(); toggleChannel('${ch.id}', false)" class="text-xs px-3 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100">Stop</button>`
             : `<button onclick="event.stopPropagation(); toggleChannel('${ch.id}', true)" class="text-xs px-3 py-1 rounded bg-green-50 text-green-600 hover:bg-green-100">Start</button>`;
-        const qrBtn = (ch.type === 'whatsapp' && running)
+        const needsWhatsAppAuth = ch.bridge_status === 'qr_pending' || ch.bridge_status === 'disconnected';
+        const qrBtn = (ch.type === 'whatsapp' && running && needsWhatsAppAuth)
             ? `<button onclick="event.stopPropagation(); openQRModal('${ch.id}')" class="text-xs px-3 py-1 rounded bg-green-50 text-green-700 hover:bg-green-100">Scan QR</button>`
+            : '';
+        const debugBtn = ch.type === 'whatsapp'
+            ? `<button onclick="event.stopPropagation(); channelDebugListener.open('${ch.id}')" class="text-xs px-3 py-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600" title="Real-time inbound WhatsApp messages">Debug Listener</button>`
             : '';
         const primaryBtn = isPrimary
             ? `<button onclick="event.stopPropagation(); unsetPrimaryChannel('${ch.id}')" class="text-xs px-3 py-1 rounded bg-yellow-50 text-yellow-600 hover:bg-yellow-100" title="Remove as primary">&#9733;</button>`
@@ -4109,12 +4410,133 @@ async function loadChannels() {
             <div class="flex items-center gap-2">
                 ${primaryBtn}
                 ${qrBtn}
+                ${debugBtn}
                 ${toggleBtn}
                 <button onclick="event.stopPropagation(); deleteChannel('${ch.id}')" class="text-xs text-red-500 hover:text-red-700">Delete</button>
             </div>
         </div>`;
     }).join('');
 }
+
+const channelDebugListener = {
+    _es: null,
+    _messages: [],
+    _channelId: null,
+    _maxMessages: 500,
+
+    open(channelId) {
+        this._channelId = channelId;
+        document.getElementById('channel-debug-modal').classList.remove('hidden');
+        this._connect();
+    },
+
+    close() {
+        document.getElementById('channel-debug-modal').classList.add('hidden');
+        this._disconnect();
+    },
+
+    clear() {
+        this._messages = [];
+        document.getElementById('channel-debug-log').innerHTML = '';
+        document.getElementById('channel-debug-count').textContent = '0 messages';
+    },
+
+    _connect() {
+        if (!this._channelId) return;
+        this._disconnect();
+        this._setStatus('connecting');
+        const listener = this;
+        const agentId = encodeURIComponent(AGENT_ID);
+        const channelId = encodeURIComponent(this._channelId);
+        const source = new EventSource(`/api/agents/${agentId}/channels/${channelId}/debug/listen`);
+        let announced = false;
+        this._es = source;
+
+        const markConnected = function() {
+            if (listener._es !== source) return;
+            listener._setStatus('connected');
+            if (!announced) {
+                announced = true;
+                listener._addLogEntry({_system: true, text: 'Connected to debug stream — listening for WhatsApp inbound messages...'});
+            }
+        };
+
+        // The browser dispatches `open` as soon as the SSE transport is ready.
+        // Do not rely only on our optional server-side `connected` event.
+        source.onopen = markConnected;
+        source.addEventListener('connected', markConnected);
+        source.addEventListener('whatsapp_inbound', function(event) {
+            if (listener._es !== source) return;
+            try {
+                listener._addLogEntry(JSON.parse(event.data));
+            } catch (error) {
+                // Ignore malformed stream events and keep the listener alive.
+            }
+        });
+        source.onerror = function() {
+            if (listener._es !== source) return;
+            // EventSource retries transient failures itself. Closing it here
+            // cancels that retry and can leave a healthy stream marked down.
+            listener._setStatus(
+                source.readyState === EventSource.CLOSED ? 'disconnected' : 'connecting'
+            );
+        };
+    },
+
+    _disconnect() {
+        if (this._es) {
+            this._es.close();
+            this._es = null;
+        }
+    },
+
+    _setStatus(state) {
+        const status = document.getElementById('channel-debug-status');
+        if (!status) return;
+        if (state === 'connected') {
+            status.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1.5 animate-pulse"></span>Listening...';
+        } else if (state === 'connecting') {
+            status.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1.5"></span>Connecting...';
+        } else {
+            status.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-gray-400 mr-1.5"></span>Disconnected';
+        }
+    },
+
+    _maskIdentifier(value) {
+        const raw = String(value || '');
+        if (!raw) return '';
+        const at = raw.indexOf('@');
+        const local = at >= 0 ? raw.slice(0, at) : raw;
+        const domain = at >= 0 ? raw.slice(at) : '';
+        return local.length <= 6 ? local.slice(0, 1) + '***' + domain : local.slice(0, 3) + '***' + local.slice(-3) + domain;
+    },
+
+    _addLogEntry(data) {
+        const log = document.getElementById('channel-debug-log');
+        if (!log) return;
+        const card = document.createElement('div');
+        card.className = 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-3 text-sm';
+        const time = new Date().toTimeString().slice(0, 8);
+        if (data._system) {
+            card.className += ' border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30';
+            card.innerHTML = `<div class="flex items-center gap-2 text-green-700 dark:text-green-400"><span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${escapeHtml(time)}</span><span class="text-green-500">&#10003;</span><span>${escapeHtml(data.text || '')}</span></div>`;
+        } else {
+            const type = data.type || 'text';
+            const sender = this._maskIdentifier(data.sender) || '?';
+            const routeStatus = data.route_status || 'unknown';
+            const message = data.text || `[No text - ${type} only]`;
+            const group = data.is_group ? `<div class="text-[11px] text-gray-400 dark:text-gray-500 mt-1"><span class="font-medium">Group:</span> ${escapeHtml(data.group_name || '(unnamed)')}</div>` : '';
+            card.innerHTML = `<div class="flex items-center gap-2 mb-1.5 flex-wrap"><span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${escapeHtml(time)}</span><span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">${escapeHtml(type)}</span></div><div class="flex items-center gap-1.5 mb-1 text-xs flex-wrap"><span class="font-semibold text-gray-800 dark:text-gray-200">${escapeHtml(sender)}</span>${data.push_name ? `<span class="text-gray-500 dark:text-gray-400">(${escapeHtml(data.push_name)})</span>` : ''}<span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">${escapeHtml(routeStatus)}</span></div>${group}<div class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words leading-relaxed mt-1">${escapeHtml(message)}</div>`;
+        }
+        log.insertBefore(card, log.firstChild);
+        this._messages.unshift(data);
+        if (this._messages.length > this._maxMessages) {
+            this._messages.pop();
+            if (log.lastChild) log.removeChild(log.lastChild);
+        }
+        document.getElementById('channel-debug-count').textContent = `${this._messages.length} message${this._messages.length === 1 ? '' : 's'}`;
+    }
+};
 
 function showAddChannelModal() {
     document.getElementById('channel-modal').classList.remove('hidden');
@@ -4275,11 +4697,10 @@ document.addEventListener('DOMContentLoaded', function () {
             window._evRealtime.on('status', 'panel_updated', function (payload) {
                 if (payload && payload.agent_id === AGENT_ID) refreshPluginTab('panel');
             });
-            // Busy state pushed by the unified status stream — replaces the old
-            // 5s /busy poll. _chatBusy (this session's own turn) takes precedence.
             window._evRealtime.on('status', 'agent_busy_changed', function (payload) {
-                if (payload && payload.agent_id === AGENT_ID && !_chatBusy) {
-                    updateBusyBadge(payload.busy);
+                if (payload && payload.agent_id === AGENT_ID) {
+                    _agentBusy = Boolean(payload.busy);
+                    updateBusyBadge(_chatBusy || _agentBusy);
                 }
             });
         } else if (++bindTries < 10) {
@@ -4536,8 +4957,6 @@ async function toggleChannelMode(enabled) {
 }
 
 // ==================== Chat ====================
-let lastChatTs = 0;  // epoch-ms cursor for JSONL-based polling
-let lastTurnEndTs = 0;  // ts of last turn_end rendered from chatlog history
 let _chatSessionId = null;  // cached session_id for this user
 
 async function _getChatSessionId() {
@@ -4552,17 +4971,18 @@ async function _getChatSessionId() {
     return _chatSessionId;
 }
 
-// Pass { persistent: true } when called from incremental idle polling so the thinking
-// bubble persists across multiple poll calls within a single turn.
-function renderEntries(entries, { persistent = false } = {}) {
+function renderEntries(entries) {
     // Render JSONL entries into the chat UI, grouping thinking/tool events into bubbles.
-    let thinkingId = persistent ? _pollThinkingId : null;
+    let thinkingId = null;
     for (const entry of entries) {
-        if (entry.ts > lastChatTs) lastChatTs = entry.ts;
         const type = entry.type;
         if (type === 'user') {
             if (thinkingId) { chatUI.finalizeThinkingBubble(thinkingId); thinkingId = null; }
-            chatUI.appendMessage('user', entry.content, {metadata: entry.metadata});
+            const $el = chatUI.appendMessage('user', entry.content, {metadata: entry.metadata});
+            if (entry.message_id) {
+                $el.attr('data-message-id', entry.message_id);
+                _seenRealtimeMessages.add(`${_chatSessionId}:${entry.message_id}`);
+            }
         } else if (type === 'thinking') {
             if (!thinkingId) thinkingId = chatUI.showThinkingIndicator();
             chatUI.appendTimelineEntry(thinkingId, {type: 'thinking', content: entry.content});
@@ -4588,7 +5008,11 @@ function renderEntries(entries, { persistent = false } = {}) {
             } else if (meta.error) {
                 chatUI.appendMessage('error', entry.content, {metadata: meta});
             } else {
-                chatUI.appendMessage('assistant', entry.content, {metadata: meta});
+                const $el = chatUI.appendMessage('assistant', entry.content, {metadata: meta});
+                if (entry.message_id) {
+                    $el.attr('data-message-id', entry.message_id);
+                    _seenRealtimeMessages.add(`${_chatSessionId}:${entry.message_id}`);
+                }
             }
         } else if (type === 'error') {
             const meta = entry.metadata || {};
@@ -4598,15 +5022,11 @@ function renderEntries(entries, { persistent = false } = {}) {
             chatUI.appendMessage('system', entry.content, {metadata: entry.metadata});
         } else if (type === 'turn_end') {
             if (thinkingId) { chatUI.finalizeThinkingBubble(thinkingId, entry.thinking_duration); thinkingId = null; }
-            if (entry.ts && entry.ts > lastTurnEndTs) lastTurnEndTs = entry.ts;
         }
         // turn_begin, pending: no rendering needed for history
     }
-    if (persistent) {
-        _pollThinkingId = thinkingId;  // save for next incremental poll call
-    } else if (thinkingId) {
-        // In-progress turn detected: remove the incomplete bubble so restoreActiveReasoning
-        // can create a fresh one from the event buffer without duplicating entries.
+    if (thinkingId) {
+        // Active telemetry is rebuilt from the durable stream after history loads.
         chatUI.removeThinkingIndicator(thinkingId);
     }
 }
@@ -4634,123 +5054,198 @@ function _showChatLoadingSkeleton() {
 
 async function loadChatHistory() {
     const epoch = window._agentEpoch;
-    _pollThinkingId = null;
-    lastChatTs = 0;
     _showChatLoadingSkeleton();
     try {
         // Fetch session_id and history in parallel — don't block history on session lookup
         const sidPromise = _getChatSessionId();
         const res = await fetch(`/api/agents/${AGENT_ID}/chat?user_id=web_test&limit=50`);
         await sidPromise; // ensure cache is primed before restoreActiveReasoning runs
+        const realtimeCursor = Number(res.headers.get('X-Evonic-Realtime-Cursor') || 0);
         const data = await res.json();
         if (epoch !== window._agentEpoch) return; // agent switched mid-fetch — discard
         chatUI.clearContainer();
         chatUI.batchRender(() => renderEntries(data.entries || []));
+        window._chatHistoryCursor = realtimeCursor;
     } catch(e) { /* ignore load errors */ }
     if (epoch !== window._agentEpoch) return;
     if (window.finishNavProgress) window.finishNavProgress(); // end soft-switch loading bar (no-op otherwise)
     chatLoaded = true;
     setTimeout(() => chatUI.scrollToBottom(), 50);
-    if (!_chatBusy) startIdlePoll();
     restoreActiveReasoning(); // fire-and-forget — history already rendered
 }
 
-async function restoreActiveReasoning() {
-    const epoch = window._agentEpoch;
-    try {
-        // Use cached session_id — already fetched in loadChatHistory()
-        const sessionId = await _getChatSessionId();
-        if (!sessionId || _chatBusy || _currentTurn) return; // bail if user already sent a message or turn exists
+const _seenRealtimeMessages = new Set();
+const _optimisticMessages = new Map();
 
-        // Fetch all buffered events for this session
-        const eRes = await fetch(`/api/agents/${encodeURIComponent(AGENT_ID)}/chat/events?session_id=${encodeURIComponent(sessionId)}&after=0`);
-        if (!eRes.ok || _chatBusy || _currentTurn) return; // bail if user sent a message while fetching
-        const eData = await eRes.json();
-        if (epoch !== window._agentEpoch) return; // agent switched mid-fetch — discard
-        if (_chatBusy || _currentTurn) return; // bail before touching shared state
-        const events = eData.events || [];
-        if (!events.length) return;
-
-        // Only replay events from the current in-progress turn.
-        // Discard everything up to and including the last 'done' OR 'turn_split' so
-        // that pre-split events (already rendered by renderEntries from JSONL) are not
-        // replayed again — which would create a duplicate thinking bubble for turn 1.
-        const lastDoneIdx = events.reduce((idx, ev, i) => ev.event === 'done' ? i : idx, -1);
-        const lastSplitIdx = events.reduce((idx, ev, i) => ev.event === 'turn_split' ? i : idx, -1);
-        const lastClearIdx = events.reduce((idx, ev, i) => ev.event === 'session_clear' ? i : idx, -1);
-        const cutIdx = Math.max(lastDoneIdx, lastSplitIdx, lastClearIdx);
-        const replayEvents = cutIdx >= 0 ? events.slice(cutIdx + 1) : events;
-        if (!replayEvents.length) return;
-
-        // Guard: if the in-progress turn started before the last turn_end rendered
-        // from chatlog history, that turn was already fully finalized — skip to avoid
-        // creating a duplicate thinking bubble above completed messages.
-        const firstReplayEvt = replayEvents.find(ev => ev.event === 'turn_begin');
-        if (firstReplayEvt && firstReplayEvt.data && firstReplayEvt.data.ts &&
-                firstReplayEvt.data.ts < lastTurnEndTs) {
-            return;
-        }
-
-        // Stop the idle poll before creating the live bubble. The idle poll may
-        // have fired during our async awaits (before _currentTurn was set) and
-        // created a stale _pollThinkingId that would duplicate the live bubble.
-        // pollForResponse → setChatBusy(false) will restart the idle poll when done.
-        stopIdlePoll();
-
-        // Replay trace into a new thinking bubble.
-        // Find the last user message to anchor the bubble below it.
-        const container = document.getElementById('chat-messages');
-        const userWrappers = container ? container.querySelectorAll('[data-msg-role="user"]') : [];
-        const userMsgEl = userWrappers.length ? userWrappers[userWrappers.length - 1] : null;
-        let resumeSeq = 0;
-        const turnBeginEvt = replayEvents.find(ev => ev.event === 'turn_begin');
-        let thinkingId = chatUI.showThinkingIndicator(turnBeginEvt ? turnBeginEvt.data.ts : null, userMsgEl);
-        for (const ev of replayEvents) {
-            if (ev.seq > resumeSeq) resumeSeq = ev.seq;
-            if (ev.event === 'thinking') {
-                chatUI.appendTimelineEntry(thinkingId, {type: 'thinking', content: ev.data.content});
-            } else if (ev.event === 'tool_call_started') {
-                chatUI.appendTimelineEntry(thinkingId, {type: 'tool_call', tool: ev.data.tool, args: ev.data.args, param_types: ev.data.param_types || {}});
-            } else if (ev.event === 'tool_executed') {
-                chatUI.appendTimelineEntry(thinkingId, {type: 'tool_result', tool: ev.data.tool, result: ev.data.result, error: ev.data.error});
-            } else if (ev.event === 'response_chunk' && ev.data.is_final && ev.data.content) {
-                chatUI.appendTimelineEntry(thinkingId, {type: 'response', content: ev.data.content});
-            } else if (ev.event === 'turn_split') {
-                chatUI.finalizeThinkingBubble(thinkingId);
-                thinkingId = chatUI.showThinkingIndicator(null, userMsgEl);
-            }
-        }
-
-        _currentTurn = { abortController: null, thinkingId, stream: null, pollTimer: null, _finalRendered: false };
-
-        chatUI.scrollToBottom();
-
-        // Connect SSE from resumeSeq so the backend only sends the gap
-        _currentTurn.stream = chatUI.connectThinkingStream(
-            `/api/agents/${encodeURIComponent(AGENT_ID)}/chat/stream?session_id=${encodeURIComponent(sessionId)}&after=${resumeSeq}`,
-            thinkingId,
-            { userMsgEl,
-              onSplit: (newId) => { _currentTurn.thinkingId = newId; },
-              onDone: () => { if (_currentTurn) _currentTurn.thinkingId = null; },
-              onFinalResponse: (content) => {
-                  if (_currentTurn) _currentTurn._finalRendered = true;
-                  chatUI.appendMessage('assistant', content, { metadata: {} });
-                  chatUI.scrollToBottom();
-              }
-            }
-        );
-
-        // Poll until the final response lands
-        pollForResponse(thinkingId);
-    } catch(e) { /* silently ignore */ }
+function newClientMessageId() {
+    return (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-let chatPollTimer = null;
-let chatIdleTimer = null;
-let chatPolling = false;
+document.addEventListener('evonic:message-received', function (event) {
+    const data = event.detail || {};
+    if (!data.message_id || (data.session_id && data.session_id !== _chatSessionId)) return;
+    const key = `${_chatSessionId}:${data.message_id}`;
+    if (_seenRealtimeMessages.has(key)) return;
+    _seenRealtimeMessages.add(key);
+    let $message = data.client_message_id && _optimisticMessages.get(data.client_message_id);
+    const optimistic = $message;
+    if (optimistic) {
+        optimistic.attr('data-message-id', data.message_id);
+        _optimisticMessages.delete(data.client_message_id);
+    } else {
+        $message = chatUI.appendMessage(data.role || 'user', data.content || data.message || '', {
+            metadata: data.metadata || {},
+            timestamp: data.timestamp ? new Date(data.timestamp).toISOString() : null,
+        }).attr('data-message-id', data.message_id);
+    }
+    if ((data.role || 'user') === 'user' && data.turn_id) {
+        chatUI.markLastUserBubbleQueued($message);
+    }
+    chatUI.scrollToBottom();
+});
+
+let _agentChatEs = null;
+let _agentChatSessionId = null;
+let _agentChatCursor = 0;
+let _agentHistoryResyncing = false;
+const _renderedTurnIds = new Set();
+
+function _ensureRealtimeTurn(startTs = null) {
+    if (_currentTurn && _currentTurn.thinkingId &&
+            !_currentTurn.thinkingId._finalized) return _currentTurn.thinkingId;
+    const container = document.getElementById('chat-messages');
+    const users = container ? container.querySelectorAll('[data-msg-role="user"]') : [];
+    const anchor = users.length ? users[users.length - 1] : null;
+    const turn = chatUI.showThinkingIndicator(startTs, anchor);
+    _currentTurn = {
+        abortController: null, thinkingId: turn,
+    };
+    _chatBusy = true;
+    updateBusyBadge(_chatBusy || _agentBusy);
+    return turn;
+}
+
+function _renderTurnResponse(data) {
+    if (!data.response) return;
+    if (data.message_id && _seenRealtimeMessages.has(`${_chatSessionId}:${data.message_id}`)) return;
+    const key = data.turn_id || `response:${data.event_id}`;
+    if (_renderedTurnIds.has(key)) return;
+    _renderedTurnIds.add(key);
+    const opts = data.attachment_info
+        ? {metadata: {attachment_info: data.attachment_info}}
+        : {metadata: {}};
+    const $el = chatUI.appendMessage(data.is_error ? 'error' : 'assistant', data.response, opts);
+    if (data.message_id) {
+        $el.attr('data-message-id', data.message_id);
+        _seenRealtimeMessages.add(`${_chatSessionId}:${data.message_id}`);
+    }
+    chatUI.scrollToBottom();
+}
+
+function _handleAgentRealtime(evtName, data, sessionId) {
+    if (_chatSessionId !== sessionId) return;
+    const seq = Number(data.seq || data.event_id || 0);
+    if (seq && seq <= _agentChatCursor) return;
+    if (seq) _agentChatCursor = seq;
+
+    if (evtName === 'message_received') {
+        document.dispatchEvent(new CustomEvent('evonic:message-received', {detail: data}));
+        return;
+    }
+    if (evtName === 'state_changed') {
+        document.dispatchEvent(new CustomEvent('evonic:agent-state-changed', {detail: data}));
+        return;
+    }
+    if (evtName === 'state:changed') {
+        // Not turn-scoped — routing this through turn.ingest() drops it when the
+        // turn is already finalized (e.g. the snapshot emitted by end-of-turn task
+        // reconciliation, which lands right before 'done'), leaving the Session
+        // State panel stale. Bridge straight to the document like 'state_changed'.
+        document.dispatchEvent(new CustomEvent('evonic:state-changed', {detail: data}));
+        document.dispatchEvent(new CustomEvent('evonic:agent-state-changed', {detail: data}));
+        return;
+    }
+    if (evtName === 'agent_busy_changed') {
+        if (data.agent_id && data.agent_id !== AGENT_ID) return;
+        const ownsSession = data.session_id === sessionId ||
+            (data.session_ids || []).includes(sessionId);
+        _agentBusy = Boolean(data.busy);
+        _chatBusy = Boolean(data.busy && ownsSession);
+        updateBusyBadge(_chatBusy || _agentBusy);
+        if (data.busy && ownsSession) _ensureRealtimeTurn();
+        return;
+    }
+    if (evtName === 'turn_queued') {
+        _ensureRealtimeTurn(data.timestamp || null);
+        return;
+    }
+    if (evtName === 'session_clear') {
+        chatUI.clear();
+        _currentTurn = null;
+        return;
+    }
+
+    let turn = _ensureRealtimeTurn(evtName === 'turn_begin' ? data.ts : null);
+    if (evtName === 'turn_split') {
+        turn.ingest({event: evtName, data, seq});
+        turn = chatUI.showThinkingIndicator();
+        _currentTurn.thinkingId = turn;
+        return;
+    }
+    turn.ingest({event: evtName, data, seq});
+    if (evtName === 'done') {
+        _renderTurnResponse(data);
+        _currentTurn = null;
+        _chatBusy = false;
+        updateBusyBadge(_agentBusy);
+    }
+}
+
+async function restoreActiveReasoning() {
+    const sessionId = await _getChatSessionId();
+    if (!sessionId) return;
+    if (_agentChatEs && _agentChatSessionId === sessionId) return;
+    if (_agentChatEs) _agentChatEs.close();
+    _agentChatSessionId = sessionId;
+    _agentChatCursor = Number(window._chatHistoryCursor || 0);
+    const url = `/api/realtime/stream?chat=1&cursor_version=2&snapshot=1&agent_id=${encodeURIComponent(AGENT_ID)}&session_id=${encodeURIComponent(sessionId)}&after=${_agentChatCursor}`;
+    const es = new EventSource(url);
+    _agentChatEs = es;
+    const events = [
+        'agent_busy_changed', 'turn_queued', 'turn_begin', 'thinking',
+        'tool_call_started', 'tool_executed', 'state:changed', 'state_changed',
+        'tasks:auto_transition', 'tasks:stale', 'response_chunk', 'done',
+        'approval_required', 'approval_resolved', 'retry', 'turn_split',
+        'message_injected', 'message_injection_applied', 'message_received',
+        'whatsapp_restriction_warning', 'session_clear',
+    ];
+    events.forEach(evtName => es.addEventListener(evtName, event => {
+        let data = {};
+        try { data = JSON.parse(event.data); } catch (_) {}
+        _handleAgentRealtime(evtName, data, sessionId);
+    }));
+    es.addEventListener('history_resync_required', () => {
+        if (_agentChatEs !== es || _chatSessionId !== sessionId || _agentHistoryResyncing) return;
+        _agentHistoryResyncing = true;
+        es.close();
+        _agentChatEs = null;
+        _agentChatSessionId = null;
+        loadChatHistory().finally(() => { _agentHistoryResyncing = false; });
+    });
+    es.addEventListener('auth_expired', () => {
+        es.close();
+        window.location.href = '/login';
+    });
+    es.onerror = () => {
+        // Native EventSource reconnects with Last-Event-ID; keep the cursor intact.
+    };
+}
+
 let _chatBusy = false;
-let _currentTurn = null;  // { abortController, thinkingId, stream, pollTimer }
-let _pollThinkingId = null;  // active thinking bubble from idle poll (persists across calls)
+let _agentBusy = false;
+let _currentTurn = null;  // { abortController, thinkingId }
 
 function updateBusyBadge(busy) {
     const dot = document.getElementById('state-busy-dot');
@@ -4769,29 +5264,13 @@ function updateBusyBadge(busy) {
 
 function _destroyCurrentTurn() {
     if (!_currentTurn) return;
-    console.warn('[_destroyCurrentTurn] hasStream=%s hasPollTimer=%s hasThinkingId=%s', !!_currentTurn.stream, !!_currentTurn.pollTimer, !!_currentTurn.thinkingId);
     if (_currentTurn.abortController) _currentTurn.abortController.abort();
-    // Explicitly stop the SSEAdapter — chatUI.closeStream() is a no-op shim.
-    // Without this, old adapters keep reconnecting from a stale _lastSeq,
-    // fetching all historical events on every reconnect → OOM renderer crash.
-    if (_currentTurn.stream && _currentTurn.stream.stop) {
-        console.warn('[_destroyCurrentTurn] stopping stream _lastSeq=', _currentTurn.stream._lastSeq);
-        _currentTurn.stream.stop();
-        _currentTurn.stream = null;
-    }
     if (_currentTurn.thinkingId) {
         chatUI.removeThinkingIndicator(_currentTurn.thinkingId);
     }
-    if (_currentTurn.pollTimer) {
-        clearInterval(_currentTurn.pollTimer);
-    }
     _currentTurn = null;
-    // Safety net: if the SSE gap-fill prevented 'done' delivery, the Turn object
-    // may still be in chatUI._turns with _finalized=false. hasActiveStream() would
-    // then return true permanently, blocking the idle poll from showing the response.
-    // Force-clear any stranded non-finalized turns so the idle poll can resume.
     if (chatUI.hasActiveStream()) {
-        console.warn('[_destroyCurrentTurn] stranded active turn detected — force-clearing so idle poll can resume');
+        console.warn('[_destroyCurrentTurn] clearing stranded active turn');
         chatUI.clearActiveSpinner();
     }
 }
@@ -4799,78 +5278,18 @@ function _destroyCurrentTurn() {
 function setChatBusy(busy) {
     console.warn('[setChatBusy] busy=%s _chatBusy=%s hasActiveStream=%s', busy, _chatBusy, chatUI.hasActiveStream());
     _chatBusy = busy;
-    updateBusyBadge(busy);
+    updateBusyBadge(_chatBusy || _agentBusy);
     const input = document.getElementById('chat-input');
     if (!busy) {
         input.focus();
         if (!chatUI.hasActiveStream()) _destroyCurrentTurn();
-        startIdlePoll();
-    } else {
-        stopIdlePoll();
     }
 }
 
-// One-shot busy-state resync (external sessions: notifier, other channels).
-// Live updates arrive via the shared status stream (agent_busy_changed); this
-// only fetches the current snapshot on load / after a soft agent switch.
-let _busyPolling = false;
-async function resyncBusyBadge() {
-    if (_chatBusy || _busyPolling) return; // skip if own turn is busy or a fetch is in-flight
-    _busyPolling = true;
-    try {
-        const res = await fetch(`/api/agents/${AGENT_ID}/busy`);
-        const data = await res.json();
-        if (!_chatBusy) updateBusyBadge(data.busy);
-    } catch (e) { /* ignore */ } finally { _busyPolling = false; }
-}
-resyncBusyBadge(); // initial state; the stream covers everything after this
-
-// Stop all polling on page unload to free HTTP connections during navigation
+// Stop the durable stream on navigation; EventSource handles reconnects itself.
 window.addEventListener('beforeunload', () => {
-    stopIdlePoll();
+    if (_agentChatEs) _agentChatEs.close();
 });
-
-function startIdlePoll() {
-    if (chatIdleTimer) return; // already running
-    chatIdleTimer = setInterval(async () => {
-        // Skip during user-initiated busy state, or when there's an SSE stream
-        // that's NOT from the idle poll (tracked via _pollThinkingId).
-        if (_chatBusy) return;
-        if (chatUI.hasActiveStream() && !_pollThinkingId) return;
-        try {
-            const sid = await _getChatSessionId();
-            const qs = sid
-                ? `session_id=${encodeURIComponent(sid)}&after_ts=${lastChatTs}&limit=20`
-                : `user_id=web_test&after_ts=${lastChatTs}&limit=20`;
-            const res = await fetch(`/api/agents/${AGENT_ID}/chat?${qs}`);
-            const data = await res.json();
-            // Re-check: user may have sent a message while fetching.
-            // Don't block if the only active stream is our own idle-poll bubble.
-            if (_chatBusy) return;
-            if (chatUI.hasActiveStream() && !_pollThinkingId) return;
-            const entries = data.entries || [];
-            if (!entries.length) return;
-            const wasAtBottom = chatUI.isNearBottom(80);
-            // Advance cursor over ALL entries (including user echoes) so we don't re-fetch them
-            for (const e of entries) { if (e.ts > lastChatTs) lastChatTs = e.ts; }
-            // Skip user echoes (already shown locally); render assistant/system events
-            const newEntries = entries.filter(e => e.type !== 'user');
-            renderEntries(newEntries, { persistent: true });
-            if (newEntries.length && wasAtBottom) chatUI.scrollToBottom();
-        } catch(e) { /* ignore network errors during idle poll */ }
-    }, 3000);
-}
-
-function stopIdlePoll() {
-    if (chatIdleTimer) {
-        clearInterval(chatIdleTimer);
-        chatIdleTimer = null;
-    }
-    if (_pollThinkingId) {
-        chatUI.removeThinkingIndicator(_pollThinkingId);
-        _pollThinkingId = null;
-    }
-}
 
 // Chat-input keydown handler: Enter submits on desktop, inserts newline on mobile.
 // Mobile = viewport < 1024px (matching enterChatFullscreen breakpoint).
@@ -4910,15 +5329,50 @@ function closeChatCommandMenu() {
     chatCommandIndex = -1;
 }
 
+function commandInputContext(value) {
+    if (!value) return null;
+    const trimmed = value.trimStart();
+    if (!trimmed.startsWith('/')) return null;
+    const space = trimmed.indexOf(' ');
+    const cmdName = space > 0 ? trimmed.slice(1, space) : trimmed.slice(1);
+    const command = chatCommands.find(c => c.name === cmdName);
+    return command ? {command, args: space > 0 ? trimmed.slice(space + 1) : ''} : null;
+}
+
+function renderChatCommandHint(ctx) {
+    const hint = document.getElementById('chat-command-hint');
+    if (!hint) return;
+    if (!ctx || !ctx.command || !ctx.command.accepts_args) {
+        hint.classList.add('hidden');
+        return;
+    }
+    const cmd = ctx.command;
+    let text = '/' + cmd.name + ' ';
+    for (const parameter of cmd.parameters) {
+        if (parameter.options) {
+            text += '<' + parameter.options.join(' | ') + '> ';
+        } else {
+            text += parameter.required ? `<${parameter.placeholder || parameter.name}>` : `[${parameter.placeholder || parameter.name}]`;
+        }
+    }
+    text += '— ' + (cmd.description || '');
+    hint.textContent = text;
+    hint.classList.remove('hidden');
+}
+
 function updateChatComposer(input) {
     if (!input) return;
     const value = input.value;
+    renderChatCommandHint(commandInputContext(value));
     const trimmed = value.trimStart();
     const bashMode = BASH_EXEC_ENABLED && trimmed.startsWith('!');
     input.classList.toggle('chat-bash-input', bashMode);
     const bashHint = document.getElementById('chat-bash-hint');
     if (bashHint) bashHint.classList.toggle('hidden', !bashMode);
     input.classList.toggle('font-mono', bashMode);
+
+    // No commands available (all disabled) — don't show suggestions
+    if (!chatCommands.length) return;
 
     const match = trimmed.match(/^\/([\w-]*)$/);
     if (!match) {
@@ -4967,7 +5421,7 @@ function getVisibleChatCommands() {
     return chatCommands.filter(command => command.name.toLowerCase().includes(match[1].toLowerCase()));
 }
 
-function selectChatCommand(command) {
+function selectChatCommand(command, showHint) {
     const input = document.getElementById('chat-input');
     if (!input || !command) return;
     input.value = `/${command.name} `;
@@ -4975,6 +5429,10 @@ function selectChatCommand(command) {
     chatInputChanged(input);
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
+    if (showHint) {
+        const hint = document.getElementById('chat-command-hint');
+        if (hint) hint.classList.remove('hidden');
+    }
 }
 
 function chatInputKeydown(event) {
@@ -4988,7 +5446,11 @@ function chatInputKeydown(event) {
         }
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
-            selectChatCommand(choices[chatCommandIndex < 0 ? 0 : chatCommandIndex]);
+            const command = choices[chatCommandIndex < 0 ? 0 : chatCommandIndex];
+            const value = document.getElementById('chat-input').value;
+            const executeNoArgs = value.trimStart().replace(/^\//, '') === command.name;
+            if (executeNoArgs && !command.accepts_args) sendChat();
+            else selectChatCommand(choices[chatCommandIndex < 0 ? 0 : chatCommandIndex], true);
             return;
         }
         if (event.key === 'Escape') {
@@ -5069,6 +5531,7 @@ document.addEventListener('keydown', function (e) {
 
 // ==================== File Upload Helpers ====================
 
+const CHAT_ATTACHMENTS_ENABLED = {{ 'true' if agent.attachments_enabled else 'false' }};
 const _chatPendingFiles = [];
 
 function _insertChatImageReference(slot) {
@@ -5169,7 +5632,16 @@ function openChatAttachmentPreview(index) {
 }
 
 function addChatFileAttachments(files, { insertImageReferences = true } = {}) {
-    const accepted = Array.from(files || []).filter(_isFileAccepted);
+    const candidates = Array.from(files || []);
+    if (!candidates.length) return;
+    if (!CHAT_ATTACHMENTS_ENABLED) {
+        showToast(
+            'This agent does not support file attachments. Enable attachments in Agent Settings to upload files.',
+            'error'
+        );
+        return;
+    }
+    const accepted = candidates.filter(_isFileAccepted);
     if (!accepted.length) return;
     for (const file of accepted) {
         _chatPendingFiles.push({ file, url: URL.createObjectURL(file) });
@@ -5347,12 +5819,7 @@ document.addEventListener('keydown', function(e) {
 
 function stopChat() {
     _destroyCurrentTurn();
-    if (chatPollTimer) {
-        clearInterval(chatPollTimer);
-        chatPollTimer = null;
-    }
-    chatPolling = false;
-    setChatBusy(false); // will call startIdlePoll()
+    setChatBusy(false);
 }
 
 async function sendChat() {
@@ -5389,12 +5856,15 @@ async function sendChat() {
         info.is_image ? `[Image #${++imageSlot}]` : `[File: ${info.filename}]`).join(' ');
 
     const $msgEl = chatUI.appendMessage('user', displayText, {metadata: optimisticMeta});
+    const clientMessageId = newClientMessageId();
+    $msgEl.attr('data-client-message-id', clientMessageId);
+    _optimisticMessages.set(clientMessageId, $msgEl);
     if (files.length) chatUI.markMessageUploading($msgEl);
     // Capture the user message wrapper for anchoring the thinking bubble
     const container = document.getElementById('chat-messages');
     const userWrappers = container ? container.querySelectorAll('[data-msg-role="user"]') : [];
     const userMsgEl = userWrappers.length ? userWrappers[userWrappers.length - 1] : null;
-    chatUI.scrollToBottom();
+    requestAnimationFrame(function () { chatUI.scrollToBottom(); });
     setChatBusy(true);
 
     // Post chat message — uses XHR for uploads so all attachment progress is tracked together.
@@ -5403,6 +5873,7 @@ async function sendChat() {
             const formData = new FormData();
             formData.append('message', msg);
             formData.append('user_id', 'web_test');
+            formData.append('client_message_id', clientMessageId);
             files.forEach(file => formData.append('files', file));
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
@@ -5423,7 +5894,7 @@ async function sendChat() {
         return fetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({message: msg, user_id: 'web_test'}),
+            body: JSON.stringify({message: msg, user_id: 'web_test', client_message_id: clientMessageId}),
             signal,
         }).then(r => r.json());
     }
@@ -5438,17 +5909,23 @@ async function sendChat() {
                 return;
             }
             if (!data.success) {
+                if ($msgEl.attr('data-message-id')) return;
                 $msgEl.remove();
                 chatUI.appendMessage('error', 'Error: ' + (data.error || 'Unknown error'));
             } else {
-                const $resp = chatUI.appendMessage('assistant', data.response);
+                let $resp = $();
+                if (!data.turn_id || !_renderedTurnIds.has(data.turn_id)) {
+                    if (data.turn_id) _renderedTurnIds.add(data.turn_id);
+                    $resp = chatUI.appendMessage('assistant', data.response);
+                }
                 // Reposition the slash command response immediately after the user
                 // message so it doesn't appear below an active thinking bubble that
                 // turn_split may have inserted in the meantime.
                 if (userMsgEl && $resp && $resp.length) $(userMsgEl).after($resp);
-                await syncLastChatTs();
             }
         } catch(e) {
+            _optimisticMessages.delete(clientMessageId);
+            if ($msgEl.attr('data-message-id')) return;
             $msgEl.remove();
             chatUI.appendMessage('error', 'Network error: ' + e.message);
         }
@@ -5461,13 +5938,6 @@ async function sendChat() {
     // Destroy any previous turn before starting a new one
     _destroyCurrentTurn();
     chatUI.clearActiveSpinner();
-    // Kill any stale poll (e.g. from restoreActiveReasoning running concurrently)
-    if (chatPollTimer) {
-        clearInterval(chatPollTimer);
-        chatPollTimer = null;
-        chatPolling = false;
-    }
-
     // Create thinking bubble eagerly, anchored right below the user message.
     // This guarantees correct DOM ordering — the bubble always sits between
     // the user message and whatever follows, never above a prior finalized bubble.
@@ -5476,42 +5946,18 @@ async function sendChat() {
     const abortController = new AbortController();
     const signal = abortController.signal;
 
-    // Fetch session_id so we can open SSE stream before the LLM starts
-    let sessionId = null;
-    try {
-        const sRes = await fetch(`/api/agents/${AGENT_ID}/chat/session?user_id=web_test`, {signal});
-        const sData = await sRes.json();
-        sessionId = sData.session_id || null;
-    } catch(e) { /* SSE won't work but chat still functions */ }
-
-    _currentTurn = { abortController, thinkingId, stream: null, pollTimer: null, _finalRendered: false };
-
-    if (sessionId) {
-        _currentTurn.stream = chatUI.connectThinkingStream(
-            `/api/agents/${AGENT_ID}/chat/stream?session_id=${encodeURIComponent(sessionId)}`,
-            thinkingId,
-            {
-                userMsgEl: userMsgEl,
-                onSplit: (newId) => { thinkingId = newId; _currentTurn.thinkingId = newId; },
-                onDone: () => { thinkingId = null; if (_currentTurn) _currentTurn.thinkingId = null; },
-                onFinalResponse: (content) => {
-                    if (_currentTurn) _currentTurn._finalRendered = true;
-                    chatUI.appendMessage('assistant', content, { metadata: {} });
-                    chatUI.scrollToBottom();
-                },
-            }
-        );
-    }
+    _currentTurn = { abortController, thinkingId };
+    restoreActiveReasoning();
 
     try {
         const data = await postChat(`/api/agents/${AGENT_ID}/chat`, signal);
         if (data.buffered) {
-            pollForResponse(thinkingId);
             return;
         } else if (data.injected) {
             chatUI.removeThinkingIndicator(thinkingId);
             chatUI.markLastUserBubbleQueued();
         } else if (!data.success) {
+            if ($msgEl.attr('data-message-id')) return;
             chatUI.removeThinkingIndicator(thinkingId);
             $msgEl.remove();
             chatUI.appendMessage('error', 'Error: ' + (data.error || 'Unknown error'));
@@ -5522,16 +5968,22 @@ async function sendChat() {
             chatUI.appendMessage('system', data.response, { metadata: { slash_command: true } });
             thinkingId = null; if (_currentTurn) _currentTurn.thinkingId = null;
             chatUI.closeStream();
-            await syncLastChatTs();
         } else if (data.slash_command) {
             // Slash command response — no LLM involved, remove the eager thinking bubble
             chatUI.removeThinkingIndicator(thinkingId);
             thinkingId = null; if (_currentTurn) _currentTurn.thinkingId = null;
             chatUI.closeStream();
             const cmdMeta = data.bash_exec ? { bash_exec: true } : { slash_command: true };
-            chatUI.appendMessage('assistant', data.response, { metadata: cmdMeta });
+            const responseKey = data.response_message_id
+                ? `${_chatSessionId}:${data.response_message_id}` : null;
+            if (!responseKey || !_seenRealtimeMessages.has(responseKey)) {
+                const $response = chatUI.appendMessage('assistant', data.response, { metadata: cmdMeta });
+                if (data.response_message_id) {
+                    $response.attr('data-message-id', data.response_message_id);
+                    _seenRealtimeMessages.add(responseKey);
+                }
+            }
             chatUI.scrollToBottom();
-            await syncLastChatTs();
         } else {
             // Non-buffered success: agent responded immediately.
             // Thinking bubble was already created eagerly; populate it and close SSE.
@@ -5557,11 +6009,15 @@ async function sendChat() {
             chatUI.finalizeThinkingBubble(thinkingId, (data.metadata || {}).thinking_duration);
             thinkingId = null; if (_currentTurn) _currentTurn.thinkingId = null;
             chatUI.closeStream();
-            chatUI.appendMessage(data.error ? 'error' : 'assistant', data.response);
-            await syncLastChatTs();
+            if (data.turn_id && !_renderedTurnIds.has(data.turn_id)) {
+                _renderedTurnIds.add(data.turn_id);
+                chatUI.appendMessage(data.error ? 'error' : 'assistant', data.response);
+            }
         }
     } catch(e) {
         if (e.name === 'AbortError') return; // stopChat() already cleaned up
+        _optimisticMessages.delete(clientMessageId);
+        if ($msgEl.attr('data-message-id')) return;
         chatUI.closeStream();
         chatUI.removeThinkingIndicator(thinkingId);
         $msgEl.remove();
@@ -5571,121 +6027,6 @@ async function sendChat() {
     // Refresh summary and agent state after response completes
     setTimeout(refreshSessionState, 0);
     setTimeout(refreshAgentState, 1000);
-}
-
-async function syncLastChatTs() {
-    try {
-        const sid = await _getChatSessionId();
-        const qs = sid ? `session_id=${encodeURIComponent(sid)}&limit=1` : `user_id=web_test&limit=1`;
-        const res = await fetch(`/api/agents/${AGENT_ID}/chat?${qs}`);
-        const data = await res.json();
-        for (const e of (data.entries || [])) {
-            if (e.ts > lastChatTs) lastChatTs = e.ts;
-        }
-    } catch(e) { /* ignore */ }
-}
-
-function pollForResponse(existingThinkingId) {
-    // Poll every 1s until a 'final' or 'error' entry arrives in JSONL.
-    // existingThinkingId: thinking bubble already shown (created eagerly in sendChat/restoreActiveReasoning).
-    if (!_currentTurn) return;  // no active turn to poll for
-    if (_currentTurn.pollTimer) clearInterval(_currentTurn.pollTimer);
-    let thinkingId = existingThinkingId || null;
-    // Collect intermediate entries across poll ticks for SSE fallback rendering.
-    // If SSE fails to deliver activity entries (race: agent completed before SSE connected),
-    // these are replayed into the thinking bubble when 'final' arrives.
-    const collectedIntermediates = [];
-    const pollStartTs = lastChatTs; // snapshot cursor at poll start
-    _currentTurn.pollTimer = setInterval(async () => {
-        if (chatPolling) return;
-        chatPolling = true;
-        try {
-            // Sync thinkingId from _currentTurn in case turn_split created a new bubble
-            if (_currentTurn && _currentTurn.thinkingId && _currentTurn.thinkingId !== thinkingId) {
-                thinkingId = _currentTurn.thinkingId;
-            }
-            const sid = await _getChatSessionId();
-            const qs = sid
-                ? `session_id=${encodeURIComponent(sid)}&after_ts=${lastChatTs}&limit=50`
-                : `user_id=web_test&after_ts=${lastChatTs}&limit=50`;
-            const res = await fetch(`/api/agents/${AGENT_ID}/chat?${qs}`);
-            const data = await res.json();
-            const entries = data.entries || [];
-            if (!entries.length) return;  // bubble already exists with spinner, just wait
-            console.warn('[pollForResponse] got %d entries afterTs=%s hasStream=%s _currentTurn=%s _finalRendered=%s',
-                entries.length, lastChatTs, chatUI.hasActiveStream(), !!_currentTurn, _currentTurn ? _currentTurn._finalRendered : 'n/a');
-            const wasAtBottom = chatUI.isNearBottom(80);
-            let gotFinal = false;
-            for (const entry of entries) {
-                if (entry.ts <= lastChatTs) continue;
-                lastChatTs = entry.ts;
-                if (entry.type === 'final' || entry.type === 'error') {
-                    console.warn('[pollForResponse] found %s entry ts=%s contentLen=%d', entry.type, entry.ts, (entry.content||'').length);
-                    chatUI.closeStream();
-                    // SSE fallback: if SSE race-lost (agent finished before stream connected),
-                    // the thinking bubble will be empty. Replay intermediates from JSONL history.
-                    if (collectedIntermediates.length > 0) {
-                        if (chatUI.getTimelineEntryCount(thinkingId) === 0) {
-                            for (const ie of collectedIntermediates) {
-                                if (ie.type === 'thinking') {
-                                    chatUI.appendTimelineEntry(thinkingId, {type: 'thinking', content: ie.content});
-                                } else if (ie.type === 'tool_call') {
-                                    chatUI.appendTimelineEntry(thinkingId, {type: 'tool_call', tool: ie.function, args: ie.params || {}, param_types: {}});
-                                } else if (ie.type === 'tool_output') {
-                                    let result;
-                                    try { result = JSON.parse(ie.content); } catch(e) { result = {data: ie.content}; }
-                                    chatUI.appendTimelineEntry(thinkingId, {type: 'tool_result', tool: ie.function, result, error: !!ie.error});
-                                } else if (ie.type === 'intermediate') {
-                                    chatUI.appendTimelineEntry(thinkingId, {type: 'response', content: ie.content});
-                                }
-                            }
-                        }
-                    }
-                    chatUI.finalizeThinkingBubble(thinkingId, (entry.metadata || {}).thinking_duration);
-                    thinkingId = null; if (_currentTurn) _currentTurn.thinkingId = null;
-                    const fMeta = entry.metadata || {};
-                    // Skip appendMessage if SSE onFinalResponse already rendered the bubble
-                    if (_currentTurn && _currentTurn._finalRendered) {
-                        _currentTurn._finalRendered = false;
-                    } else if (fMeta.concurrency_limited || fMeta.busy_ack) {
-                        chatUI.appendMessage('system', '[SYSTEM/Concurrency]\n' + entry.content, {metadata: fMeta});
-                    } else {
-                        chatUI.appendMessage(entry.type === 'error' ? 'error' : 'assistant',
-                                            entry.content, {metadata: fMeta});
-                    }
-                    gotFinal = true;
-                } else if (['thinking', 'tool_call', 'tool_output', 'intermediate'].includes(entry.type)) {
-                    collectedIntermediates.push(entry);
-                    // Render progressively if SSE isn't connected (SSE handles live rendering otherwise)
-                    if (!chatUI.hasActiveStream()) {
-                        if (entry.type === 'thinking') {
-                            chatUI.appendTimelineEntry(thinkingId, {type: 'thinking', content: entry.content});
-                        } else if (entry.type === 'tool_call') {
-                            chatUI.appendTimelineEntry(thinkingId, {type: 'tool_call', tool: entry.function, args: entry.params || {}, param_types: {}});
-                        } else if (entry.type === 'tool_output') {
-                            let result;
-                            try { result = JSON.parse(entry.content); } catch(e) { result = {data: entry.content}; }
-                            chatUI.appendTimelineEntry(thinkingId, {type: 'tool_result', tool: entry.function, result, error: !!entry.error});
-                        } else if (entry.type === 'intermediate') {
-                            chatUI.appendTimelineEntry(thinkingId, {type: 'response', content: entry.content});
-                        }
-                        if (wasAtBottom) chatUI.scrollToBottom();
-                    }
-                }
-                // Other types are handled by SSE live stream; skip to avoid duplication
-            }
-            if (wasAtBottom) chatUI.scrollToBottom();
-            if (gotFinal) {
-                console.warn('[pollForResponse] gotFinal=true _currentTurn=%s clearing pollTimer', !!_currentTurn);
-                clearInterval(_currentTurn.pollTimer);
-                _currentTurn.pollTimer = null;
-                setChatBusy(false);
-                setTimeout(refreshSessionState, 0);
-                setTimeout(refreshAgentState, 1000);
-            }
-        } catch(e) { console.error('[pollForResponse]', e); }
-        finally { chatPolling = false; }
-    }, 1000);
 }
 
 function escapeHtml(text) {
@@ -5814,7 +6155,6 @@ async function confirmClearHistory() {
 async function clearChat() {
     document.getElementById('chat-messages').innerHTML = '';
     chatLoaded = false;
-    lastChatTs = 0;
     await fetch(`/api/agents/${AGENT_ID}/chat/clear`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({user_id: 'web_test'})});
     // Clear summary panels (desktop + mobile)
     const emptySummary = '<p class="text-sm text-gray-400 italic">No summary yet. Start chatting to generate one.</p>';
@@ -5857,7 +6197,7 @@ function buildBgProcessesHtml(procs) {
     for (const p of running) {
         const secs = Math.max(0, Math.floor(Date.now() / 1000 - p.started_at));
         const elapsed = secs < 60 ? `${secs}s` : (secs < 3600 ? `${Math.floor(secs / 60)}m` : `${Math.floor(secs / 3600)}h${Math.floor((secs % 3600) / 60)}m`);
-        html += `<li class="flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 -mx-1 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" onclick="openBgProcessModal('${escapeHtml(p.job_id)}')" title="Click to view details">${liveDot}<span class="text-green-500 dark:text-green-400 font-mono text-[11px] flex-shrink-0 select-none">❯</span><span class="font-mono text-[11px] text-gray-700 dark:text-gray-200 truncate">${escapeHtml(p.command)}</span><span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 ml-auto tabular-nums">${escapeHtml(elapsed)}</span></li>`;
+        html += `<li class="flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 -mx-1 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" onclick="openBgProcessModal('${escapeHtml(p.job_id)}')" title="Click to view details">${liveDot}<span class="text-green-500 dark:text-green-400 font-mono text-[11px] flex-shrink-0 select-none">❯</span><span class="font-mono text-[11px] text-gray-700 dark:text-gray-200 truncate">${escapeHtml(p.command)}</span>${p.monitored ? '<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0" title="A monitor is attached — the agent will be notified">👁</span>' : ''}<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 ml-auto tabular-nums">${escapeHtml(elapsed)}</span></li>`;
     }
     html += '</ul></div>';
     return html;
@@ -5866,7 +6206,6 @@ function buildBgProcessesHtml(procs) {
 
 let _bgProcessModalJobId = null;
 let _bgLogPollTimer = null;
-let _bgElapsedTimer = null;
 let _bgProcessModalTrigger = null;
 
 function _formatBgProcessDuration(seconds) {
@@ -5886,56 +6225,7 @@ function openBgProcessModal(jobId) {
     const modal = document.getElementById('bg-process-modal');
     const body = document.getElementById('bg-process-modal-body');
     const title = document.getElementById('bg-process-modal-title');
-    const subtitle = document.getElementById('bg-process-modal-subtitle');
-    const kindColors = {
-        wrapper: 'border-gray-300 text-gray-600 dark:border-white/15 dark:text-gray-300',
-        tmux: 'border-amber-300 text-amber-600 dark:border-amber-500/40 dark:text-amber-400',
-        screen: 'border-purple-300 text-purple-600 dark:border-purple-500/40 dark:text-purple-400',
-        nohup: 'border-sky-300 text-sky-600 dark:border-sky-500/40 dark:text-sky-400'
-    };
-    const pillStyles = {
-        running: { text: 'Running • Live', cls: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300 dark:shadow-lg dark:shadow-emerald-500/30', dot: 'bg-emerald-500 dark:bg-emerald-400', ping: true },
-        done: { text: 'Done', cls: 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-300', dot: 'bg-sky-500 dark:bg-sky-400', ping: false },
-        timeout: { text: 'Timeout', cls: 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300', dot: 'bg-amber-500 dark:bg-amber-400', ping: false },
-        failed: { text: 'Failed', cls: 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300', dot: 'bg-red-500 dark:bg-red-400', ping: false }
-    };
-
-    const startedDate = new Date(p.started_at * 1000);
-    const finishedDate = p.finished_at ? new Date(p.finished_at * 1000) : null;
-    const elapsed = _formatBgProcessDuration((p.finished_at || Date.now() / 1000) - p.started_at);
-    const status = p.status || 'running';
-    const isRunning = status === 'running' && !p.finished_at;
-    const exitCode = !isRunning && p.exit_code != null ? String(p.exit_code) : null;
-    const kindColor = kindColors[p.kind] || kindColors.wrapper;
-    const pill = pillStyles[status] || pillStyles.failed;
-    const dateOptions = { year: 'numeric', month: 'short', day: 'numeric' };
-    const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
-    const startedDay = startedDate.toLocaleDateString([], dateOptions);
-    const startedTime = startedDate.toLocaleTimeString([], timeOptions);
-
-    const iconClock = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l2.5 2.5"/></svg>';
-    const iconRefresh = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>';
-    const iconTerminal = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg>';
-
-    // Header subtitle (job id + kind + status text) and status pill.
-    const subtitleHtml = `<span class="font-mono text-gray-700 dark:text-gray-200">${escapeHtml(p.job_id)}</span>`
-        + `<span class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${kindColor}">${escapeHtml(p.kind || 'wrapper')}</span>`
-        + '<span class="text-gray-300 dark:text-gray-600" aria-hidden="true">•</span>'
-        + `<span>${isRunning ? 'Running in the background' : 'Process ' + escapeHtml(status)}</span>`;
-    const pillDot = pill.ping
-        ? `<span class="relative flex h-2 w-2" aria-hidden="true"><span class="absolute inline-flex h-full w-full animate-ping rounded-full ${pill.dot} opacity-70"></span><span class="relative inline-flex h-2 w-2 rounded-full ${pill.dot}"></span></span>`
-        : `<span class="h-2 w-2 rounded-full ${pill.dot}" aria-hidden="true"></span>`;
-    const pillHtml = `<span class="inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-bold uppercase tracking-wider ${pill.cls}" role="status">${pillDot}${escapeHtml(pill.text)}</span>`;
-
     let html = '<div class="space-y-6">';
-
-    // Execution stats — four columns split by vertical dividers on desktop.
-    html += '<div class="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4 sm:gap-x-0 sm:gap-y-0 sm:divide-x sm:divide-gray-200 sm:dark:divide-white/10">';
-    html += `<div class="sm:px-6 sm:first:pl-0"><div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">${iconClock}<span class="text-sm font-medium">Started</span></div><p class="mt-2 text-lg font-bold text-gray-900 dark:text-white">${escapeHtml(startedDay)}</p><p class="mt-1 text-sm tabular-nums text-gray-400 dark:text-gray-500">${escapeHtml(startedTime)}</p></div>`;
-    html += `<div class="sm:px-6"><div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">${iconClock}<span class="text-sm font-medium">Elapsed</span></div><p class="bg-process-elapsed mt-2 font-mono text-lg font-bold tabular-nums text-gray-900 dark:text-white" data-started="${p.started_at}" data-finished="${p.finished_at || 0}">${escapeHtml(elapsed)}</p><p class="mt-1 text-sm ${isRunning ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}">${isRunning ? 'Updating live' : 'Total runtime'}</p></div>`;
-    html += `<div class="sm:px-6"><div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">${iconRefresh}<span class="text-sm font-medium">Finished</span></div><p class="mt-2 text-lg font-bold ${finishedDate ? 'text-gray-900 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}">${finishedDate ? escapeHtml(finishedDate.toLocaleDateString([], dateOptions)) : 'In progress'}</p><p class="mt-1 text-sm tabular-nums text-gray-400 dark:text-gray-500">${finishedDate ? escapeHtml(finishedDate.toLocaleTimeString([], timeOptions)) : 'Waiting for completion'}</p></div>`;
-    html += `<div class="sm:px-6 sm:last:pr-0"><div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">${iconTerminal}<span class="text-sm font-medium">Exit code</span></div><p class="mt-2 text-lg font-bold ${exitCode === '0' ? 'text-emerald-600 dark:text-emerald-400' : (exitCode ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-300')}">${escapeHtml(exitCode || 'Pending')}</p><p class="mt-1 text-sm text-gray-400 dark:text-gray-500">${exitCode == null ? 'Available when finished' : (exitCode === '0' ? 'Completed successfully' : 'Process returned an error')}</p></div>`;
-    html += '</div>';
 
     // Command block — kept dark in both themes (terminal aesthetic).
     html += '<div class="border-t border-gray-200 pt-5 dark:border-white/10">';
@@ -5955,14 +6245,10 @@ function openBgProcessModal(jobId) {
     }
 
     html += '</div>';
-    title.textContent = p.session_name || 'Background Process';
-    subtitle.innerHTML = subtitleHtml;
-    const pillEl = document.getElementById('bg-process-status-pill');
-    if (pillEl) pillEl.innerHTML = pillHtml;
+    title.textContent = 'Background Process';
     body.innerHTML = html;
     backdrop.classList.remove('hidden');
     modal.classList.remove('hidden');
-    if (isRunning) _startBgElapsedTimer();
     if (p.log_file) _fetchBgLog();
     setTimeout(() => {
         const closeButton = modal.querySelector('button[aria-label="Close background process details"]');
@@ -6006,34 +6292,18 @@ function closeBgProcessModal() {
     backdrop.classList.add('hidden');
     modal.classList.add('hidden');
     _bgProcessModalJobId = null;
-    _stopBgElapsedTimer();
     _stopBgLogPolling();
     if (_bgProcessModalTrigger && document.contains(_bgProcessModalTrigger)) _bgProcessModalTrigger.focus();
     _bgProcessModalTrigger = null;
-}
-
-function _startBgElapsedTimer() {
-    _stopBgElapsedTimer();
-    _bgElapsedTimer = setInterval(() => {
-        const modal = document.getElementById('bg-process-modal');
-        const el = modal ? modal.querySelector('.bg-process-elapsed') : null;
-        if (!el) { _stopBgElapsedTimer(); return; }
-        const started = parseFloat(el.dataset.started) || 0;
-        const finished = parseFloat(el.dataset.finished) || 0;
-        if (finished) { _stopBgElapsedTimer(); return; }
-        el.textContent = _formatBgProcessDuration(Date.now() / 1000 - started);
-    }, 1000);
-}
-
-function _stopBgElapsedTimer() {
-    if (_bgElapsedTimer) { clearInterval(_bgElapsedTimer); _bgElapsedTimer = null; }
 }
 
 function _fetchBgLog() {
     const p = _bgProcessesData[_bgProcessModalJobId];
     if (!p || !p.log_file) return;
 
-    fetch(`/api/agents/${AGENT_ID}/bg-job/log?file=${encodeURIComponent(p.log_file)}&lines=200`)
+    let logUrl = `/api/agents/${AGENT_ID}/bg-job/log?file=${encodeURIComponent(p.log_file)}&lines=200`;
+    if (p.session_id) logUrl += `&session_id=${encodeURIComponent(p.session_id)}`;
+    fetch(logUrl)
         .then(res => {
             if (!res.ok) throw new Error('Failed to load log');
             return res.json();
@@ -6089,7 +6359,9 @@ function buildContextUsageHtml(cu) {
 }
 
 let _refreshSessionStateTimer = null;
+let _refreshSessionStateReq = 0;
 const _refreshSessionStateImpl = async function() {
+    const myReq = ++_refreshSessionStateReq;
     try {
         // One round trip: /chat/state?include=summary returns agent state
         // with the session summary attached.
@@ -6097,6 +6369,9 @@ const _refreshSessionStateImpl = async function() {
         const res = await fetch(`/api/agents/${AGENT_ID}/chat/state?user_id=web_test${sid}&include=summary`);
         if (!res.ok) return;
         const stateData = await res.json();
+        // A newer refresh started while this response was in flight — rendering
+        // now would overwrite fresher panel state with stale data.
+        if (myReq !== _refreshSessionStateReq) return;
         const data = stateData.summary || { summary: null };
         delete stateData.summary;
 
@@ -6152,9 +6427,11 @@ const _refreshSessionStateImpl = async function() {
             content.innerHTML = html;
             meta.textContent = metaText;
             meta.classList.remove('hidden');
+            ui.addCopyButtons(content);
             mobileContent.innerHTML = html;
             mobileMeta.textContent = metaText;
             mobileMeta.classList.remove('hidden');
+            ui.addCopyButtons(mobileContent);
         } else if (headerHtml) {
             // Show state-only card when no summary yet
             content.innerHTML = `<div>${headerHtml}</div>`;
@@ -6204,21 +6481,9 @@ async function loadAgentModelSelector() {
 
         const sel = document.getElementById('agent-model-select');
         const fbSel = document.getElementById('agent-fallback-model-select');
-        (modelsData.models || []).forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m.id;
-            opt.textContent = `${m.name} (${m.model_name})`;
-            if (m.id === currentModelId) opt.selected = true;
-            sel.appendChild(opt);
-
-            const fbOpt = document.createElement('option');
-            fbOpt.value = m.id;
-            fbOpt.textContent = `${m.name} (${m.model_name})`;
-            if (m.id === currentFallbackModelId) fbOpt.selected = true;
-            fbSel.appendChild(fbOpt);
-        });
-        if (!currentModelId) sel.value = '';
-        if (!currentFallbackModelId) fbSel.value = '';
+        const models = modelsData.models || [];
+        ui.populateModelSelect(sel, models, { selectedValue: currentModelId });
+        ui.populateModelSelect(fbSel, models, { selectedValue: currentFallbackModelId });
     } catch (err) {
         console.error('[ModelSelector] Failed to load:', err);
     }
@@ -6233,6 +6498,7 @@ function loadGeneralTabData() {
     loadVariables();
     loadPluginSettings();
     loadAgentSafetyRules();
+    AgentAutoSave.init();
 }
 
 // ==================== Workplace Selector ====================
@@ -6404,7 +6670,10 @@ setInterval(pollWorkplaceStatus, 5000);
     const isValid = hash && document.querySelector('.tab-btn[data-tab="' + CSS.escape(hash) + '"]');
     window._tabInitHash = isValid ? hash : 'chat';
     if (window._tabInitHash !== 'chat') {
-        showTab(window._tabInitHash);
+        // Wait until the rest of this script has run: tab loaders such as
+        // loadArtifacts() use `let` state declared further down, which is not
+        // initialized yet at this point (TDZ ReferenceError on #artifacts).
+        document.addEventListener('DOMContentLoaded', () => showTab(window._tabInitHash));
     }
 })();
 
@@ -6455,50 +6724,273 @@ async function loadArtifacts() {
     }
 }
 
+const ARTIFACT_KIND_LABELS = { document: 'Document', text: 'Text', image: 'Image', sound: 'Audio', video: 'Video', data: 'File' };
+const _ARTIFACT_SVG = {
+    download: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>',
+    trash: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>',
+    expand: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>',
+    copy: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>',
+    eye: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>',
+};
+
+let _artifactsView = (() => {
+    try { return localStorage.getItem('evonic.artifacts.view') === 'list' ? 'list' : 'icons'; } catch (e) { return 'icons'; }
+})();
+let _artifactSelected = null;       // filename shown in the preview pane
+let _artifactPreviewToken = 0;      // invalidates in-flight preview renders
+let _artifactPreviewRaw = null;     // text content of the previewed file, for Copy
+
+function _artifactUrl(filename) {
+    return `/api/agents/${AGENT_ID}/artifacts/${encodeURIComponent(filename)}`;
+}
+
+function _artifactExt(filename) {
+    const dot = filename.lastIndexOf('.');
+    return dot > 0 ? filename.slice(dot + 1).toLowerCase() : '';
+}
+
+function _artifactSize(size) {
+    return size < 1024 ? size + ' B' : size < 1048576 ? (size / 1024).toFixed(1) + ' KB' : (size / 1048576).toFixed(1) + ' MB';
+}
+
+function _artifactKind(f) {
+    const ext = _artifactExt(f.filename);
+    const label = ARTIFACT_KIND_LABELS[f.category] || 'File';
+    return ext ? `${ext.toUpperCase()} ${label}` : label;
+}
+
+function _artifactDateTime(ts) {
+    return new Date(ts * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// Middle-truncate long names (Finder style): only the head shrinks to an
+// ellipsis, so the tail of the name and the extension stay visible.
+function _artifactNameHtml(filename) {
+    const dot = filename.lastIndexOf('.');
+    const stem = dot > 0 ? filename.slice(0, dot) : filename;
+    const ext = dot > 0 ? filename.slice(dot) : '';
+    const tailLen = stem.length > 16 ? 8 : 0;
+    const head = stem.slice(0, stem.length - tailLen);
+    const tail = stem.slice(stem.length - tailLen) + ext;
+    return `<span>${escapeHtml(head)}</span><span>${escapeHtml(tail)}</span>`;
+}
+
+// escapeHtml() leaves quotes alone; attribute values also need them escaped.
+function _artifactAttr(text) {
+    return escapeHtml(text).replace(/"/g, '&quot;');
+}
+
+// Two-line icon-view label: keep short names whole, otherwise keep the start
+// and the end (with the extension) around a middle ellipsis.
+function _artifactShortName(filename, max = 28) {
+    if (filename.length <= max) return filename;
+    const tail = Math.floor((max - 1) / 2);
+    return filename.slice(0, max - 1 - tail) + '\u2026' + filename.slice(-tail);
+}
+
+function _artifactSvg(path, cls = '') {
+    return `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24">${path}</svg>`;
+}
+
+function _artifactItemActions() {
+    return `
+        <div class="af-actions">
+            <button type="button" onclick="event.stopPropagation(); downloadArtifact(this.closest('[data-filename]').dataset.filename)" title="Download">${_artifactSvg(_ARTIFACT_SVG.download)}</button>
+            <button type="button" class="af-danger" onclick="event.stopPropagation(); deleteArtifact(this.closest('[data-filename]').dataset.filename)" title="Delete">${_artifactSvg(_ARTIFACT_SVG.trash)}</button>
+        </div>`;
+}
+
 function renderArtifacts() {
     const grid = document.getElementById('artifacts-grid');
     const empty = document.getElementById('artifacts-empty');
-    
+    _syncArtifactViewToggle();
+    const pane = document.getElementById('artifacts-preview');
+    if (pane && !pane.firstElementChild) renderArtifactPreview(null);
+
     // Server already applies search and type filtering; just render what we have
-    const filtered = _artifactsData;
-    
-    if (filtered.length === 0) {
+    const files = _artifactsData;
+
+    if (files.length === 0) {
+        grid.className = '';
         grid.innerHTML = '';
         empty.classList.remove('hidden');
         return;
     }
     empty.classList.add('hidden');
-    
-    grid.innerHTML = filtered.map(f => {
-        const sizeStr = f.size < 1024 ? f.size + ' B' : f.size < 1048576 ? (f.size / 1024).toFixed(1) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB';
-        const date = new Date(f.modified * 1000);
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const item = f => {
+        const sel = f.filename === _artifactSelected ? ' is-selected' : '';
+        const attrs = `data-filename="${_artifactAttr(f.filename)}" data-category="${f.category}" title="${_artifactAttr(f.filename)}" onclick="onArtifactClick(this)" ondblclick="onArtifactDblClick(this)"`;
         const icon = getArtifactIcon(f.category);
-        const ext = f.filename.split('.').pop();
-        
+        if (_artifactsView === 'list') {
+            return `
+                <div class="af-row${sel}" ${attrs}>
+                    <div class="af-row-name">
+                        <span class="af-row-icon ${icon.bg}">${_artifactSvg(icon.path, icon.color)}</span>
+                        <span class="af-name">${_artifactNameHtml(f.filename)}</span>
+                    </div>
+                    <span class="af-col-dim af-col-kind">${_artifactKind(f)}</span>
+                    <span class="af-col-dim af-col-right">${_artifactSize(f.size)}</span>
+                    <span class="af-col-dim af-col-date">${_artifactDateTime(f.modified)}</span>
+                    ${_artifactItemActions()}
+                </div>`;
+        }
+        const ext = _artifactExt(f.filename);
+        const thumb = f.category === 'image'
+            ? `<img src="${_artifactUrl(f.filename)}" alt="" loading="lazy">`
+            : `${_artifactSvg(icon.path, icon.color)}${ext ? `<span class="af-thumb-ext ${icon.color}">${escapeHtml(ext.slice(0, 5))}</span>` : ''}`;
         return `
-            <div class="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors cursor-pointer flex items-center gap-2.5 group" onclick="openArtifact('${f.filename}', '${f.category}')">
-                <div class="flex items-center justify-center w-8 h-8 rounded-md flex-shrink-0 ${icon.bg}">
-                    <svg class="w-4 h-4 ${icon.color}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        ${icon.path}
-                    </svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title="${f.filename}">${f.filename}</p>
-                    <p class="text-xs text-gray-400">${sizeStr} &middot; ${dateStr}</p>
-                </div>
-                <div class="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onclick="event.stopPropagation(); downloadArtifact('${f.filename}')" title="Download" class="p-1.5 text-indigo-500 hover:text-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    </button>
-                    <button onclick="event.stopPropagation(); deleteArtifact('${f.filename}')" title="Delete" class="p-1.5 text-red-400 hover:text-red-600 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
+            <div class="af-tile${sel}" ${attrs}>
+                <div class="af-thumb ${icon.bg}">${thumb}</div>
+                <div class="af-tile-name">${escapeHtml(_artifactShortName(f.filename))}</div>
+                <div class="af-meta">${_artifactSize(f.size)}</div>
+                ${_artifactItemActions()}
+            </div>`;
+    };
+
+    if (_artifactsView === 'list') {
+        grid.className = 'af-list';
+        grid.innerHTML = `
+            <div class="af-list-head">
+                <span>Name</span>
+                <span class="af-col-kind">Kind</span>
+                <span class="af-col-right">Size</span>
+                <span class="af-col-date">Date Modified</span>
+                <span></span>
+            </div>` + files.map(item).join('');
+    } else {
+        grid.className = 'af-icons';
+        grid.innerHTML = files.map(item).join('');
+    }
 }
+
+function setArtifactView(view) {
+    _artifactsView = view === 'list' ? 'list' : 'icons';
+    try { localStorage.setItem('evonic.artifacts.view', _artifactsView); } catch (e) { /* storage unavailable */ }
+    renderArtifacts();
+}
+
+function _syncArtifactViewToggle() {
+    document.querySelectorAll('.af-view-toggle button').forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.view === _artifactsView);
+    });
+}
+
+// The preview pane is hidden on small screens; there a click opens the full viewer instead.
+function _artifactPreviewVisible() {
+    const pane = document.getElementById('artifacts-preview');
+    return !!pane && getComputedStyle(pane).display !== 'none';
+}
+
+function onArtifactClick(el) {
+    const { filename, category } = el.dataset;
+    if (_artifactPreviewVisible()) selectArtifact(filename);
+    else openArtifact(filename, category);
+}
+
+function onArtifactDblClick(el) {
+    if (_artifactPreviewVisible()) openArtifact(el.dataset.filename, el.dataset.category);
+}
+
+function selectArtifact(filename) {
+    if (filename === _artifactSelected) return;
+    const f = _artifactsData.find(x => x.filename === filename);
+    if (!f) return;
+    _artifactSelected = filename;
+    document.querySelectorAll('#artifacts-grid [data-filename]').forEach(el => {
+        el.classList.toggle('is-selected', el.dataset.filename === filename);
+    });
+    renderArtifactPreview(f);
+}
+
+function clearArtifactSelection() {
+    _artifactSelected = null;
+    _artifactPreviewRaw = null;
+    document.querySelectorAll('#artifacts-grid .is-selected').forEach(el => el.classList.remove('is-selected'));
+    renderArtifactPreview(null);
+}
+
+function renderArtifactPreview(f) {
+    const pane = document.getElementById('artifacts-preview');
+    if (!pane) return;
+    const token = ++_artifactPreviewToken;
+    _artifactPreviewRaw = null;
+    if (!f) {
+        pane.innerHTML = `
+            <div class="af-preview-empty">
+                ${_artifactSvg(_ARTIFACT_SVG.eye)}
+                <p>Select a file to preview it here</p>
+                <small>Double-click a file to open it full size</small>
+            </div>`;
+        return;
+    }
+
+    const url = _artifactUrl(f.filename);
+    const ext = _artifactExt(f.filename);
+    const icon = getArtifactIcon(f.category);
+    const canCopy = f.category === 'text' || ext === 'md';
+    pane.innerHTML = `
+        <div class="af-preview-head" data-filename="${_artifactAttr(f.filename)}">
+            <span class="af-row-icon ${icon.bg}">${_artifactSvg(icon.path, icon.color)}</span>
+            <div class="af-preview-title">
+                <h4>${escapeHtml(f.filename)}</h4>
+                <p>${_artifactKind(f)} &middot; ${_artifactSize(f.size)}</p>
+            </div>
+            <div class="af-actions">
+                <button type="button" onclick="openArtifact(this.closest('[data-filename]').dataset.filename, '${f.category}')" title="Open full size">${_artifactSvg(_ARTIFACT_SVG.expand)}</button>
+                <button type="button" onclick="downloadArtifact(this.closest('[data-filename]').dataset.filename)" title="Download">${_artifactSvg(_ARTIFACT_SVG.download)}</button>
+                ${canCopy ? `<button type="button" onclick="copyArtifactContent(this, _artifactPreviewRaw)" title="Copy content">${_artifactSvg(_ARTIFACT_SVG.copy)}</button>` : ''}
+                <button type="button" class="af-danger" onclick="deleteArtifact(this.closest('[data-filename]').dataset.filename)" title="Delete">${_artifactSvg(_ARTIFACT_SVG.trash)}</button>
+            </div>
+        </div>
+        <div class="af-preview-body" id="artifacts-preview-body">
+            <div class="flex items-center justify-center py-16">
+                <svg class="animate-spin w-6 h-6 text-indigo-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            </div>
+        </div>
+        <div class="af-preview-info">
+            <h5>Information</h5>
+            <dl>
+                <dt>Kind</dt><dd>${_artifactKind(f)}</dd>
+                <dt>Size</dt><dd>${_artifactSize(f.size)} (${f.size.toLocaleString('en-US')} bytes)</dd>
+                <dt>Modified</dt><dd>${_artifactDateTime(f.modified)}</dd>
+            </dl>
+        </div>`;
+
+    const isStale = () => token !== _artifactPreviewToken;
+    renderArtifactContent(f.filename, f.category, url, ext, document.getElementById('artifacts-preview-body'), isStale)
+        .then(raw => { if (!isStale()) _artifactPreviewRaw = raw; });
+}
+
+// Finder-style keyboard navigation while a file is selected in the preview pane.
+document.addEventListener('keydown', e => {
+    const tab = document.getElementById('tab-artifacts');
+    if (!_artifactSelected || !tab || tab.classList.contains('hidden')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || document.getElementById('artifact-viewer-modal')) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(t.tagName))) return;
+    const idx = _artifactsData.findIndex(f => f.filename === _artifactSelected);
+    if (idx < 0) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openArtifact(_artifactSelected, _artifactsData[idx].category);
+        return;
+    }
+    let step = 0;
+    if (e.key === 'ArrowRight') step = 1;
+    else if (e.key === 'ArrowLeft') step = -1;
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        // In icon view up/down move a whole row, like Finder.
+        const grid = document.getElementById('artifacts-grid');
+        const cols = _artifactsView === 'icons' ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 1;
+        step = e.key === 'ArrowDown' ? cols : -cols;
+    } else return;
+    const next = _artifactsData[idx + step];
+    if (!next) return;
+    e.preventDefault();
+    selectArtifact(next.filename);
+    document.querySelector(`#artifacts-grid [data-filename="${CSS.escape(next.filename)}"]`)?.scrollIntoView({ block: 'nearest' });
+});
 
 function getArtifactIcon(category) {
     switch(category) {
@@ -6592,15 +7084,17 @@ function goArtifactPage(target) {
 }
 
 function downloadArtifact(filename) {
-    window.open(`/api/agents/${AGENT_ID}/artifacts/${filename}`, '_blank');
+    window.open(_artifactUrl(filename), '_blank');
 }
+
+let _artifactModalToken = 0;
 
 function openArtifact(filename, category) {
     // Image branch: use Lightbox for prev/next navigation among image artifacts only
     if (category === 'image') {
         const imageArtifacts = _artifactsData.filter(f => f.category === 'image');
         if (!imageArtifacts.length) return;
-        const imageUrls = imageArtifacts.map(f => `/api/agents/${AGENT_ID}/artifacts/${f.filename}`);
+        const imageUrls = imageArtifacts.map(f => _artifactUrl(f.filename));
         const idx = imageArtifacts.findIndex(f => f.filename === filename);
         Lightbox.open(imageUrls, Math.max(0, idx));
         return;
@@ -6609,8 +7103,9 @@ function openArtifact(filename, category) {
     const existing = document.getElementById('artifact-viewer-modal');
     if (existing) existing.remove();
 
-    const fileUrl = `/api/agents/${AGENT_ID}/artifacts/${filename}`;
+    const fileUrl = _artifactUrl(filename);
     const ext = filename.split('.').pop().toLowerCase();
+    _artifactRawContent = null;
 
     const html = `
     <div id="artifact-viewer-modal" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4" onclick="if(event.target===this)closeArtifactViewer()">
@@ -6621,7 +7116,7 @@ function openArtifact(filename, category) {
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                     </span>
                     <div class="min-w-0">
-                        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate">${filename}</h3>
+                        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate">${escapeHtml(filename)}</h3>
                         <p class="text-xs text-gray-400">${category.charAt(0).toUpperCase() + category.slice(1)}</p>
                     </div>
                 </div>
@@ -6650,7 +7145,10 @@ function openArtifact(filename, category) {
     document.body.insertAdjacentHTML('beforeend', html);
     document.addEventListener('keydown', _artifactViewerEscHandler);
 
-    renderArtifactContent(filename, category, fileUrl, ext);
+    const token = ++_artifactModalToken;
+    const isStale = () => token !== _artifactModalToken || !document.getElementById('artifact-viewer-modal');
+    renderArtifactContent(filename, category, fileUrl, ext, document.getElementById('artifact-viewer-body'), isStale)
+        .then(raw => { if (!isStale()) _artifactRawContent = raw; });
 }
 
 function closeArtifactViewer() {
@@ -6659,17 +7157,17 @@ function closeArtifactViewer() {
     document.removeEventListener('keydown', _artifactViewerEscHandler);
 }
 
-async function copyArtifactContent(btn) {
-    if (!_artifactRawContent) {
+async function copyArtifactContent(btn, text = _artifactRawContent) {
+    if (!text) {
         showToast('No content to copy.', 'warning');
         return;
     }
     try {
-        await navigator.clipboard.writeText(_artifactRawContent);
+        await navigator.clipboard.writeText(text);
     } catch(e) {
         // Fallback for older browsers or non-HTTPS
         const textarea = document.createElement('textarea');
-        textarea.value = _artifactRawContent;
+        textarea.value = text;
         textarea.style.position = 'fixed';
         textarea.style.opacity = '0';
         document.body.appendChild(textarea);
@@ -6693,17 +7191,22 @@ function _artifactViewerEscHandler(e) {
     if (e.key === 'Escape') closeArtifactViewer();
 }
 
-async function renderArtifactContent(filename, category, fileUrl, ext) {
-    const body = document.getElementById('artifact-viewer-body');
-    if (!body) return;
+// Renders a preview of the file into `body` (the viewer modal or the preview pane).
+// Returns the file's text for text-like files (for Copy), otherwise null.
+// `isStale` lets the caller drop a render that a newer one has replaced.
+async function renderArtifactContent(filename, category, fileUrl, ext, body, isStale = () => false) {
+    if (!body) return null;
+    let raw = null;
 
     try {
         if (ext === 'md') {
             // Fetch and render markdown
             const res = await fetch(fileUrl);
             const text = await res.text();
-            _artifactRawContent = text;
+            if (isStale()) return null;
+            raw = text;
             body.innerHTML = '<div class="recap-prose max-w-none">' + marked.parse(text) + '</div>';
+            ui.addCopyButtons(body);
         } else if (ext === 'pdf') {
             // Embed PDF viewer
             body.innerHTML = `<iframe src="${fileUrl}" class="w-full rounded-md border border-gray-200 dark:border-gray-600" style="min-height: 70vh;"></iframe>`;
@@ -6724,7 +7227,7 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
                         <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
                     </div>
                     <div class="text-center mb-2">
-                        <p class="text-sm font-medium text-gray-700 dark:text-gray-300">${filename}</p>
+                        <p class="text-sm font-medium text-gray-700 dark:text-gray-300">${escapeHtml(filename)}</p>
                     </div>
                     <audio controls class="w-full max-w-lg">
                         <source src="${fileUrl}" type="audio/${ext === 'm4a' ? 'mp4' : ext === 'wma' ? 'x-ms-wma' : ext}">
@@ -6735,7 +7238,7 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
             // Image viewer
             body.innerHTML = `
                 <div class="flex justify-center">
-                    <img src="${fileUrl}" alt="${filename}" class="max-w-full max-h-[70vh] rounded-md shadow-lg object-contain">
+                    <img src="${fileUrl}" alt=" class="max-w-full max-h-[70vh] rounded-md shadow-lg object-contain">
                 </div>`;
         } else if (['txt', 'csv', 'json', 'yaml', 'yml', 'xml', 'log',
                      'py', 'c', 'rs', 'js', 'ts', 'jsx', 'tsx', 'cpp', 'cc', 'cxx',
@@ -6747,7 +7250,8 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
             // Plain text / code viewer
             const res = await fetch(fileUrl);
             const text = await res.text();
-            _artifactRawContent = text;
+            if (isStale()) return null;
+            raw = text;
             const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             body.innerHTML = `<pre class="bg-gray-50 dark:bg-gray-900 rounded-md p-4 text-sm text-gray-800 dark:text-gray-200 overflow-x-auto max-h-[70vh] whitespace-pre-wrap font-mono">${escaped}</pre>`;
         } else {
@@ -6763,6 +7267,7 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
                 </div>`;
         }
     } catch(e) {
+        if (isStale()) return null;
         body.innerHTML = `
             <div class="flex flex-col items-center gap-3 py-12 text-red-400">
                 <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86l-8.6 14.86A1 1 0 002.56 20h18.88a1 1 0 00.87-1.5l-8.6-14.86a1 1 0 00-1.74 0z"></path></svg>
@@ -6770,15 +7275,17 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
             </div>`;
         console.error('Failed to render artifact:', e);
     }
+    return raw;
 }
 
 async function deleteArtifact(filename) {
     if (!await showConfirm({title: 'Delete Artifact', message: `Delete artifact "${filename}"? This cannot be undone.`, confirmText: 'Delete'})) return;
     try {
-        const res = await fetch(`/api/agents/${AGENT_ID}/artifacts/${filename}`, { method: 'DELETE' });
+        const res = await fetch(_artifactUrl(filename), { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
             showToast('Artifact deleted.', 'success');
+            if (filename === _artifactSelected) clearArtifactSelection();
             loadArtifacts();
         } else {
             showToast(data.error || 'Failed to delete artifact.', 'error');
@@ -6887,6 +7394,11 @@ async function doClone() {
 function cloneAgent() {
     document.getElementById('gear-dropdown').classList.add('hidden');
     showCloneModal();
+}
+
+function exportAgent() {
+    document.getElementById('gear-dropdown').classList.add('hidden');
+    window.location.href = `/api/agents/${encodeURIComponent(AGENT_ID)}/export`;
 }
 
 // ==================== Delete Agent ====================
@@ -7256,8 +7768,13 @@ window.softSwitchAgent = async function (newId, opts = {}) {
     window._agentEpoch++; // invalidates in-flight chat/session fetches
     if (window._saveChatDraft) window._saveChatDraft(); // persists under the OLD agent's key
     _destroyCurrentTurn();
-    stopIdlePoll();
-    updateBusyBadge(false); // cleared now; resynced for the new agent below
+    if (_agentChatEs) _agentChatEs.close();
+    _agentChatEs = null;
+    _agentChatSessionId = null;
+    _agentChatCursor = 0;
+    _chatBusy = false;
+    _agentBusy = false;
+    updateBusyBadge(false); // cleared now; the new chat stream snapshot restores it
     const gearDd = document.getElementById('gear-dropdown');
     if (gearDd) gearDd.classList.add('hidden');
     if (_qrPollInterval) closeQRModal();
@@ -7269,10 +7786,8 @@ window.softSwitchAgent = async function (newId, opts = {}) {
     chatCommands = [];
     _chatSessionId = null;
     chatLoaded = false;
-    lastChatTs = 0;
-    lastTurnEndTs = 0;
     _chatBusy = false;
-    _pollThinkingId = null;
+    _agentBusy = false;
     _planEditorFetchedFor = null;
     _planEditorOriginal = null;
     window.chatUI = _createChatUI();
@@ -7282,6 +7797,9 @@ window.softSwitchAgent = async function (newId, opts = {}) {
     kbGraphDataEpoch = -1;
     kbTree = [];
     kbTreeState = {};
+
+    // Empty the artifacts preview pane so it doesn't keep showing the previous agent's file
+    clearArtifactSelection();
 
     // Plugin tabs cache the previous agent's HTML — drop it so the next open re-fetches
     _pluginTabCache.clear();
@@ -7298,7 +7816,7 @@ window.softSwitchAgent = async function (newId, opts = {}) {
     if (nameEl) nameEl.textContent = data.name || newId;
     // Toggle super-only structural elements (always present in the DOM now)
     const isSuper = !!data.is_super;
-    ['#agent-header-id-badge', '#gear-dropdown-wrap', '[data-tab="skills"]'].forEach(function (sel) {
+    ['#agent-header-id-badge', '#gear-dropdown-wrap'].forEach(function (sel) {
         const el = document.querySelector(sel);
         if (el) el.classList.toggle('hidden', isSuper); // shown for regular, hidden for super
     });
@@ -7341,7 +7859,6 @@ window.softSwitchAgent = async function (newId, opts = {}) {
         history.pushState({agentId: newId}, '', '/agents/' + encodeURIComponent(newId) + '#chat');
     }
     window._softSwitched = true;
-    resyncBusyBadge(); // fetch the new agent's current busy state; live updates via stream
     showTab('chat'); // chatLoaded=false → loads new agent's history/session/state
     return true;
 };
@@ -7860,17 +8377,15 @@ document.addEventListener('keydown', function(e) {
 
 <!-- Background Process Modal -->
 <div id="bg-process-modal-backdrop" class="hidden fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" onclick="closeBgProcessModal()" role="presentation">
-    <div id="bg-process-modal" class="hidden flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 sm:max-h-[90vh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="bg-process-modal-title" aria-describedby="bg-process-modal-subtitle" onclick="event.stopPropagation()">
+    <div id="bg-process-modal" class="hidden flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 sm:max-h-[90vh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="bg-process-modal-title" onclick="event.stopPropagation()">
         <header class="relative flex flex-shrink-0 items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-white/10 sm:px-6 sm:py-5">
             <div class="flex min-w-0 items-center gap-4">
                 <span class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-gray-100 text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 sm:h-12 sm:w-12"><svg class="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg></span>
                 <div class="min-w-0">
                     <h3 id="bg-process-modal-title" class="truncate text-lg font-bold tracking-tight text-gray-900 dark:text-white sm:text-xl">Background Process</h3>
-                    <p id="bg-process-modal-subtitle" class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">Process execution details</p>
                 </div>
             </div>
             <div class="flex flex-shrink-0 items-center gap-2 sm:gap-3">
-                <span id="bg-process-status-pill" class="hidden sm:inline-flex"></span>
                 <button type="button" onclick="closeBgProcessModal()" class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white dark:focus:ring-white/40" aria-label="Close background process details" title="Close (Esc)">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
