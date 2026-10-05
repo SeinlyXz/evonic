@@ -19,13 +19,41 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from PIL import Image, UnidentifiedImageError
 
-from ..providers import (
-    ImageArtifact,
-    ImageGenerationError,
-    ImageGenerationRequest,
-    SafeErrorCode,
-    provider_registry,
-)
+import importlib.util
+import sys
+
+
+def _load_providers():
+    """Import the skill's providers package by path.
+
+    Evonic loads this file as skill_tools_<skill>.generate_image (a single
+    package level), so from ..providers import ... fails with "attempted
+    relative import beyond top-level package".
+    """
+    name = "skill_image_generator_providers"
+    module = sys.modules.get(name)
+    if module is not None:
+        return module
+    directory = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "providers")
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(directory, "__init__.py"), submodule_search_locations=[directory],
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+_providers = _load_providers()
+ImageArtifact = _providers.ImageArtifact
+ImageGenerationError = _providers.ImageGenerationError
+ImageGenerationRequest = _providers.ImageGenerationRequest
+SafeErrorCode = _providers.SafeErrorCode
+provider_registry = _providers.provider_registry
 
 _MAX_PROMPT_LENGTH = 4_000
 _MAX_NEGATIVE_PROMPT_LENGTH = 4_000

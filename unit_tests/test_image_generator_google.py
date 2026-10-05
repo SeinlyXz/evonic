@@ -41,7 +41,7 @@ def _response(image: bytes = _PNG):
 
 
 def test_google_provider_is_registered_without_enabling_it_by_default():
-    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "google-gemini", "mock"]
+    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "google-gemini", "mock", "openrouter"]
     assert GoogleGeminiProvider.id == "google-gemini"
     assert GoogleGeminiProvider.is_local is False
 
