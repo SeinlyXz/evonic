@@ -139,12 +139,12 @@ html.dark .state-btn-text:hover:not(:disabled) { color: #c7d2fe; }
 @keyframes state-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .state-spin { animation: none; } }
 /* ── Chat composer: card with borderless textarea + bottom action bar ── */
-.chat-composer { position: relative; background: rgb(255 255 255 / .78); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1); border: 1px solid #e5e7eb; border-radius: 1.75rem; padding: .375rem;
+.chat-composer { position: relative; background: rgb(255 255 255 / .78); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1); border: 1px solid #e5e7eb; border-radius: 1rem; padding: .375rem;
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: .5rem; align-items: center;
     grid-template-areas: "tip tip tip" "files files files" "attach input send";
     box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -12px rgb(15 23 42 / .14);
     transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease, border-radius .26s cubic-bezier(.2,.8,.2,1); }
-.chat-composer.is-expanded { border-radius: 1.25rem; padding: .875rem .75rem .625rem 1.125rem; column-gap: 0;
+.chat-composer.is-expanded { border-radius: 1rem; padding: .875rem .75rem .625rem 1.125rem; column-gap: 0;
     grid-template-areas: "tip tip tip" "files files files" "input input input" "attach . send"; }
 #file-preview { grid-area: files; }
 #attach-btn { grid-area: attach; }
@@ -162,7 +162,7 @@ html.dark .chat-composer:focus-within { border-color: #6366f1; box-shadow: 0 0 0
 html.dark .chat-composer #reply-input { color: #e5e7eb; }
 html.dark .chat-composer #reply-input::placeholder { color: #6b7280; }
 .chat-composer-bar { display: contents; }
-.chat-icon-btn { flex: none; width: 2.5rem; height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px;
+.chat-icon-btn { flex: none; width: 2.5rem; height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; border-radius: .625rem;
     border: 1px solid #e5e7eb; background: transparent; color: #6b7280; cursor: pointer;
     transition: color .15s, border-color .15s, background-color .15s, transform .12s; }
 .chat-icon-btn svg { width: 18px; height: 18px; flex: none; }
@@ -171,7 +171,7 @@ html.dark .chat-composer #reply-input::placeholder { color: #6b7280; }
 .chat-icon-btn:active { transform: scale(.94); }
 html.dark .chat-icon-btn { border-color: #374151; color: #9ca3af; }
 html.dark .chat-icon-btn:hover { color: #c7d2fe; border-color: #6366f1; background: rgb(99 102 241 / .14); }
-.chat-send-pill { flex: none; height: 2.5rem; min-width: 4rem; padding: 0 1.25rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px;
+.chat-send-pill { flex: none; height: 2.5rem; min-width: 4rem; padding: 0 1.25rem; display: inline-flex; align-items: center; justify-content: center; border-radius: .625rem;
     border: 0; background: #4f46e5; color: #fff; cursor: pointer; box-shadow: 0 4px 12px -4px rgb(79 70 229 / .6);
     transition: background-color .15s, transform .12s, box-shadow .15s, opacity .15s; }
 .chat-send-pill:hover { background: #4338ca; box-shadow: 0 6px 16px -4px rgb(79 70 229 / .7); }
@@ -181,6 +181,12 @@ html.dark .chat-send-pill { background: #6366f1; }
 html.dark .chat-send-pill:hover { background: #818cf8; }
 /* Global dark-mode rule forces every textarea to a solid bg with !important; the composer's textarea must stay transparent so the card (and its bash-mode tint) shows through */
 html.dark .chat-composer #reply-input { background-color: transparent !important; border-color: transparent !important; color: #e5e7eb !important; }
+/* Light mode: same contrast as the agent chat — a tinted card, visible borders, white action buttons */
+html:not(.dark) .chat-composer { background: #f3f5f9; border-color: #c9d0db; box-shadow: 0 1px 2px rgb(15 23 42 / .06), 0 10px 24px -14px rgb(15 23 42 / .28); }
+html:not(.dark) .chat-composer:focus-within { background: #fff; border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .16), 0 10px 28px -14px rgb(79 70 229 / .35); }
+html:not(.dark) .chat-icon-btn { background: #fff; border-color: #c9d0db; color: #4b5563; }
+html:not(.dark) .chat-icon-btn:hover { background: #eef2ff; border-color: #a5b4fc; color: #4f46e5; }
+html:not(.dark) .chat-composer #reply-input, html:not(.dark) .chat-composer #reply-input:focus { background-color: transparent !important; border-color: transparent !important; box-shadow: none !important; }
 html.dark .chat-composer #reply-input::placeholder { color: #6b7280 !important; }
 /* Progressive blur: stacked backdrop-filter layers with staggered masks -> blur fades smoothly to 0 (no hard edge).
    .pblur-top: strongest at the top edge; .pblur-bottom: strongest at the bottom edge. */
@@ -199,7 +205,7 @@ html.dark .chat-composer #reply-input::placeholder { color: #6b7280 !important; 
 .pblur-bottom { top: -1.75rem; bottom: 0; }
 /* Editor-mode tip: a strip fused to the top edge of the composer card (same width, shares its rounded top corners) */
 #editor-tip { grid-area: tip; display: flex; align-items: center; gap: .5rem; margin: -.875rem -.75rem .625rem -1.125rem; padding: .5rem .75rem .5rem 1.125rem;
-    border-radius: 1.25rem 1.25rem 0 0; background: rgb(99 102 241 / .10); border-bottom: 1px solid rgb(99 102 241 / .22);
+    border-radius: .875rem .875rem 0 0; background: rgb(99 102 241 / .10); border-bottom: 1px solid rgb(99 102 241 / .22);
     font-size: .75rem; line-height: 1rem; color: #4338ca; }
 #editor-tip.hidden { display: none; }
 #editor-tip svg { width: 1rem; height: 1rem; flex: none; }
@@ -257,22 +263,32 @@ html.dark .sess-rail-settings.active { background: rgba(129, 140, 248, 0.14); co
 
 /* Chat panel: rounded box, same radius/colour as the agent chat panel */
 .sess-panel { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
-    background: #fff; border: 1px solid #e5e7eb; border-radius: 2.25rem; --sess-hdr-h: 3.25rem; }
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 1.5rem; --sess-hdr-h: 3.25rem; }
 html.dark .sess-panel { background: var(--bg-card); border-color: var(--color-gray-700, #364153); }
 .sess-panel > .pblur-top { top: 0; bottom: auto; height: calc(var(--sess-hdr-h) + 2.5rem); z-index: 19; }
 .sess-panel:has(#chat-header.hidden) > .pblur-top { display: none; }
 .sess-hdr { position: absolute; top: 1rem; left: 1rem; right: 1rem; z-index: 20; display: flex; }
 .sess-hdr.hidden { display: none; }
-.sess-hdr .chat-header-pill { flex: 1 1 auto; min-width: 0; height: 3.25rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 0 1.25rem; border-radius: 1.75rem;
+.sess-hdr .chat-header-pill { flex: 1 1 auto; min-width: 0; height: 3.25rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 0 1.25rem; border-radius: 1.25rem;
     box-sizing: border-box; border: 1px solid #e5e7eb; background: rgb(255 255 255 / .78); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1);
     box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -12px rgb(15 23 42 / .14); }
 html.dark .sess-hdr .chat-header-pill { background: rgb(10 15 28 / .62); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
 .sess-hdr-avatar { width: 1.75rem; height: 1.75rem; border-radius: 9999px; object-fit: cover; flex: none; background: rgb(99 102 241 / .16); }
 .sess-panel #chat-messages { padding-top: calc(var(--sess-hdr-h) + 1.75rem); }
 .sess-panel:has(#chat-header.hidden) #chat-messages { padding-top: 1rem; }
+/* Desktop: same compact full-width header bar as the agent chat — transparent, blurred, no border, not a floating bubble */
+@media (min-width: 1024px) {
+    .sess-hdr { top: 0; left: 0; right: 0; }
+    .sess-hdr .chat-header-pill, html.dark .sess-hdr .chat-header-pill { height: 3.25rem; border: 0; border-radius: 0; padding: 0 1.75rem; box-shadow: none;
+        background: rgb(255 255 255 / .42); -webkit-backdrop-filter: blur(16px) saturate(1.3); backdrop-filter: blur(16px) saturate(1.3); }
+    html.dark .sess-hdr .chat-header-pill { background: rgb(10 15 28 / .38); }
+    .sess-panel { --sess-hdr-h: 3.25rem; }
+    .sess-panel #chat-messages { padding-top: calc(var(--sess-hdr-h) + 1rem); }
+    .sess-panel > .pblur-top { display: none; }   /* the bar blurs on its own */
+}
 
 /* State cards: same look as the agent page's Agent State / Session State cards */
-#agent-state-panel, #summary-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 1.75rem; overflow: hidden; }
+#agent-state-panel, #summary-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 1.25rem; overflow: hidden; }
 html.dark #agent-state-panel, html.dark #summary-panel { background: var(--color-gray-800, #1e2939); border-color: var(--color-gray-600, #4a5565); }
 #AgentState, #SessionRecap { padding: 1rem 1.25rem; border-bottom: 0; }
 #AgentState h4, #SessionRecap h4 { font-size: 1rem; font-weight: 700; text-transform: none; letter-spacing: 0; }
@@ -282,7 +298,7 @@ html.dark #agent-state-panel, html.dark #summary-panel { background: var(--color
 #summary-panel { flex: 1 1 0; min-height: 0; }
 
 /* Settings tab cards */
-#tab-settings .rounded-xl { border-radius: 1.5rem; padding: 1.25rem 1.375rem; }
+#tab-settings .rounded-xl { border-radius: 1rem; padding: 1.25rem 1.375rem; }
 /* Settings: breathing room at the screen edges, readable descriptions, pill actions */
 .set-page { padding-left: .75rem; padding-right: .75rem; padding-bottom: 1.5rem; box-sizing: border-box; }
 #tab-settings .set-row h3 { font-size: .9375rem; line-height: 1.35rem; }
@@ -425,7 +441,7 @@ html.dark .msb-row .hdr-icon-btn:hover { background: rgb(148 163 184 / .2); colo
 /* autocomplete results: the search field and its results are ONE glass surface. The surface (#mobile-dropdown) is drawn from the
    top of the input down, the input sits on top of it with a transparent background, and the rows scroll in .msd-list below. */
 #mobile-dropdown { position: absolute; z-index: 5; top: 0; left: 0; right: 0; margin: 0; padding: 2.5rem .375rem .375rem; box-sizing: border-box;
-  border-radius: 1.25rem; border: 1px solid #e5e7eb; background: rgb(255 255 255 / .86);
+  border-radius: .875rem; border: 1px solid #e5e7eb; background: rgb(255 255 255 / .86);
   -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2);
   box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 24px 48px -16px rgb(15 23 42 / .4); }
 html.dark #mobile-dropdown { background: rgb(15 23 42 / .82); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 24px 48px -16px rgb(0 0 0 / .7); }
@@ -438,7 +454,7 @@ html.dark #mobile-dropdown { background: rgb(15 23 42 / .82); border-color: #374
 .msb-ico { z-index: 7; }
 .msb-field:has(#mobile-dropdown:not(.hidden)) input, html.dark .msb-field:has(#mobile-dropdown:not(.hidden)) input {
   border-color: transparent !important; background: transparent !important; box-shadow: none; }
-.msd-row { display: flex; align-items: center; gap: .75rem; width: 100%; padding: .5625rem .75rem; border: 0; border-radius: 1.25rem; background: transparent; text-align: left; cursor: pointer; color: inherit; transition: background-color .15s; }
+.msd-row { display: flex; align-items: center; gap: .75rem; width: 100%; padding: .5625rem .75rem; border: 0; border-radius: .875rem; background: transparent; text-align: left; cursor: pointer; color: inherit; transition: background-color .15s; }
 .msd-row:hover { background: rgb(99 102 241 / .1); }
 .msd-row.is-active { background: rgb(99 102 241 / .14); }
 html.dark .msd-row:hover { background: rgb(99 102 241 / .18); }
@@ -468,7 +484,7 @@ html.dark .msd-name.user-id-human { color: #4ade80; }
 /* ── One surface: chat panel + Agent State + Session State share a single rounded section ──
    #chat-room owns background / border / radius; the panel and the two state blocks are plain regions inside it,
    separated by hairlines. */
-#chat-room { gap: 0; overflow: hidden; border: 1px solid #e5e7eb; border-radius: 2.25rem; background: #fff; }
+#chat-room { gap: 0; overflow: hidden; border: 1px solid #e5e7eb; border-radius: 1.5rem; background: #fff; }
 html.dark #chat-room { border-color: var(--color-gray-700, #364153); background: var(--bg-card); }
 #chat-room > .sess-panel, html.dark #chat-room > .sess-panel { background: transparent; border: 0; border-radius: 0; }
 #chat-room > #side-panels-wrapper { gap: 0; border-left: 1px solid rgb(148 163 184 / .2); }
@@ -2912,17 +2928,6 @@ async function toggleEventsDispatch(enabled) {
     } catch(e) {
         showToast('Failed to update setting', true);
     }
-}
-
-function showToast(message, isError) {
-    const existing = document.getElementById('settings-toast');
-    if (existing) existing.remove();
-    const toast = document.createElement('div');
-    toast.id = 'settings-toast';
-    toast.className = `fixed bottom-6 right-6 px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg z-50 transition-opacity ${isError ? 'bg-red-500 text-white' : 'bg-gray-800 text-white'}`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2500);
 }
 
 // ==================== Fullscreen ====================

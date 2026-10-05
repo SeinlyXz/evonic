@@ -775,3 +775,114 @@ html.dark .test-tips-success li {
         max-width: none;
     }
 }
+
+/* ============================================================
+   Revamp: full width + the same theme as the agent / sessions pages
+   (rounded .625-.875rem surfaces, tinted fields with visible borders, indigo accent, pill search)
+   ============================================================ */
+:root {
+    --st-line: #d5dbe4;
+    --st-field-bg: #f6f8fb;
+    --st-field-line: #c9d0db;
+    --st-surface: #f8fafc;
+}
+html.dark {
+    --st-line: rgb(148 163 184 / .22);
+    --st-field-bg: rgb(10 15 28 / .65);
+    --st-field-line: rgb(148 163 184 / .3);
+    --st-surface: rgb(148 163 184 / .05);
+}
+
+/* page frame */
+.settings-console { padding: 1.25rem 1rem 4rem; }
+@media (min-width: 768px) { .settings-console { padding: 1.5rem 1.5rem 4rem; } }
+.settings-console-header { flex-direction: column; align-items: flex-start; gap: .25rem; margin-bottom: 1.25rem; }
+.settings-console-header h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; }
+.settings-console-header h2 svg { width: 22px; height: 22px; }
+.settings-console-sub { font-size: .875rem; }
+
+/* full width: no capped column for any pane */
+.settings-pane.narrow { max-width: none; }
+.settings-shell { grid-template-columns: 15rem minmax(0, 1fr); gap: 1.5rem; }
+@media (min-width: 1280px) {
+    /* the General pane flows its groups into two columns instead of one narrow strip */
+    .settings-pane.narrow.active { display: block; columns: 2; column-gap: 1.5rem; }
+    .settings-pane.narrow .setting-group { break-inside: avoid; }
+    .settings-pane.narrow .settings-pane-title, .settings-pane.narrow .settings-pane-desc { column-span: all; }
+}
+
+/* nav rail */
+.settings-nav { gap: .25rem; }
+.settings-nav-item { padding: .5rem .75rem; border-radius: .625rem; font-weight: 500; }
+.settings-nav-item.active { background: var(--st-accent-soft); color: var(--st-accent-strong); font-weight: 600; }
+.settings-nav-label { padding: .875rem .75rem .375rem; }
+.settings-search input { height: 2.5rem; padding: 0 2rem 0 2.25rem; border: 1px solid var(--st-field-line); border-radius: .625rem; background: var(--st-field-bg); }
+.settings-search input:focus { background: var(--bg-card); }
+.settings-search > svg { left: .75rem; }
+.settings-search-results { border-radius: .75rem; border-color: var(--st-line); }
+
+/* groups + rows */
+.setting-group { margin-bottom: 1.5rem; }
+.setting-group-head { margin-bottom: .625rem; padding-left: .125rem; }
+.setting-group-head h3 { font-size: .6875rem; letter-spacing: .1em; }
+.setting-group-body { border: 1px solid var(--st-line); border-radius: .875rem; background: var(--st-surface); }
+.setting-row { padding: .875rem 1.125rem; border-bottom-color: var(--st-line); }
+.setting-row:hover { background: rgb(99 102 241 / .04); }
+.setting-subgroup { border-bottom-color: var(--st-line); }
+.setting-subgroup-body { border-radius: .625rem; border-color: var(--st-line); background: transparent; }
+
+/* controls */
+.setting-num, .setting-select { border: 1px solid var(--st-field-line); border-radius: .625rem; background: var(--st-field-bg); }
+.setting-num:focus, .setting-select:focus { background: var(--bg-card); }
+.segmented { border-radius: .75rem; border-color: var(--st-line); }
+.segmented-thumb, .segmented-btn { border-radius: .5rem; }
+
+/* inputs rendered by the section partials (Tailwind classes) */
+.settings-pane input[type="text"], .settings-pane input[type="number"], .settings-pane input[type="search"], .settings-pane input[type="password"], .settings-pane input[type="url"], .settings-pane textarea { border-radius: .625rem; }
+html:not(.dark) .settings-pane input[type="text"], html:not(.dark) .settings-pane input[type="number"], html:not(.dark) .settings-pane input[type="search"],
+html:not(.dark) .settings-pane input[type="password"], html:not(.dark) .settings-pane input[type="url"], html:not(.dark) .settings-pane textarea { background-color: var(--st-field-bg); border-color: var(--st-field-line); }
+html:not(.dark) .settings-pane input:focus, html:not(.dark) .settings-pane textarea:focus { background-color: #fff; border-color: #818cf8; }
+.settings-pane .rounded-lg, .settings-pane .rounded-xl { border-radius: .875rem; }
+.settings-pane .rounded-md { border-radius: .625rem; }
+html:not(.dark) .settings-pane .border-gray-200 { border-color: var(--st-line); }
+
+/* ---------- Pane toolbar + card grid (Tools) ---------- */
+.st-toolbar { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+.st-search { position: relative; flex: 1 1 auto; max-width: 28rem; }
+.st-search > svg { position: absolute; left: .875rem; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.st-search input { width: 100%; height: 2.5rem; box-sizing: border-box; padding: 0 1rem 0 2.5rem; border: 1px solid var(--st-field-line); border-radius: 9999px; background: var(--st-field-bg); color: var(--text-primary); font-size: .875rem; outline: none; }
+.st-search input:focus { border-color: var(--st-accent); background: var(--bg-card); box-shadow: 0 0 0 3px var(--st-accent-soft); }
+.settings-pane .st-search input { border-radius: 9999px; padding-left: 2.5rem; }
+.st-count { font-size: .75rem; color: var(--text-muted); white-space: nowrap; }
+.st-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr)); gap: .875rem; }
+.st-empty { grid-column: 1 / -1; padding: 2.5rem 1rem; text-align: center; font-size: .875rem; color: var(--text-muted); }
+.st-card { display: flex; flex-direction: column; gap: .5rem; padding: 1rem 1.125rem; border: 1px solid var(--st-line); border-radius: .875rem; background: var(--st-surface); cursor: pointer; transition: border-color .15s, background-color .15s, box-shadow .15s; min-width: 0; }
+.st-card:hover { border-color: var(--st-accent); background: var(--st-accent-soft); }
+.st-card:focus-visible { outline: 2px solid var(--st-accent); outline-offset: 2px; }
+.st-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: .375rem .5rem; min-width: 0; }
+.st-card-name { margin: 0; flex: 0 1 auto; min-width: 0; font-size: .9375rem; font-weight: 600; color: var(--text-heading); overflow-wrap: anywhere; }
+.st-chip { padding: .0625rem .5rem; border-radius: 9999px; font-size: .6875rem; font-weight: 600; white-space: nowrap; }
+.st-chip.is-json { background: #e0f2fe; color: #0369a1; }
+.st-chip.is-js { background: #fef3c7; color: #b45309; }
+.st-chip.is-real { background: #dcfce7; color: #15803d; }
+html.dark .st-chip.is-json { background: rgb(14 165 233 / .18); color: #7dd3fc; }
+html.dark .st-chip.is-js { background: rgb(245 158 11 / .18); color: #fcd34d; }
+html.dark .st-chip.is-real { background: rgb(34 197 94 / .18); color: #86efac; }
+.st-card-del { margin-left: auto; width: 1.875rem; height: 1.875rem; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: .625rem; background: transparent; color: var(--text-muted); cursor: pointer; transition: background-color .15s, color .15s; }
+.st-card-del svg { width: 16px; height: 16px; }
+.st-card-del:hover { background: rgb(239 68 68 / .12); color: #dc2626; }
+html.dark .st-card-del:hover { color: #fca5a5; }
+.st-card-desc { margin: 0; font-size: .8125rem; line-height: 1.5; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.st-card-code { align-self: flex-start; max-width: 100%; padding: .125rem .5rem; border-radius: .375rem; background: rgb(148 163 184 / .14); color: var(--text-secondary); font-family: var(--st-mono); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Tables inside panes (HMADS, Users, Models, ...) ---------- */
+.settings-pane .overflow-x-auto:has(> table) { border: 1px solid var(--st-line); border-radius: .875rem; background: var(--st-surface); }
+.settings-pane table { border-collapse: separate; border-spacing: 0; }
+.settings-pane thead th, .settings-pane thead tr { background: rgb(148 163 184 / .09); }
+html:not(.dark) .settings-pane thead th { background: #eef1f6; }
+.settings-pane thead th { font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); border-bottom: 1px solid var(--st-line); }
+.settings-pane tbody tr td { border-top: 1px solid var(--st-line); }
+.settings-pane tbody tr:first-child td { border-top: 0; }
+.settings-pane tbody tr:hover td { background: rgb(99 102 241 / .04); }
+.settings-pane .btn-primary { border-radius: .625rem; }
+.settings-pane .log-level-pill { border-radius: 9999px; }

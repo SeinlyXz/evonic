@@ -2071,7 +2071,7 @@ input[type="checkbox"] {
 .status-badge {
     display: inline-block;
     padding: 0.25rem 0.75rem;
-    border-radius: 20px;
+    border-radius: 14px;
     font-size: 0.85rem;
     font-weight: 500;
 }
@@ -2099,7 +2099,7 @@ input[type="checkbox"] {
 /* ══ Evaluate: same language as the other pages (cards on the page colour, pill controls, indigo accent, no gradients) ══ */
 input[type="checkbox"] { accent-color: #6366f1; }
 .ev-page { max-width: 1600px; margin: 0 auto; }
-.ev-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 1.5rem; box-shadow: 0 1px 2px rgb(15 23 42 / .04); }
+.ev-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 1rem; box-shadow: 0 1px 2px rgb(15 23 42 / .04); }
 html.dark .ev-card { background: var(--bg-card); border-color: rgb(148 163 184 / .16); box-shadow: none; }
 .ev-controls { padding: 1.125rem 1.25rem; }
 .ev-controls h2 { font-size: 1.125rem; letter-spacing: -.01em; }
@@ -2136,33 +2136,33 @@ html.dark .ev-matrix > div:first-child { color: #94a3b8; }
 .ev-matrix > [id^="row-"] { border-radius: 0 !important; border-color: rgb(148 163 184 / .16) !important; background: transparent !important; transition: background-color .15s; }
 .ev-matrix > [id^="row-"]:last-child { border-bottom: 0 !important; }
 .ev-matrix > [id^="row-"]:hover { background: rgb(99 102 241 / .04) !important; }
-.ev-matrix .level-cell { border-radius: .875rem; }
+.ev-matrix .level-cell { border-radius: .625rem; }
 .ev-matrix .level-cell:hover { background: rgb(99 102 241 / .1) !important; }
 html.dark .ev-matrix .level-cell:hover { background: rgb(129 140 248 / .16) !important; }
-.ev-matrix [id^="total-"]:not([id^="total-score"]):not([id^="total-passed"]):not([id^="total-duration"]) { border-radius: .875rem !important; background: rgb(148 163 184 / .08) !important; }
+.ev-matrix [id^="total-"]:not([id^="total-score"]):not([id^="total-passed"]):not([id^="total-duration"]) { border-radius: .625rem !important; background: rgb(148 163 184 / .08) !important; }
 @media (min-width: 768px) { .ev-matrix [id^="total-"]:not([id^="total-score"]):not([id^="total-passed"]):not([id^="total-duration"]) { margin: .375rem .5rem .375rem 0; } }
 @media (max-width: 767.98px) { .ev-matrix > [id^="row-"] { padding: .75rem; } }
 
 /* summary cards: same radius family, flat semantic colour for the score card */
-.ev-page #summary-box > div > div { border-radius: 1.5rem !important; }
+.ev-page #summary-box > div > div { border-radius: 1rem !important; }
 .ev-page #summary-box [class*="from-emerald-500"] { background-image: none !important; background-color: #059669; }
 .ev-page #summary-box [class*="from-amber-500"] { background-image: none !important; background-color: #d97706; }
 .ev-page #summary-box [class*="from-red-500"] { background-image: none !important; background-color: #dc2626; }
 .ev-page #summary-box .bg-white { background: #fff; }
 html.dark .ev-page #summary-box > div > div:first-child { background: var(--bg-card); border-color: rgb(148 163 184 / .16); box-shadow: none; }
-.ev-page #interrupted-box { border-radius: 1.5rem !important; }
+.ev-page #interrupted-box { border-radius: 1rem !important; }
 
 /* summary + score: stacked unless there is room for two columns; the verdict pill never wraps */
 @media (max-width: 1535.98px) { .ev-page #summary-box > .grid { grid-template-columns: 1fr !important; } }
 .ev-page #summary-box .rounded-full { white-space: nowrap; }
 
 /* logs: terminal card in the page's darkest tone */
-.ev-logs { background: #0a0f1c; border: 1px solid rgb(148 163 184 / .16); border-radius: 1.5rem; box-shadow: 0 1px 2px rgb(0 0 0 / .2); }
+.ev-logs { background: #0a0f1c; border: 1px solid rgb(148 163 184 / .16); border-radius: 1rem; box-shadow: 0 1px 2px rgb(0 0 0 / .2); }
 html:not(.dark) .ev-logs { background: #111827; }
 .ev-logs h3 { border-color: rgb(148 163 184 / .2) !important; letter-spacing: .02em; }
 .ev-logs #log-box { scrollbar-width: thin; scrollbar-color: rgb(148 163 184 / .3) transparent; }
 
 /* completion modal */
-#completion-modal > div { border-radius: 1.75rem; }
+#completion-modal > div { border-radius: 1.25rem; }
 </style>
 {% endblock %}

@@ -275,7 +275,7 @@ html.dark .sidebar-toggle-btn:hover::before { background: rgba(148, 163, 184, 0.
     background: #ffffff;
     color: #1e293b;
     border: 1px solid rgba(0, 0, 0, 0.12);
-    border-radius: 18px;
+    border-radius: 12px;
     padding: 0;
     width: 260px;
     max-width: calc(100vw - 100px);

@@ -26,6 +26,9 @@
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}?v=8">
     <script src="{{ url_for('static', filename='js/ui-toggle.js') }}?v=1" defer></script>
+    <script src="{{ url_for('static', filename='js/ev-toast.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/ev-combobox.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/ev-shortcuts.js') }}?v=1"></script>
     <!-- jQuery stays synchronous: inline body scripts call $() at parse time -->
     <script src="{{ url_for('static', filename='js/jquery-3.7.1.min.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/lucide.min.js') }}?v=1" defer></script>
@@ -63,7 +66,7 @@
         }
     }
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=38">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=46">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/recap-prose.css') }}?v=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/hljs-chat.css') }}?v=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/agent-sidebar.css') }}?v=23">
@@ -139,6 +142,7 @@
             </button>
 
             <nav id="site-nav" aria-label="Main">
+                <span class="nav-ink" aria-hidden="true"></span>
                 {% if session.get('authenticated') %}
                 <a href="/" class="{{ 'nav-active' if request.path == '/' else '' }}">{{ nav_ic('<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>') }}<span class="nav-label">Dashboard</span></a>
                 <a href="/agents" class="{{ 'nav-active' if request.path.startswith('/agents') else '' }}">{{ nav_ic('<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>') }}<span class="nav-label">Agents</span><span id="wa-disconnect-badge" class="hidden ml-1 text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium" title="WhatsApp channels not connected">0</span></a>
@@ -346,6 +350,34 @@ document.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('#site-nav a')) toggleNav(false);
 });
 window.addEventListener('resize', function () { if (window.innerWidth > 768) toggleNav(false); else syncNavExtra(); });
+
+// Desktop navbar: one underline that slides to the hovered / focused link and returns to the current page's link.
+(function () {
+    var nav = document.getElementById('site-nav'), ink = nav && nav.querySelector('.nav-ink');
+    if (!nav || !ink) return;
+    var links = Array.prototype.slice.call(nav.querySelectorAll('a'));
+    function active() { return nav.querySelector('a.nav-active'); }
+    function place(link, animate) {
+        if (!link || window.innerWidth <= 768) { ink.classList.remove('is-on'); return; }
+        var pad = parseFloat(getComputedStyle(link).paddingLeft) || 12;
+        if (!animate) ink.style.transition = 'none';
+        ink.style.width = Math.max(link.offsetWidth - pad * 2, 8) + 'px';
+        ink.style.transform = 'translate(' + (link.offsetLeft + pad) + 'px,' + (link.offsetTop + link.offsetHeight - 1) + 'px)';
+        ink.classList.add('is-on');
+        if (!animate) { void ink.offsetWidth; ink.style.transition = ''; }
+    }
+    function home(animate) { place(active(), animate); if (!active()) ink.classList.remove('is-on'); }
+    links.forEach(function (a) {
+        a.addEventListener('mouseenter', function () { place(a, true); });
+        a.addEventListener('focus', function () { place(a, true); });
+        a.addEventListener('blur', function () { home(true); });
+    });
+    nav.addEventListener('mouseleave', function () { home(true); });
+    window.addEventListener('resize', function () { home(false); });
+    window.addEventListener('load', function () { home(false); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { home(false); });
+    home(false);
+})();
 </script>
 </body>
 </html>
