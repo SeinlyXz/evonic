@@ -1,8 +1,8 @@
 # Evonic
 
-Agentic Infrastructure for Organization: Transform your organization with agentic AI, making every workflow faster, smarter, and sharper at scale.
+> Agentic Infrastructure for Organization: Transform your organization with agentic AI, making every workflow faster, smarter, and sharper at scale.
 
-Evonic is an **agentic AI framework** for designing, building, and orchestrating intelligent agents from concept to production. It empowers you to define every aspect of an agent, its **model**, **tools**, **knowledge**, **channels**, **workplace**, and **skills**, and compose them into multi-agent systems that operate autonomously across distributed environments.
+Evonic is an **agentic AI framework** for designing, building, and orchestrating intelligent agents from concept to production for your business or organization. It empowers you to define every aspect of an agent, its **model**, **tools**, **knowledge**, **channels**, **workplace**, and **skills**, and compose them into multi-agent systems that operate autonomously across distributed environments.
 
 **Full documentation:** [evonic.dev](https://evonic.dev)
 
