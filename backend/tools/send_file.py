@@ -162,13 +162,14 @@ def execute(agent: dict, args: dict) -> dict:
             if 'error' in result:
                 return {"error": f'Failed to read file from workplace: {result["error"]}'}
 
-            ext = os.path.splitext(file_path)[1]
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-            try:
-                tmp.write(result['bytes'])
-            finally:
-                tmp.close()
-            file_path = tmp.name
+            # Keep the original basename: channels deliver documents under the
+            # staged file's name, so a NamedTemporaryFile reached the user as
+            # e.g. "tmpwoz1k9iw.xlsx". A private temp dir keeps it collision-free.
+            staging_dir = tempfile.mkdtemp(prefix='evonic-send-')
+            staged_path = os.path.join(staging_dir, os.path.basename(target_path) or 'file')
+            with open(staged_path, 'wb') as staged:
+                staged.write(result['bytes'])
+            file_path = staged_path
         else:
             # No workplace/sandbox: direct local filesystem access
             if not os.path.isabs(file_path):
