@@ -102,8 +102,8 @@ evaluation.db-journal
 *.db-shm
 *.db-wal
 
-# Keep seed/test database (optional - uncomment if you want to ignore)
-# seed/test_db.sqlite
+# Keep evaluator/test database (optional - uncomment if you want to ignore)
+# evaluator/test_db.sqlite
 
 # -------------------------------
 # IDEs and Editors

@@ -119,7 +119,7 @@ if not os.path.isdir(_shared_db_dir):
     os.makedirs(_shared_db_dir, exist_ok=True)
 
 DB_PATH = os.path.join(_shared_db_dir, "evonic.db")
-TEST_DB_PATH = os.path.join(BASE_DIR, "seed", "test_db.sqlite")
+TEST_DB_PATH = os.path.join(BASE_DIR, "evaluator", "test_db.sqlite")
 
 # Flask — SECRET_KEY: auto-generate once and persist to .env if missing.
 # The previous manual .env regex scanner (added when load_dotenv() was absent
