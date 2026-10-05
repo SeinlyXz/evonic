@@ -1,9 +1,9 @@
 """End-to-end verification for the shipped example templates (task #31).
 
-``agent_templates/`` now ships three example blueprints that are meant to be
+``agent_templates/`` now ships one example blueprint that is meant to be
 copied, edited and instantiated.  ``support_triage_bot`` uses the additive
-**directory form** (``meta.json`` + ``system.md`` + ``kb/**``); the other two
-are single ``<id>.json`` files.  Both shapes are resolved shape-aware below.
+**directory form** (``meta.json`` + ``system.md`` + ``kb/**``); the legacy
+single ``<id>.json`` shape is resolved shape-aware alongside it.
 Nothing else in the suite would notice if one of them regressed, so this module
 pins the whole user-visible path:
 
@@ -50,7 +50,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLES_DIR = os.path.join(REPO_ROOT, "agent_templates")
 
 #: The examples this task ships.  Parametrised tests iterate exactly these.
-EXAMPLE_IDS = ("support_triage_bot", "data_analyst", "hello_world_showcase")
+EXAMPLE_IDS = ("support_triage_bot",)
 
 #: Distinctive plaintext that must never reach a log record, the template file,
 #: or the simulation result.
@@ -64,24 +64,11 @@ PARAMS = {
         "escalate_on_refund": False,
         "refund_limit_usd": 500,
     },
-    "data_analyst": {
-        "report_scope": "quarterly ARR",
-        "currency": "EUR",
-        "include_charts": False,
-        "lookback_days": 90,
-    },
-    "hello_world_showcase": {
-        "agent_name": "Ada",
-        "greeting_style": "playful",
-        "emoji_enabled": False,
-    },
 }
 
 #: Values supplied for each example's declared variables (one is secret).
 VARIABLES = {
     "support_triage_bot": {"CRM_API_TOKEN": SECRET_NEEDLE},
-    "data_analyst": {"WAREHOUSE_DSN": SECRET_NEEDLE},
-    "hello_world_showcase": {"DEMO_API_KEY": SECRET_NEEDLE},
 }
 
 #: ``defaults`` keys that only the advanced section of the agent editor shows.
@@ -291,11 +278,10 @@ def test_shipped_examples_are_the_expected_three():
     assert set(shipped_ids()) >= set(EXAMPLE_IDS)
 
 
-def test_shipped_examples_cover_both_storage_shapes():
-    """One example ships in the directory form, the rest as single JSON files."""
+def test_shipped_examples_use_the_directory_form():
+    """The shipped example uses the directory form with a meta.json marker."""
     shapes = {template_id: example_shape(template_id) for template_id in EXAMPLE_IDS}
-    assert "dir" in shapes.values()
-    assert "file" in shapes.values()
+    assert all(shape == "dir" for shape in shapes.values())
     assert shapes["support_triage_bot"] == "dir"
     assert os.path.isfile(
         os.path.join(EXAMPLES_DIR, "support_triage_bot", "meta.json"))

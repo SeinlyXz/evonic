@@ -90,8 +90,6 @@ agent_templates/<id>/
 | Template | Shape | Shows |
 | --- | --- | --- |
 | `support_triage_bot` | **directory** (`meta.json` + `system.md` + `kb/`) | required text param **with default**, select, boolean and number params, 16 `defaults` keys spanning basic + advanced, 4 tools, 2 skills, 3 variables (**one secret**) and 2 KB files. |
-| `data_analyst` | single JSON file | sandboxed analyst: number/select/boolean params, `runpy`/`read_file`/`write_file` tooling, `explorer` + `subagent` skills, a secret DSN variable and a metrics glossary. |
-| `hello_world_showcase` | single JSON file | smallest walkthrough: one parameter of every type, two tools, one skill, two variables and one KB file. |
 
 Copy one, change the `id`, then edit it in `/template/<id>` and use the simulation panel before creating real agents.
 
