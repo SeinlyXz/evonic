@@ -240,7 +240,10 @@ def _validated_filename(filename: str, mime_type: str, index: int) -> str:
     stem, supplied_extension = os.path.splitext(filename)
     if supplied_extension.lower() != extension:
         filename = f"{stem}{extension}"
-    return f"generated-{index + 1}-{filename}"
+    # Providers commonly use deterministic filenames. Add a nanosecond Unix
+    # timestamp so repeated requests can coexist while retaining the provider
+    # filename for human recognition and sortable creation order.
+    return f"generated-{index + 1}-{time.time_ns()}-{filename}"
 
 
 def _is_public_https_url(value: str) -> bool:

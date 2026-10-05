@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -73,7 +74,7 @@ def test_generate_image_persists_validated_compact_artifact(image_tool, tmp_path
     assert len(result["artifacts"]) == 1
     artifact = result["artifacts"][0]
     assert set(artifact) == {"filename", "mime_type", "size", "width", "height"}
-    assert artifact["filename"].startswith("generated-1-mock-")
+    assert re.fullmatch(r"generated-1-\d{19}-mock-[a-f0-9]+\.png", artifact["filename"])
     assert artifact["mime_type"] == "image/png"
     assert (artifact["width"], artifact["height"]) == (1, 1)
     assert artifact["size"] > 0
@@ -97,8 +98,31 @@ def test_generate_image_mock_provider_supports_portrait_size(image_tool):
     assert result["status"] == "success"
     assert result["provider"] == "mock"
     assert len(result["artifacts"]) == 1
-    assert result["artifacts"][0]["filename"].startswith("generated-1-mock-")
+    assert re.fullmatch(r"generated-1-\d{19}-mock-[a-f0-9]+\.png", result["artifacts"][0]["filename"])
     assert result["artifacts"][0]["mime_type"] == "image/png"
+
+
+def test_generate_image_persists_repeated_provider_filenames(image_tool, tmp_path):
+    request = {
+        "prompt": "A repeating abstract pattern",
+        "size": "768x1344",
+        "output_format": "png",
+        "model": "deterministic-mock-v1",
+    }
+
+    first = image_tool.execute({"id": "image-tool-test-agent"}, request)
+    second = image_tool.execute({"id": "image-tool-test-agent"}, request)
+
+    assert first["status"] == second["status"] == "success"
+    first_filename = first["artifacts"][0]["filename"]
+    second_filename = second["artifacts"][0]["filename"]
+    assert first_filename != second_filename
+    assert re.fullmatch(r"generated-1-\d{19}-mock-[a-f0-9]+\.png", first_filename)
+    assert re.fullmatch(r"generated-1-\d{19}-mock-[a-f0-9]+\.png", second_filename)
+
+    artifact_dir = tmp_path / "shared" / "agents" / "image-tool-test-agent" / "artifacts"
+    assert (artifact_dir / first_filename).is_file()
+    assert (artifact_dir / second_filename).is_file()
 
 
 def test_generate_image_uses_no_implicit_provider_fallback(image_tool, monkeypatch):
