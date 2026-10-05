@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from unit_tests._node_runtime import node_bin
 import config
 from app import app
 from models.db import db
@@ -390,7 +391,7 @@ def test_simulate_route_captures_outbox_without_side_effects(
 
 PAGE_PATH = Path(__file__).resolve().parents[1] / "templates" / "edit_template.html"
 
-NODE = shutil.which("node") or shutil.which("nodejs")
+NODE = node_bin()
 
 
 def _extract_js_function(source, name):
