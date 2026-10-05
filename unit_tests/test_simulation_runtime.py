@@ -30,8 +30,8 @@ from backend.agent_runtime import context as _ctx
 from backend.agent_runtime import llm_tool_executor as _itx
 from backend.agent_runtime import simulation_runtime as simrt
 
-# The legacy "coder" skillset is a read-only template always present in
-# ``skillsets/``; using it keeps the tests hermetic without writing templates.
+# The canonical "coder" template is always present in ``agent_templates/``;
+# using it keeps the tests hermetic without writing templates.
 TEMPLATE_ID = "coder"
 
 

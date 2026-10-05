@@ -1,8 +1,11 @@
 """End-to-end verification for the shipped example templates (task #31).
 
-``agent_templates/`` now ships three example blueprints that are meant to be
-copied, edited and instantiated.  Nothing else in the suite would notice if one
-of them regressed, so this module pins the whole user-visible path:
+``agent_templates/`` now ships one example blueprint that is meant to be
+copied, edited and instantiated.  ``support_triage_bot`` uses the additive
+**directory form** (``meta.json`` + ``system.md`` + ``kb/**``); the classic
+single ``<id>.json`` shape is resolved shape-aware alongside it.
+Nothing else in the suite would notice if one of them regressed, so this module
+pins the whole user-visible path:
 
 * every shipped example validates against the canonical schema, loads from the
   repository root, and resolves its declared tools/skills on a clean machine;
@@ -47,7 +50,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLES_DIR = os.path.join(REPO_ROOT, "agent_templates")
 
 #: The examples this task ships.  Parametrised tests iterate exactly these.
-EXAMPLE_IDS = ("support_triage_bot", "data_analyst", "hello_world_showcase")
+EXAMPLE_IDS = ("support_triage_bot",)
 
 #: Distinctive plaintext that must never reach a log record, the template file,
 #: or the simulation result.
@@ -61,24 +64,11 @@ PARAMS = {
         "escalate_on_refund": False,
         "refund_limit_usd": 500,
     },
-    "data_analyst": {
-        "report_scope": "quarterly ARR",
-        "currency": "EUR",
-        "include_charts": False,
-        "lookback_days": 90,
-    },
-    "hello_world_showcase": {
-        "agent_name": "Ada",
-        "greeting_style": "playful",
-        "emoji_enabled": False,
-    },
 }
 
 #: Values supplied for each example's declared variables (one is secret).
 VARIABLES = {
     "support_triage_bot": {"CRM_API_TOKEN": SECRET_NEEDLE},
-    "data_analyst": {"WAREHOUSE_DSN": SECRET_NEEDLE},
-    "hello_world_showcase": {"DEMO_API_KEY": SECRET_NEEDLE},
 }
 
 #: ``defaults`` keys that only the advanced section of the agent editor shows.
@@ -108,17 +98,70 @@ def read_text(path):
         return handle.read()
 
 
+def example_shape(template_id, base=EXAMPLES_DIR):
+    """Return ``"dir"`` for the directory form, ``"file"`` for ``<id>.json``."""
+    if os.path.isdir(os.path.join(base, template_id)):
+        return "dir"
+    return "file"
+
+
+def example_paths(template_id, base=EXAMPLES_DIR):
+    """Every on-disk artifact that makes up a shipped example."""
+    if example_shape(template_id, base) == "dir":
+        paths = []
+        for dirpath, _dirnames, filenames in os.walk(
+                os.path.join(base, template_id)):
+            paths.extend(os.path.join(dirpath, name) for name in filenames)
+        return sorted(paths)
+    return [os.path.join(base, template_id + ".json")]
+
+
+def example_text(template_id, base=EXAMPLES_DIR):
+    """Concatenated text of every artifact (used by "never leaked" checks)."""
+    return "".join(read_text(path) for path in example_paths(template_id, base))
+
+
+def example_fingerprint(template_id, base=EXAMPLES_DIR):
+    """Content hash of every artifact, so any write can be detected."""
+    return {
+        os.path.relpath(path, base): hashlib.sha256(
+            open(path, "rb").read()).hexdigest()
+        for path in example_paths(template_id, base)
+    }
+
+
 def payload(template_id):
-    """Raw JSON of a shipped example (as an editor would see it on disk)."""
-    return json.loads(read_text(os.path.join(EXAMPLES_DIR, template_id + ".json")))
+    """Raw template of a shipped example (as the loader would see it on disk)."""
+    if example_shape(template_id) == "file":
+        return json.loads(read_text(
+            os.path.join(EXAMPLES_DIR, template_id + ".json")))
+
+    root = os.path.join(EXAMPLES_DIR, template_id)
+    data = json.loads(read_text(os.path.join(root, "meta.json")))
+    data["system_prompt"] = read_text(
+        os.path.join(root, data.get("prompt_file", "system.md")))
+    kb_files = {}
+    kb_root = os.path.join(root, "kb")
+    if os.path.isdir(kb_root):
+        for dirpath, dirnames, filenames in os.walk(kb_root):
+            dirnames.sort()
+            for name in sorted(filenames):
+                full = os.path.join(dirpath, name)
+                relative = os.path.relpath(full, kb_root).replace(os.sep, "/")
+                kb_files[relative] = read_text(full)
+    data["kb_files"] = kb_files
+    return data
 
 
 def shipped_ids():
-    return sorted(
-        name[: -len(".json")]
-        for name in os.listdir(EXAMPLES_DIR)
-        if name.endswith(".json")
-    )
+    """Every shipped example id, from both the file and the directory form."""
+    ids = []
+    for name in os.listdir(EXAMPLES_DIR):
+        if name.endswith(".json"):
+            ids.append(name[: -len(".json")])
+        elif os.path.isfile(os.path.join(EXAMPLES_DIR, name, "meta.json")):
+            ids.append(name)
+    return sorted(ids)
 
 
 def snapshot(root):
@@ -142,12 +185,16 @@ def make_examples_root(tmp_path, name):
     """
     root = tmp_path / name
     (root / "agent_templates").mkdir(parents=True, exist_ok=True)
-    (root / "skillsets").mkdir(parents=True, exist_ok=True)
 
     skill_ids = set()
     for template_id in shipped_ids():
-        source = os.path.join(EXAMPLES_DIR, template_id + ".json")
-        shutil.copy(source, root / "agent_templates" / (template_id + ".json"))
+        if example_shape(template_id) == "dir":
+            shutil.copytree(os.path.join(EXAMPLES_DIR, template_id),
+                            root / "agent_templates" / template_id)
+        else:
+            shutil.copy(
+                os.path.join(EXAMPLES_DIR, template_id + ".json"),
+                root / "agent_templates" / (template_id + ".json"))
         skill_ids.update(payload(template_id).get("skills") or [])
 
     for skill_id in sorted(skill_ids):
@@ -228,6 +275,15 @@ def examples_root(tmp_path):
 
 def test_shipped_examples_are_the_expected_three():
     assert set(shipped_ids()) >= set(EXAMPLE_IDS)
+
+
+def test_shipped_examples_use_the_directory_form():
+    """The shipped example uses the directory form with a meta.json marker."""
+    shapes = {template_id: example_shape(template_id) for template_id in EXAMPLE_IDS}
+    assert all(shape == "dir" for shape in shapes.values())
+    assert shapes["support_triage_bot"] == "dir"
+    assert os.path.isfile(
+        os.path.join(EXAMPLES_DIR, "support_triage_bot", "meta.json"))
 
 
 @pytest.mark.parametrize("template_id", EXAMPLE_IDS)
@@ -374,9 +430,9 @@ def test_ui_and_programmatic_instantiation_agree(client, tmp_path, monkeypatch,
     assert variables == secrets
 
     # ... and the template files on disk were never rewritten.
-    assert read_text(os.path.join(ui_root, "agent_templates",
-                                  template_id + ".json")) == read_text(
-        os.path.join(EXAMPLES_DIR, template_id + ".json"))
+    assert example_fingerprint(
+        template_id, os.path.join(ui_root, "agent_templates")) == \
+        example_fingerprint(template_id)
 
 
 # ---------------------------------------------------------------------------
@@ -440,8 +496,7 @@ def test_simulation_leaves_no_rows_no_files_and_no_secret_in_logs(
         # The secret never leaks into the result, the template, or any log.
         assert SECRET_NEEDLE not in json.dumps(result)
         assert SECRET_NEEDLE not in caplog.text
-        assert SECRET_NEEDLE not in read_text(
-            os.path.join(EXAMPLES_DIR, template_id + ".json"))
+        assert SECRET_NEEDLE not in example_text(template_id)
     finally:
         simrt.teardown(sim_id)
 

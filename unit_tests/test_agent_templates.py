@@ -4,8 +4,11 @@ The template engine is the user-facing layer that turns a JSON blueprint
 (tools, skills, variables, KB files, parameterized system prompt) into a real
 agent through :mod:`backend.agent_factory`.  These tests pin the contract that:
 
-* storage is two-root (writable ``agent_templates/`` + read-only ``skillsets/``)
-  with explicit precedence and no silent shadowing,
+* storage is a single writable root (``agent_templates/``) holding each
+  template in one of **two equivalent shapes**: a single ``<id>.json`` file or a
+  directory ``<id>/`` (``meta.json`` + prompt file + ``kb/**``).  Both load to
+  the same canonical mapping and a same-id clash between the two shapes is a
+  hard error, never silent precedence,
 * every id / KB filename that becomes a filesystem path is traversal-guarded,
 * the renderer is a hardened single pass: unknown or malformed placeholders are
   hard errors, ``\\{{`` escapes a literal brace, and substituted values are
@@ -15,12 +18,13 @@ agent through :mod:`backend.agent_factory`.  These tests pin the contract that:
   secret value into the template file.
 """
 
+import hashlib
 import json
 import os
 import shutil
 import tempfile
 import unittest
-from unittest import mock
+import unittest.mock
 
 from models.db import db
 
@@ -38,7 +42,6 @@ from backend.agent_templates import (
     PARAM_NAME_RE,
     SLUG_RE,
     TEMPLATE_SCHEMA_VERSION,
-    TemplateError,
     TemplateExistsError,
     TemplateNotFoundError,
     TemplateRenderError,
@@ -95,9 +98,7 @@ class TemplateTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="agent_templates_test_")
         self.templates_dir = os.path.join(self.tmp, "agent_templates")
-        self.legacy_dir = os.path.join(self.tmp, "skillsets")
         os.makedirs(self.templates_dir, exist_ok=True)
-        os.makedirs(self.legacy_dir, exist_ok=True)
         self.write_skill("github")
 
     def tearDown(self):
@@ -116,16 +117,8 @@ class TemplateTestCase(unittest.TestCase):
     def canonical_path(self, template_id):
         return os.path.join(self.templates_dir, template_id + ".json")
 
-    def legacy_path(self, template_id):
-        return os.path.join(self.legacy_dir, template_id + ".json")
-
     def write_canonical(self, payload, filename=None):
         path = self.canonical_path(filename or payload.get("id", "unnamed"))
-        self._write_json(path, payload)
-        return path
-
-    def write_legacy(self, payload, filename=None):
-        path = self.legacy_path(filename or payload.get("id", "unnamed"))
         self._write_json(path, payload)
         return path
 
@@ -142,9 +135,6 @@ class TemplateTestCase(unittest.TestCase):
 
     def template_files(self):
         return sorted(os.listdir(self.templates_dir))
-
-    def legacy_files(self):
-        return sorted(os.listdir(self.legacy_dir))
 
     def create(self, payload=None, **kwargs):
         return create_template(payload or template_payload(), base_dir=self.tmp, **kwargs)
@@ -601,12 +591,10 @@ class StorageTests(TemplateTestCase):
 
     def test_delete_removes_only_the_canonical_file(self):
         self.create()
-        self.write_legacy({"id": "legacy_bot", "name": "Legacy"})
         self.assertTrue(delete_template("support_bot", base_dir=self.tmp))
         self.assertFalse(has_template("support_bot", base_dir=self.tmp))
         with self.assertRaises(TemplateNotFoundError):
             delete_template("support_bot", base_dir=self.tmp)
-        self.assertEqual(self.legacy_files(), ["legacy_bot.json"])
 
     def test_has_template_and_get_raise_for_unknown_ids(self):
         self.assertFalse(has_template("nope", base_dir=self.tmp))
@@ -654,103 +642,11 @@ class StorageTests(TemplateTestCase):
         with self.assertRaises(TemplateValidationError):
             get_template("other_name", base_dir=self.tmp)
 
-    # -- legacy root --------------------------------------------------
-
-    def test_legacy_template_is_read_only_and_adapted(self):
-        legacy = {
-            "id": "legacy_bot",
-            "name": "Legacy Bot",
-            "description": "Old style.",
-            "system_prompt": "Legacy prompt",
-            "model": "gpt-4o-mini",
-            "tools": ["read_file"],
-            "skills": ["github"],
-            "kb_files": {"old.md": "old"},
-        }
-        self.write_legacy(legacy)
-        loaded = get_template("legacy_bot", base_dir=self.tmp)
-        self.assertEqual(loaded["defaults"], {"model_id": "gpt-4o-mini"})
-        self.assertEqual(loaded["category"], "legacy")
-        self.assertEqual(loaded["kb_files"], {"old.md": "old"})
-        # The legacy root is read-only: the loader must advertise that and must
-        # not create a canonical copy behind the caller's back.
-        self.assertTrue(loaded["_meta"]["legacy"])
-        self.assertFalse(loaded["_meta"]["writable"])
-        self.assertEqual(loaded["_meta"]["source"], "skillsets")
-        self.assertEqual(loaded["_meta"]["file"], "legacy_bot.json")
-        self.assertEqual(self.template_files(), [])
-
-    def test_legacy_only_template_cannot_be_updated_or_deleted(self):
-        self.write_legacy({"id": "legacy_bot", "name": "Legacy", "system_prompt": "x"})
-        with self.assertRaises(TemplateError) as ctx:
-            update_template("legacy_bot", {"name": "New"}, base_dir=self.tmp)
-        self.assertIn("read-only legacy skillset", str(ctx.exception))
-        with self.assertRaises(TemplateError):
-            delete_template("legacy_bot", base_dir=self.tmp)
-        self.assertEqual(self.legacy_files(), ["legacy_bot.json"])
-
-    def test_legacy_files_are_never_modified(self):
-        path = self.write_legacy({
-            "id": "legacy_bot",
-            "name": "Legacy",
-            "system_prompt": "x",
-            "tools": ["read_file"],
-            "skills": [],
-            "kb_files": {"a.md": "A"},
-        })
-        before_bytes = self.read_text(path)
-        before_mtime = os.path.getmtime(path)
-        list_templates(base_dir=self.tmp)
-        list_collisions(base_dir=self.tmp)
-        get_template("legacy_bot", base_dir=self.tmp)
-        resolve_template("legacy_bot", base_dir=self.tmp)
-        self.create(template_payload(id="fresh"))
-        self.assertEqual(self.read_text(path), before_bytes)
-        self.assertEqual(os.path.getmtime(path), before_mtime)
-        self.assertEqual(self.legacy_files(), ["legacy_bot.json"])
-
-    def test_legacy_duplicate_ids_are_reported(self):
-        self.write_legacy({"id": "dup", "name": "One", "system_prompt": "a"}, filename="a")
-        self.write_legacy({"id": "dup", "name": "Two", "system_prompt": "b"}, filename="b")
-        collisions = list_collisions(base_dir=self.tmp)
-        self.assertEqual(len(collisions), 1)
-        self.assertEqual(collisions[0]["id"], "dup")
-        self.assertEqual(collisions[0]["kind"], "legacy_duplicate")
-        self.assertIn("duplicate_file", collisions[0])
-
-    # -- collisions / precedence --------------------------------------
-
-    def test_cross_root_collision_is_reported_and_precedence_is_explicit(self):
-        self.write_legacy({
-            "id": "support_bot",
-            "name": "Legacy Support",
-            "system_prompt": "legacy prompt",
-        })
-        with self.assertRaises(TemplateExistsError) as ctx:
-            self.create()
-        self.assertIn("shadow", str(ctx.exception))
-        created = self.create(allow_shadow=True)
-        self.assertEqual(created["name"], "Support Bot")
-        # Canonical wins.
-        self.assertEqual(get_template("support_bot", base_dir=self.tmp)["name"], "Support Bot")
-        entries = {(t["id"], t["source"]): t for t in list_templates(base_dir=self.tmp)}
-        self.assertFalse(entries[("support_bot", "agent_templates")]["shadowed"])
-        self.assertTrue(entries[("support_bot", "agent_templates")]["shadows"])
-        self.assertTrue(entries[("support_bot", "skillsets")]["shadowed"])
-        self.assertFalse(entries[("support_bot", "skillsets")]["shadows"])
-        collisions = list_collisions(base_dir=self.tmp)
-        self.assertEqual(len(collisions), 1)
-        self.assertEqual(collisions[0]["id"], "support_bot")
-        self.assertEqual(collisions[0]["kind"], "canonical_legacy")
-        self.assertEqual(collisions[0]["chosen"], "agent_templates")
-
-    def test_list_templates_sorts_and_can_skip_legacy(self):
+    def test_list_templates_sorts_by_id(self):
         self.create(template_payload(id="zeta"))
-        self.write_legacy({"id": "alpha", "name": "Alpha", "system_prompt": "x"})
+        self.create(template_payload(id="alpha"))
         everything = list_templates(base_dir=self.tmp)
         self.assertEqual([t["id"] for t in everything], ["alpha", "zeta"])
-        canonical_only = list_templates(base_dir=self.tmp, include_legacy=False)
-        self.assertEqual([t["id"] for t in canonical_only], ["zeta"])
 
     def test_missing_roots_are_treated_as_empty(self):
         empty = tempfile.mkdtemp(prefix="agent_templates_empty_")
@@ -767,10 +663,6 @@ class StorageTests(TemplateTestCase):
         self.assertEqual(
             os.path.realpath(agent_templates.templates_dir()),
             os.path.realpath(os.path.join(REPO_ROOT, "agent_templates")),
-        )
-        self.assertEqual(
-            os.path.realpath(agent_templates.legacy_templates_dir()),
-            os.path.realpath(os.path.join(REPO_ROOT, "skillsets")),
         )
 
 
@@ -1009,21 +901,7 @@ class InstantiationTests(TemplateTestCase):
                 "support_bot", db=db, base_dir=self.tmp, overrides={"memory_engine": "sqlite"}
             )
 
-    def test_legacy_template_can_be_instantiated_but_not_edited(self):
-        self.write_legacy({
-            "id": "legacy_bot",
-            "name": "Legacy Bot",
-            "description": "Old style.",
-            "system_prompt": "Legacy prompt",
-            "model": "",
-            "tools": ["read_file"],
-            "skills": [],
-            "kb_files": {},
-        })
-        agent_id = create_agent_from_template("legacy_bot", db=db, base_dir=self.tmp)
-        self.assertEqual(agent_id, "legacy_bot")
-        self.assertEqual(self.system_prompt(agent_id), "Legacy prompt")
-        self.assertEqual(self.legacy_files(), ["legacy_bot.json"])
+
 
 
 class PreviewTests(TemplateTestCase):
@@ -1049,6 +927,455 @@ class PreviewTests(TemplateTestCase):
                 get_template("support_bot", base_dir=self.tmp), {}, strict=True
             )
 
+
+# ----------------------------------------------------------------------
+# Directory-form templates (additive: meta.json + system.md + kb/**)
+# ----------------------------------------------------------------------
+
+
+class DirectoryTemplateTests(TemplateTestCase):
+    """The additive directory form: ``<id>/meta.json`` + ``<id>/system.md`` + ``kb/**``.
+
+    The single-file ``<id>.json`` form stays valid forever; the directory form
+    only changes *where* the prompt and the knowledge base live on disk.  Every
+    test here proves the loader re-inlines a directory template into the exact
+    same canonical mapping the JSON loader returns, and that the writers keep the
+    two shapes independent.
+    """
+
+    def dir_path(self, template_id):
+        return os.path.join(self.templates_dir, template_id)
+
+    def write_dir_template(self, template_id, *, meta=None, prompt=None,
+                           kb=None, prompt_name="system.md"):
+        base = self.dir_path(template_id)
+        os.makedirs(os.path.join(base, "kb"), exist_ok=True)
+        if prompt is not None:
+            path = os.path.join(base, *prompt_name.split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(prompt)
+        for relative, content in (kb or {}).items():
+            path = os.path.join(base, "kb", *relative.split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(content)
+        if meta is not None:
+            self._write_json(os.path.join(base, "meta.json"), meta)
+        return base
+
+    def dir_meta(self, template_id="support_bot", **overrides):
+        """The ``meta.json`` body for *template_id* (never inline prompt/kb)."""
+        payload = template_payload(id=template_id)
+        payload.pop("system_prompt")
+        payload.pop("kb_files")
+        payload.update(overrides)
+        return payload
+
+    def snapshot_dir(self, template_id):
+        """Content hash of every file in a directory template."""
+        base = self.dir_path(template_id)
+        hashes = {}
+        for dirpath, _dirnames, names in os.walk(base):
+            for name in names:
+                full = os.path.join(dirpath, name)
+                with open(full, "rb") as handle:
+                    hashes[os.path.relpath(full, base)] = hashlib.sha256(
+                        handle.read()).hexdigest()
+        return hashes
+
+    def summary(self, template_id):
+        return {s["id"]: s for s in list_templates(base_dir=self.tmp)}[template_id]
+
+    # -- discovery ----------------------------------------------------
+
+    def test_directory_template_is_discovered_and_loads_like_the_file_form(self):
+        self.write_dir_template(
+            "support_bot",
+            meta=self.dir_meta(),
+            prompt="You support {{company}} in a {{tone}} tone.",
+            kb={"guide/start.md": "# Start\n"},
+        )
+        loaded = get_template("support_bot", base_dir=self.tmp)
+        self.assertEqual(loaded["id"], "support_bot")
+        self.assertEqual(loaded["system_prompt"],
+                         "You support {{company}} in a {{tone}} tone.")
+        self.assertEqual(loaded["kb_files"], {"guide/start.md": "# Start\n"})
+        self.assertEqual(loaded["_meta"]["file"], None)
+        self.assertTrue(loaded["_meta"]["writable"])
+        self.assertFalse(loaded["_meta"]["legacy"])
+        # No ``<id>.json`` was created: the directory is the only artifact.
+        self.assertEqual(self.template_files(), ["support_bot"])
+        self.assertFalse(os.path.exists(self.canonical_path("support_bot")))
+
+    def test_list_templates_reports_the_shape_and_keeps_file_for_compat(self):
+        self.create()                       # support_bot.json  -> shape "file"
+        self.write_dir_template(
+            "dir_bot", meta=self.dir_meta("dir_bot"), prompt="Hi", kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertEqual(entries["support_bot"]["shape"], "file")
+        self.assertEqual(entries["support_bot"]["file"], "support_bot.json")
+        self.assertEqual(entries["dir_bot"]["shape"], "dir")
+        self.assertIsNone(entries["dir_bot"]["file"])
+        self.assertTrue(entries["dir_bot"]["valid"])
+        self.assertTrue(has_template("dir_bot", base_dir=self.tmp))
+
+    def test_directory_without_meta_json_is_invalid_not_fatal(self):
+        os.makedirs(os.path.join(self.dir_path("half_built"), "kb"), exist_ok=True)
+        with open(os.path.join(self.dir_path("half_built"), "kb", "x.md"),
+                  "w", encoding="utf-8") as handle:
+            handle.write("content")
+        self.create()
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertEqual(sorted(entries), ["half_built", "support_bot"])
+        self.assertFalse(entries["half_built"]["valid"])
+        self.assertIn("meta.json", entries["half_built"]["error"])
+        # The healthy template is unaffected.
+        self.assertTrue(entries["support_bot"]["valid"])
+
+    # -- meta.json contract -------------------------------------------
+
+    def test_declared_id_must_match_the_directory_name(self):
+        self.write_dir_template(
+            "other_name", meta=self.dir_meta("support_bot"), prompt="Hi", kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["other_name"]["valid"])
+        self.assertIn("does not match", entries["other_name"]["error"])
+        with self.assertRaises(TemplateValidationError):
+            get_template("other_name", base_dir=self.tmp)
+
+    def test_inline_prompt_and_kb_files_are_forbidden_in_meta_json(self):
+        meta = self.dir_meta()
+        meta["system_prompt"] = "inline"
+        self.write_dir_template("support_bot", meta=meta,
+                                prompt="from file", kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("system_prompt", entries["support_bot"]["error"])
+
+        shutil.rmtree(self.dir_path("support_bot"))
+        meta = self.dir_meta()
+        meta["kb_files"] = {"a.md": "x"}
+        self.write_dir_template("support_bot", meta=meta, prompt="p", kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("kb_files", entries["support_bot"]["error"])
+
+    def test_meta_json_rejects_unsupported_keys(self):
+        meta = self.dir_meta()
+        meta["surprise"] = "x"
+        self.write_dir_template("support_bot", meta=meta, prompt="p", kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("surprise", entries["support_bot"]["error"])
+
+    def test_missing_prompt_file_is_reported(self):
+        self.write_dir_template("support_bot", meta=self.dir_meta(),
+                                prompt=None, kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("system.md", entries["support_bot"]["error"])
+
+    # -- safety: traversal, symlinks, extensions, caps -----------------
+
+    def test_prompt_file_traversal_is_refused(self):
+        outside = os.path.join(self.tmp, "outside.md")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write("secret")
+        meta = self.dir_meta()
+        meta["prompt_file"] = "../outside.md"
+        self.write_dir_template("support_bot", meta=meta, prompt="p", kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("prompt_file", entries["support_bot"]["error"])
+
+    def test_prompt_file_override_is_honoured(self):
+        meta = self.dir_meta()
+        meta["prompt_file"] = "prompt/agent.md"
+        self.write_dir_template("support_bot", meta=meta,
+                                prompt="Custom prompt.", kb={},
+                                prompt_name="prompt/agent.md")
+        loaded = get_template("support_bot", base_dir=self.tmp)
+        self.assertEqual(loaded["system_prompt"], "Custom prompt.")
+
+    def test_symlinked_prompt_file_is_refused(self):
+        outside = os.path.join(self.tmp, "outside.md")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write("secret")
+        base = self.dir_path("support_bot")
+        os.makedirs(base, exist_ok=True)
+        os.symlink(outside, os.path.join(base, "system.md"))
+        self.write_dir_template("support_bot", meta=self.dir_meta(), kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("symbolic link", entries["support_bot"]["error"])
+
+    def test_symlinked_template_directory_is_refused(self):
+        outside = os.path.join(self.tmp, "elsewhere")
+        os.makedirs(outside, exist_ok=True)
+        os.symlink(outside, self.dir_path("linked"))
+        self.assertFalse(has_template("linked", base_dir=self.tmp))
+        with self.assertRaises(TemplateValidationError):
+            get_template("linked", base_dir=self.tmp)
+
+    def test_symlinked_kb_entry_is_refused(self):
+        outside = os.path.join(self.tmp, "outside.md")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write("secret")
+        self.write_dir_template("support_bot", meta=self.dir_meta(),
+                                prompt="p", kb={})
+        os.symlink(outside, os.path.join(self.dir_path("support_bot"), "kb",
+                                         "leak.md"))
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("symbolic link", entries["support_bot"]["error"])
+
+    def test_symlinked_kb_directory_is_refused(self):
+        outside = os.path.join(self.tmp, "elsewhere")
+        os.makedirs(outside, exist_ok=True)
+        self.write_dir_template("support_bot", meta=self.dir_meta(),
+                                prompt="p", kb={})
+        os.symlink(outside, os.path.join(self.dir_path("support_bot"), "kb",
+                                         "linked_dir"))
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("symbolic link", entries["support_bot"]["error"])
+
+    def test_disallowed_kb_extension_is_refused(self):
+        self.write_dir_template("support_bot", meta=self.dir_meta(),
+                                prompt="p", kb={"config.json": "{}"})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("config.json", entries["support_bot"]["error"])
+
+    def test_dotfiles_and_dot_directories_are_skipped(self):
+        self.write_dir_template(
+            "support_bot", meta=self.dir_meta(), prompt="p",
+            kb={".gitkeep": "", "guide/start.md": "ok"},
+        )
+        os.makedirs(os.path.join(self.dir_path("support_bot"), "kb", ".hidden"),
+                    exist_ok=True)
+        with open(os.path.join(self.dir_path("support_bot"), "kb", ".hidden", "x.md"),
+                  "w", encoding="utf-8") as handle:
+            handle.write("nope")
+        loaded = get_template("support_bot", base_dir=self.tmp)
+        self.assertEqual(loaded["kb_files"], {"guide/start.md": "ok"})
+
+    def test_oversized_kb_file_is_refused(self):
+        self.write_dir_template(
+            "support_bot", meta=self.dir_meta(), prompt="p",
+            kb={"big.md": "x" * (MAX_KB_FILE_LENGTH + 1)},
+        )
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("too large", entries["support_bot"]["error"])
+
+    def test_oversized_prompt_file_is_refused(self):
+        from backend.agent_templates import MAX_TEMPLATE_BYTES
+        self.write_dir_template(
+            "support_bot", meta=self.dir_meta(),
+            prompt="x" * (MAX_TEMPLATE_BYTES + 1), kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("too large", entries["support_bot"]["error"])
+
+    def test_too_many_kb_files_is_refused(self):
+        from backend.agent_templates import MAX_TEMPLATE_ITEMS
+        kb = {"file-%03d.md" % index: "x" for index in range(MAX_TEMPLATE_ITEMS + 1)}
+        self.write_dir_template("support_bot", meta=self.dir_meta(),
+                                prompt="p", kb=kb)
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("too many", entries["support_bot"]["error"])
+
+    # -- content semantics --------------------------------------------
+
+    def test_kb_content_is_copied_verbatim(self):
+        """KB placeholders stay literal: no rendering and no audit."""
+        self.write_dir_template(
+            "support_bot", meta=self.dir_meta(),
+            prompt="You support {{company}}.",
+            kb={"notes.md": "Tone for {{company}} is {{tone}} and {{unknown}} stays."},
+        )
+        loaded = get_template("support_bot", base_dir=self.tmp)
+        self.assertEqual(
+            loaded["kb_files"]["notes.md"],
+            "Tone for {{company}} is {{tone}} and {{unknown}} stays.",
+        )
+        # ``{{unknown}}`` is undeclared, yet the template is valid: the audit
+        # never looks at knowledge-base content.
+        self.assertTrue(self.summary("support_bot")["valid"])
+        self.assertEqual(loaded["system_prompt"], "You support {{company}}.")
+
+    def test_prompt_placeholders_are_still_rendered(self):
+        self.write_dir_template(
+            "support_bot", meta=self.dir_meta(),
+            prompt="You support {{company}} in a {{tone}} tone.",
+            kb={},
+        )
+        rendered = render_system_prompt(
+            get_template("support_bot", base_dir=self.tmp), {}, strict=True)
+        self.assertEqual(rendered, "You support Acme in a friendly tone.")
+
+    def test_undeclared_prompt_placeholder_is_still_a_hard_error(self):
+        self.write_dir_template(
+            "support_bot", meta=self.dir_meta(),
+            prompt="Hello {{ghost}}.", kb={})
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("ghost", entries["support_bot"]["error"])
+
+    # -- both shapes at once ------------------------------------------
+
+    def test_both_shapes_for_one_id_is_a_hard_error(self):
+        self.write_canonical(template_payload(id="support_bot"))
+        self.write_dir_template(
+            "support_bot", meta=self.dir_meta(), prompt="from dir", kb={})
+        collisions = list_collisions(base_dir=self.tmp)
+        self.assertEqual(len(collisions), 1)
+        self.assertEqual(collisions[0]["id"], "support_bot")
+        self.assertEqual(collisions[0]["kind"], "canonical_shape")
+        self.assertEqual(collisions[0]["canonical_file"], "support_bot.json")
+        self.assertEqual(collisions[0]["canonical_dir"], "support_bot")
+        self.assertIn("both", collisions[0]["message"])
+
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertFalse(entries["support_bot"]["valid"])
+        self.assertIn("both", entries["support_bot"]["error"])
+        with self.assertRaises(TemplateValidationError):
+            get_template("support_bot", base_dir=self.tmp)
+        with self.assertRaises(TemplateExistsError):
+            create_template(template_payload(id="support_bot"), base_dir=self.tmp)
+        with self.assertRaises(TemplateValidationError):
+            update_template("support_bot", {"name": "Nope"}, base_dir=self.tmp)
+
+    def test_only_the_shape_collision_is_reported(self):
+        self.create()
+        self.write_dir_template("dir_bot", meta=self.dir_meta("dir_bot"),
+                                prompt="Hi", kb={})
+        self.assertEqual(list_collisions(base_dir=self.tmp), [])
+
+    # -- writers ------------------------------------------------------
+
+    def test_create_update_delete_round_trip_on_the_directory_shape(self):
+        created = create_template(
+            template_payload(id="dir_bot", system_prompt="Hi {{company}}",
+                             kb_files={"guide/start.md": "# Start\n"}),
+            base_dir=self.tmp, shape="dir",
+        )
+        self.assertEqual(created["id"], "dir_bot")
+        self.assertEqual(created["_meta"]["file"], None)
+        # meta.json + system.md + kb/guide/start.md, and no <id>.json.
+        self.assertEqual(sorted(os.listdir(self.dir_path("dir_bot"))),
+                         ["kb", "meta.json", "system.md"])
+        self.assertEqual(self.template_files(), ["dir_bot"])
+        stored = json.loads(self.read_text(
+            os.path.join(self.dir_path("dir_bot"), "meta.json")))
+        self.assertNotIn("system_prompt", stored)
+        self.assertNotIn("kb_files", stored)
+        self.assertEqual(stored["id"], "dir_bot")
+        # Clean staging: nothing left behind that discovery could pick up.
+        self.assertEqual(self.template_files(), ["dir_bot"])
+
+        updated = update_template(
+            "dir_bot", {"description": "Now described."}, base_dir=self.tmp)
+        self.assertEqual(updated["description"], "Now described.")
+        self.assertEqual(updated["system_prompt"], "Hi {{company}}")
+        self.assertEqual(updated["kb_files"], {"guide/start.md": "# Start\n"})
+        self.assertEqual(updated["_meta"]["file"], None)
+
+        self.assertTrue(delete_template("dir_bot", base_dir=self.tmp))
+        self.assertFalse(os.path.exists(self.dir_path("dir_bot")))
+        self.assertEqual(self.template_files(), [])
+
+    def test_create_defaults_to_the_single_file_shape(self):
+        created = self.create()
+        self.assertEqual(created["_meta"]["file"], "support_bot.json")
+        self.assertTrue(os.path.isfile(self.canonical_path("support_bot")))
+        self.assertFalse(os.path.isdir(self.dir_path("support_bot")))
+
+    def test_create_rejects_an_unknown_shape(self):
+        with self.assertRaises(TemplateValidationError):
+            create_template(template_payload(), base_dir=self.tmp, shape="zip")
+        self.assertEqual(self.template_files(), [])
+
+    def test_update_prunes_dropped_kb_files(self):
+        create_template(
+            template_payload(id="dir_bot", kb_files={"a.md": "a", "b.md": "b"}),
+            base_dir=self.tmp, shape="dir",
+        )
+        update_template(
+            "dir_bot", {"kb_files": {"a.md": "a2"}}, base_dir=self.tmp)
+        loaded = get_template("dir_bot", base_dir=self.tmp)
+        self.assertEqual(loaded["kb_files"], {"a.md": "a2"})
+        self.assertEqual(
+            sorted(os.listdir(os.path.join(self.dir_path("dir_bot"), "kb"))),
+            ["a.md"])
+
+    def test_update_without_kb_files_never_prunes(self):
+        create_template(
+            template_payload(id="dir_bot", kb_files={"a.md": "a", "b.md": "b"}),
+            base_dir=self.tmp, shape="dir",
+        )
+        update_template("dir_bot", {"name": "Renamed"}, base_dir=self.tmp)
+        loaded = get_template("dir_bot", base_dir=self.tmp)
+        self.assertEqual(sorted(loaded["kb_files"]), ["a.md", "b.md"])
+
+    def test_failed_update_leaves_the_directory_byte_identical(self):
+        create_template(
+            template_payload(id="dir_bot", system_prompt="Hi",
+                             kb_files={"a.md": "a"}),
+            base_dir=self.tmp, shape="dir",
+        )
+        before = self.snapshot_dir("dir_bot")
+        with self.assertRaises(TemplateValidationError):
+            update_template("dir_bot", {"kb_files": {"a.md": "a", "pickle.json": "{}"}},
+                            base_dir=self.tmp)
+        with self.assertRaises(TemplateRenderError):
+            update_template("dir_bot", {"system_prompt": "Hello {{ghost}}."},
+                            base_dir=self.tmp)
+        self.assertEqual(self.snapshot_dir("dir_bot"), before)
+        self.assertEqual(get_template("dir_bot", base_dir=self.tmp)["kb_files"],
+                         {"a.md": "a"})
+
+    def test_delete_uses_rmtree_for_nested_kb_directories(self):
+        create_template(
+            template_payload(id="dir_bot", kb_files={"deep/nested/leaf.md": "x"}),
+            base_dir=self.tmp, shape="dir",
+        )
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.dir_path("dir_bot"), "kb", "deep", "nested", "leaf.md")))
+        self.assertTrue(delete_template("dir_bot", base_dir=self.tmp))
+        self.assertFalse(os.path.exists(self.dir_path("dir_bot")))
+        self.assertEqual(list_collisions(base_dir=self.tmp), [])
+
+    def test_the_two_shapes_coexist_for_different_ids(self):
+        """A directory template never disturbs a single-file one."""
+        self.create()
+        create_template(template_payload(id="dir_bot"), base_dir=self.tmp,
+                        shape="dir")
+        entries = {e["id"]: e for e in list_templates(base_dir=self.tmp)}
+        self.assertEqual(sorted(entries), ["dir_bot", "support_bot"])
+        self.assertTrue(entries["dir_bot"]["valid"])
+        self.assertTrue(entries["support_bot"]["valid"])
+        self.assertEqual(entries["dir_bot"]["shape"], "dir")
+        self.assertEqual(entries["support_bot"]["shape"], "file")
+        self.assertEqual(list_collisions(base_dir=self.tmp), [])
+        self.assertEqual(self.template_files(), ["dir_bot", "support_bot.json"])
+
+    def test_create_dir_rejects_a_disallowed_kb_extension(self):
+        """The writer enforces the same allowlist as the loader."""
+        with self.assertRaises(TemplateValidationError):
+            create_template(
+                template_payload(id="dir_bot", kb_files={"config.json": "{}"}),
+                base_dir=self.tmp, shape="dir")
+        self.assertEqual(self.template_files(), [])
+
+    def test_create_dir_never_leaves_a_staging_directory(self):
+        create_template(template_payload(id="dir_bot", kb_files={"a.md": "a"}),
+                        base_dir=self.tmp, shape="dir")
+        # Only the template directory is left; no ``.stage-*`` temp remains.
+        self.assertEqual(self.template_files(), ["dir_bot"])
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

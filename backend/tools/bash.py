@@ -11,6 +11,7 @@ New backends (E2B, etc.) plug in without changing this file.
 
 import logging
 import re
+from typing import Optional
 
 from backend.tools.lib.exec_backend import registry, validate_env_keys
 
@@ -42,6 +43,28 @@ def _get_long_running_setting() -> bool:
     try:
         from models.db import db
         val = db.get_setting('long_running_guard_enabled', '1')
+        return val == '1'
+    except Exception:
+        return True
+
+
+def _root_fs_scan_guard_enabled() -> bool:
+    """Check whether the root filesystem scan guard is enabled.
+
+    Priority: env var RFS_GUARD_DISABLED=1 force-disables it (config.py).
+    Otherwise, falls back to the 'root_fs_scan_guard_enabled' DB setting
+    (defaults to '1' = enabled; toggled in System > Settings UI).
+    Fails safe to True when config or the database cannot be read.
+    """
+    try:
+        import config as _cfg
+        if not _cfg.ROOT_FS_SCAN_GUARD_ENABLED:
+            return False
+    except Exception:
+        return True
+    try:
+        from models.db import db
+        val = db.get_setting('root_fs_scan_guard_enabled', '1')
         return val == '1'
     except Exception:
         return True
@@ -98,11 +121,13 @@ def execute(agent: dict, args: dict) -> dict:
     # Root filesystem scan guard (performance concern, e.g. `find /`, `tree /`).
     # Independent of the safety pipeline on purpose: it fires for ALL agents —
     # including super agents and agents with safety_checker_enabled=0 — because a
-    # full-root scan is a performance hazard regardless of trust. We still honour
-    # `_skip_safety` (set on the post-approval re-execution) so an approved scan
-    # runs instead of re-prompting forever.
+    # full-root scan is a performance hazard regardless of trust. It therefore has its
+    # own switch (RFS_GUARD_DISABLED=1 env var force-disables it; otherwise the
+    # root_fs_scan_guard_enabled DB setting toggled in System > Settings applies),
+    # NOT the per-agent safety checker toggle. We still honour `_skip_safety` (set on
+    # the post-approval re-execution) so an approved scan runs without re-prompting.
     # ------------------------------------------------------------------
-    if not should_skip_safety(agent):
+    if _root_fs_scan_guard_enabled() and not should_skip_safety(agent):
         _rfs = check_root_filesystem_scan(script)
         if _rfs:
             return {
@@ -174,7 +199,7 @@ def execute(agent: dict, args: dict) -> dict:
     # Identify background spawns so the agent can attach a monitor to them.
     # Registration is silent — nothing watches or notifies on its own.
     try:
-        job = _track_background_spawn(session_id, script, result)
+        job = _track_background_spawn(session_id, script, result, agent)
         if job:
             result['background_job'] = {
                 'job_id': job.job_id,
@@ -189,7 +214,8 @@ def execute(agent: dict, args: dict) -> dict:
     return result
 
 
-def _track_background_spawn(session_id: str, script: str, result: dict):
+def _track_background_spawn(session_id: str, script: str, result: dict,
+                            agent: Optional[dict] = None):
     """Register a background spawn after successful execution.
 
     Handles both long_running_guard wrapper scripts (BYPASS_MARKER) and the
@@ -201,12 +227,18 @@ def _track_background_spawn(session_id: str, script: str, result: dict):
         return None
 
     from backend.agent_runtime.background_jobs import (
-        parse_wrapper_script, parse_manual_spawn, background_jobs)
+        parse_wrapper_script, parse_manual_spawn, background_jobs,
+        snapshot_backend_ctx)
+
+    # Capture which sandbox this ran in so a monitor attached later polls the
+    # SAME one (its persisted schedule only has agent_id and would otherwise
+    # resolve — or recreate — a different sandbox).
+    backend_ctx = snapshot_backend_ctx(agent or {})
 
     _spawn = parse_wrapper_script(script) or parse_manual_spawn(script)
     if not _spawn:
         return None
-    return background_jobs.register(session_id, **_spawn)
+    return background_jobs.register(session_id, backend_ctx=backend_ctx, **_spawn)
 
 
 # ---------------------------------------------------------------------------

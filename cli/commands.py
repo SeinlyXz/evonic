@@ -1039,10 +1039,84 @@ def skill_export(skill_id, output=None, verbose=False):
 
 
 def _get_skillsets():
-    """Lazily import skillsets module."""
-    from backend import skillsets
+    """Lazily build the skillset view over the canonical template engine.
 
-    return skillsets
+    Skillsets are plain agent templates (``agent_templates/``); this view
+    reproduces the historical ``backend.skillsets`` surface (list / get /
+    resolve / apply) on top of :mod:`backend.agent_templates` so the CLI
+    handlers keep their shape.
+    """
+    from backend import agent_templates
+
+    class _SkillsetView:
+        @staticmethod
+        def list_skillsets():
+            return [
+                {
+                    "id": s["id"],
+                    "name": s["name"],
+                    "description": s["description"],
+                    "tools_count": s["tool_count"],
+                    "skills_count": s["skill_count"],
+                }
+                for s in agent_templates.list_templates()
+                if s["valid"]
+            ]
+
+        @staticmethod
+        def get_skillset(skill_id):
+            try:
+                return agent_templates.get_template(skill_id)
+            except Exception:
+                return None
+
+        @staticmethod
+        def resolve_skillset(skill_id):
+            template = _SkillsetView.get_skillset(skill_id)
+            if template is None:
+                return None
+            try:
+                tools = agent_templates.resolve_template(skill_id)["tools"]
+                resolved = tools.get("resolved", list(template.get("tools") or []))
+                unresolved = tools.get("missing", [])
+            except Exception:
+                resolved = list(template.get("tools") or [])
+                unresolved = []
+            result = dict(template)
+            result["resolved_tools"] = resolved
+            result["unresolved_tools"] = unresolved
+            return result
+
+        @staticmethod
+        def apply_skillset(skill_id, agent_data):
+            template = _SkillsetView.get_skillset(skill_id)
+            if template is None:
+                return {"error": f"Skillset '{skill_id}' not found."}
+            defaults = template.get("defaults") or {}
+            result = {}
+            result["system_prompt"] = agent_data.get(
+                "system_prompt", template.get("system_prompt") or ""
+            )
+            model = (
+                agent_data.get("model_id")
+                or agent_data.get("model")
+                or defaults.get("model_id")
+                or ""
+            )
+            result["model"] = model or None
+            result["tools"] = agent_data.get("tools", template.get("tools") or [])
+            result["skills"] = agent_data.get("skills", template.get("skills") or [])
+            result["kb_files"] = agent_data.get(
+                "kb_files", template.get("kb_files") or {}
+            )
+            result["id"] = agent_data.get("id", "")
+            result["name"] = agent_data.get("name", template.get("name") or "")
+            result["description"] = agent_data.get(
+                "description", template.get("description") or ""
+            )
+            return result
+
+    return _SkillsetView
 
 
 def skillset_list():
@@ -1105,7 +1179,8 @@ def skillset_get(skillset_id):
     print(f"ID:          {skillset.get('id', '')}")
     print(f"Name:        {skillset.get('name', '')}")
     print(f"Description: {skillset.get('description', 'N/A')}")
-    print(f"Model:       {skillset.get('model', '(default)')}")
+    _defaults = skillset.get('defaults') or {}
+    print(f"Model:       {_defaults.get('model_id') or '(default)'}")
 
     # System prompt (truncated)
     sp = skillset.get("system_prompt", "")
@@ -1428,7 +1503,7 @@ def agent_add(agent_id, name, description=None, model=None, skillset=None):
     skills = []
 
     if skillset:
-        from backend import skillsets as ss_mod
+        ss_mod = _get_skillsets()
 
         skillset_data = ss_mod.get_skillset(skillset)
         if skillset_data is None:
@@ -3713,6 +3788,9 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False, verbose=Fals
         "public_history": "0",
         "long_running_guard_enabled": (
             "1" if getattr(_cfg, "LONG_RUNNING_GUARD_ENABLED", True) else "0"
+        ),
+        "root_fs_scan_guard_enabled": (
+            "1" if getattr(_cfg, "ROOT_FS_SCAN_GUARD_ENABLED", True) else "0"
         ),
         "message_wrapper_enabled": "1",
         "events_dispatch_enabled": "1",

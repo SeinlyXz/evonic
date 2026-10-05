@@ -42,8 +42,11 @@ def test_skill_manifest_registers_disabled_lazy_generation_tool():
 
     variables = {variable["name"]: variable for variable in manifest["variables"]}
     assert variables["default_provider"]["default"] == ""
-    assert variables["allowed_providers"]["default"] == ""
+    assert "allowed_providers" not in variables
     assert variables["allow_local_providers"]["type"] == "boolean"
+    assert variables["automatic1111_enabled"]["default"] is False
+    assert variables["comfyui_enabled"]["default"] is False
+    assert variables["google_gemini_enabled"]["default"] is True
     assert variables["mock_enabled"]["default"] is False
     assert variables["requests_per_minute"]["default"] == 6
     assert variables["max_concurrent_requests"]["default"] == 1
@@ -52,8 +55,8 @@ def test_skill_manifest_registers_disabled_lazy_generation_tool():
     assert variables["automatic1111_trusted_hosts"]["default"] == ""
     assert variables["provider_api_key"]["type"] == "secret"
     assert variables["google_gemini_api_key"]["type"] == "secret"
-    assert variables["google_gemini_model"]["choices"] == ["gemini-2.5-flash-image"]
-    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "google-gemini", "mock"]
+    assert variables["google_gemini_model"]["choices"] == ["gemini-2.5-flash-image", "gemini-3.1-flash-image"]
+    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "google-gemini", "mock", "openrouter"]
 
 
 def test_registry_resolves_explicit_and_default_provider():

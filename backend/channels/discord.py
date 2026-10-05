@@ -20,7 +20,7 @@ import time
 import threading
 from typing import Dict, Any, Optional, List, Tuple
 
-from backend.channels.base import BaseChannel, strip_system_tags
+from backend.channels.base import BaseChannel, strip_system_tags, unique_attachment_path
 
 _logger = logging.getLogger(__name__)
 
@@ -511,8 +511,7 @@ class DiscordChannel(BaseChannel):
             try:
                 safe = _sanitize_filename(original_filename)
                 target_dir = os.path.join('data', 'attachments', agent_id, session_id)
-                os.makedirs(target_dir, exist_ok=True)
-                target_path = os.path.join(target_dir, f"{int(time.time())}_{safe}")
+                target_path = unique_attachment_path(target_dir, safe)
                 await att.save(target_path)
                 real_size = size_bytes or (
                     os.path.getsize(target_path) if os.path.isfile(target_path) else 0

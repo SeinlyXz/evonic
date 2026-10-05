@@ -30,10 +30,9 @@ There is deliberately no ``/preview`` endpoint: ``/render`` covers the
 
 AuthZ model
 -----------
-Templates live in one **shared namespace** (``agent_templates/*.json`` plus the
-read-only legacy ``skillsets/*.json``) because a template is a repo-level
-artifact that plugins, skills and every agent share — there is no per-user
-template tree.  *Writing* one is nevertheless **privileged**: a template
+Templates live in one **shared namespace** (``agent_templates/``) because a
+template is a repo-level artifact that plugins, skills and every agent share —
+there is no per-user template tree.  *Writing* one is nevertheless **privileged**: a template
 declares which tools run, which secret variables are required, and which
 workplace/channel an agent is bound to.  Therefore:
 
@@ -109,11 +108,6 @@ BINDING_KEYS: Tuple[str, ...] = ("workplace_id", "primary_channel_id")
 
 #: Optional deployment knob: comma-separated allowlist of privileged caller ids.
 PRIVILEGED_CALLERS_ENV = "EVONIC_TEMPLATE_PRIVILEGED_CALLERS"
-
-#: Conflict policy for the legacy ``skillsets/`` collision on create.  Callers
-#: opt in explicitly with ``?allow_shadow=true``; a template never silently
-#: shadows a legacy skillset.
-_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 # ---------------------------------------------------------------------------
@@ -321,10 +315,6 @@ def _reject_binding_declarations(payload: Any) -> None:
                 % ", ".join("'%s'" % name for name in clash),
                 "binding_in_variables",
             )
-
-
-def _truthy(value: Optional[str]) -> bool:
-    return (value or "").strip().lower() in _TRUE_VALUES
 
 
 # ---------------------------------------------------------------------------
@@ -671,11 +661,8 @@ def api_list_templates():
     if denied:
         return denied
 
-    include_legacy = not (
-        request.args.get("include_legacy") or "true"
-    ).strip().lower() in {"0", "false", "no", "off"}
-    summaries = tpl.list_templates(include_legacy=include_legacy)
-    collisions = tpl.list_collisions() if include_legacy else []
+    summaries = tpl.list_templates()
+    collisions = tpl.list_collisions()
     return jsonify({
         "templates": summaries,
         "collisions": collisions,
@@ -710,9 +697,8 @@ def api_create_template():
 
     payload = _json_body()
     _reject_binding_declarations(payload)
-    allow_shadow = _truthy(request.args.get("allow_shadow"))
 
-    template = tpl.create_template(payload, allow_shadow=allow_shadow)
+    template = tpl.create_template(payload)
     response = make_response(jsonify({"template": template}), 201)
     response.headers["Location"] = "/api/templates/%s" % template["id"]
     return response
@@ -735,7 +721,7 @@ def api_update_template(template_id: str):
 @templates_bp.route("/api/templates/<template_id>", methods=["DELETE"])
 @_handles_template_errors
 def api_delete_template(template_id: str):
-    """Delete a canonical template. Legacy skillsets are never deleted."""
+    """Delete a canonical template (either storage shape)."""
     denied = _require_privileged()
     if denied:
         return denied

@@ -47,6 +47,7 @@ class BackgroundJob:
     started_at: float
     kind: str = "wrapper"            # wrapper | tmux | screen | nohup
     pgrep_pattern: str = ""          # nohup fallback when no PID file
+    backend_ctx: Optional[dict] = None  # spawn-time sandbox snapshot (see snapshot_backend_ctx)
     status: str = "running"          # running | done | timeout
     exit_code: Optional[int] = None
     finished_at: Optional[float] = None
@@ -62,7 +63,8 @@ class BackgroundJobRegistry:
 
     def register(self, session_id: str, session_name: str, log_file: str,
                  pid_file: str, command: str, kind: str = "wrapper",
-                 pgrep_pattern: str = "") -> BackgroundJob:
+                 pgrep_pattern: str = "",
+                 backend_ctx: Optional[dict] = None) -> BackgroundJob:
         with self._guard:
             dedup_key = session_name or pgrep_pattern or command
             for j in self._jobs.values():
@@ -80,6 +82,7 @@ class BackgroundJobRegistry:
                 started_at=time.time(),
                 kind=kind,
                 pgrep_pattern=pgrep_pattern,
+                backend_ctx=backend_ctx,
             )
             self._jobs[job.job_id] = job
             self._prune_finished(session_id)
@@ -155,6 +158,28 @@ class BackgroundJobRegistry:
 
 # Singleton
 background_jobs = BackgroundJobRegistry()
+
+
+# agent_context fields that determine WHICH execution backend/sandbox
+# registry.get_backend() resolves. A monitor's poll tick runs later from the
+# scheduler with only agent_id in hand and rebuilds the agent from the DB —
+# but is_subagent/is_explorer/agent_name are runtime-only and the resolved
+# `workspace` (e.g. a sub-agent scratchpad) isn't the raw DB column. A mismatch
+# makes get_backend RECREATE the session's container/keeper mid-run — destroying
+# the very tmux/nohup process being watched and yielding a bogus "finished".
+# Snapshotting these at spawn time lets the poll resolve the IDENTICAL sandbox.
+_BACKEND_CTX_KEYS = (
+    "sandbox_enabled", "workplace_id", "workspace",
+    "is_subagent", "is_explorer", "run_as_user",
+)
+
+
+def snapshot_backend_ctx(agent: dict) -> dict:
+    """Capture the backend-identity fields from a live agent_context."""
+    agent = agent or {}
+    snap = {k: agent.get(k) for k in _BACKEND_CTX_KEYS}
+    snap["agent_name"] = agent.get("agent_name") or agent.get("name") or ""
+    return snap
 
 
 def parse_wrapper_script(script: str) -> Optional[dict]:

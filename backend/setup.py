@@ -362,6 +362,7 @@ _DEFAULT_SETTINGS = [
     # --- Privacy & Guards ---
     ("public_history", "0"),
     ("long_running_guard_enabled", "1" if config.LONG_RUNNING_GUARD_ENABLED else "0"),
+    ("root_fs_scan_guard_enabled", "1" if config.ROOT_FS_SCAN_GUARD_ENABLED else "0"),
     ("message_wrapper_enabled", "1"),
     # --- Events ---
     ("events_dispatch_enabled", "1"),

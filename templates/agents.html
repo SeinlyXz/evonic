@@ -124,15 +124,7 @@
     <div class="relative ev-modal w-[90%] max-w-[450px] shadow-xl">
         <div class="p-6">
             <h3 class="ev-modal-t">New Agent</h3>
-            <p class="ev-modal-s">Start from a template, or fill in the basics for a blank agent.</p>
-            <div class="mb-4">
-                <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium" for="new-agent-skillset">Create from template</label>
-                <select id="new-agent-skillset" onchange="applySkillsetToForm()"
-                        class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
-                    <option value="">-- None (blank agent) --</option>
-                </select>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Choose a template to auto-fill agent settings</p>
-            </div>
+            <p class="ev-modal-s">Fill in the basics to create a blank agent. Prefer a ready-made setup? Use the Templates tab.</p>
             <div class="mb-4">
                 <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium" for="new-agent-id">Agent ID <span class="ev-req" aria-hidden="true">*</span></label>
                 <input type="text" id="new-agent-id" placeholder="e.g., customer_service" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
@@ -393,31 +385,8 @@ function switchTab(tab) {
 // ===================== AGENTS =====================
 
 let agents = [];
-let skillsets = [];
 let busyAgents = {};
 let agentStatusEventsSubscribed = false;
-
-async function loadSkillsets() {
-    try {
-        const res = await fetch('/api/skillsets');
-        const data = await res.json();
-        skillsets = data.skillsets || [];
-        const select = document.getElementById('new-agent-skillset');
-        select.innerHTML = '<option value="">-- None (blank agent) --</option>' +
-            skillsets.map(s => `<option value="${esc(s.id)}">${esc(s.name || s.id)} — ${esc((s.description || '').substring(0, 50))}</option>`).join('');
-    } catch (e) {
-        console.error('Failed to load skillsets:', e);
-    }
-}
-
-function applySkillsetToForm() {
-    const skillId = document.getElementById('new-agent-skillset').value;
-    if (!skillId) return;
-    const skillset = skillsets.find(s => s.id === skillId);
-    if (!skillset) return;
-    document.getElementById('new-agent-name').value = skillset.name || '';
-    document.getElementById('new-agent-desc').value = skillset.description || '';
-}
 
 async function loadBusyAgents() {
     try {
@@ -435,7 +404,6 @@ async function loadAgents() {
     const data = await res.json();
     agents = data.agents || [];
     renderAgents();
-    loadSkillsets();
     loadBusyAgents();
     subscribeAgentStatusEvents();
 }
@@ -604,7 +572,6 @@ function showCreateAgentModal() {
     document.getElementById('new-agent-id').value = '';
     document.getElementById('new-agent-name').value = '';
     document.getElementById('new-agent-desc').value = '';
-    document.getElementById('new-agent-skillset').value = '';
     document.getElementById('new-agent-id').focus();
 }
 
@@ -724,18 +691,11 @@ async function createAgent() {
     const id = document.getElementById('new-agent-id').value.trim();
     const name = document.getElementById('new-agent-name').value.trim();
     const description = document.getElementById('new-agent-desc').value.trim();
-    const skillsetId = document.getElementById('new-agent-skillset').value;
     if (!id || !name) return alert('ID and Name are required.');
     if (!/^[a-zA-Z0-9_]+$/.test(id)) return alert('ID must be alphanumeric with underscores only.');
 
-    let url, body;
-    if (skillsetId) {
-        url = `/api/skillsets/${skillsetId}/apply`;
-        body = JSON.stringify({id, name, description});
-    } else {
-        url = '/api/agents';
-        body = JSON.stringify({id, name, description});
-    }
+    const url = '/api/agents';
+    const body = JSON.stringify({id, name, description});
 
     const res = await fetch(url, {
         method: 'POST',
@@ -932,9 +892,7 @@ async function loadTemplates(force) {
     const loading = document.getElementById('templates-loading');
     if (loading) loading.classList.remove('hidden');
     try {
-        // Canonical templates only: the legacy skillsets/ root is not part of
-        // this tab, so it is never requested here (and never rendered).
-        const res = await fetch('/api/templates?include_legacy=0');
+        const res = await fetch('/api/templates');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         templates = data.templates || [];
@@ -966,9 +924,7 @@ function renderTemplates() {
     const collisionsEl = document.getElementById('templates-collisions');
     if (!grid) return;
     const search = (document.getElementById('template-search').value || '').toLowerCase().trim();
-    // agent_templates/ is the only template source for this tab: the legacy
-    // skillsets/ root is never requested here (see loadTemplates) and so never
-    // listed. Shadowed copies and invalid entries are never usable, either way.
+    // Shadowed copies and invalid entries are never usable, either way.
     const visible = templates.filter(t => !t.shadowed && t.valid !== false);
     const filtered = search ? visible.filter(t => templateMatchesSearch(t, search)) : visible;
 

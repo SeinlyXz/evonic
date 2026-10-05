@@ -6,14 +6,8 @@
     <div class="ag-head flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
         <div class="flex-1 w-full sm:w-auto">
             <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Skills</h2>
-            <p class="ag-sub text-sm text-gray-500 mt-1">Manage installable skill packages and agent skillset templates</p>
+            <p class="ag-sub text-sm text-gray-500 mt-1">Manage installable skill packages</p>
         </div>
-    </div>
-
-    <!-- Tabs -->
-    <div class="ag-tabs" role="tablist">
-        <button onclick="switchTab('skills')" id="tab-skills" class="ag-tab is-active" role="tab"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg><span>Skills</span></button>
-        <button onclick="switchTab('skillsets')" id="tab-skillsets" class="ag-tab" role="tab"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg><span>Skillsets</span></button>
     </div>
 
     <!-- Skills Tab -->
@@ -50,16 +44,6 @@
         </div>
     </div>
 
-    <!-- Skillsets Tab -->
-    <div id="panel-skillsets" class="hidden">
-        <div id="skillsets-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-
-        <div id="skillsets-empty" class="hidden ag-empty">
-            <span class="ag-empty-ic"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg></span>
-            <p class="ag-empty-t">No skillsets available</p>
-            <p class="ag-empty-s">Skillset templates help you create pre-configured agents quickly</p>
-        </div>
-    </div>
 </div>
 
 <!-- Upload Modal -->
@@ -259,105 +243,6 @@ if (dropZone) {
     });
 }
 
-// ==================== Tab Switching ====================
-
-function switchTab(tab) {
-    document.getElementById('panel-skills').classList.toggle('hidden', tab !== 'skills');
-    document.getElementById('panel-skillsets').classList.toggle('hidden', tab !== 'skillsets');
-    document.getElementById('tab-skills').classList.toggle('is-active', tab === 'skills');
-    document.getElementById('tab-skillsets').classList.toggle('is-active', tab !== 'skills');
-    if (tab !== 'skills' && !window._skillsetsLoaded) {
-        loadSkillsets();
-        window._skillsetsLoaded = true;
-    }
-    location.hash = tab;
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    const hash = location.hash.replace('#', '');
-    if (hash === 'skillsets') switchTab('skillsets');
-});
-
-// ==================== Skillsets ====================
-
-async function loadSkillsets() {
-    try {
-        const res = await fetch('/api/skillsets');
-        const data = await res.json();
-        const skillsets = data.skillsets || [];
-        const grid = document.getElementById('skillsets-grid');
-        const empty = document.getElementById('skillsets-empty');
-
-        if (skillsets.length === 0) {
-            grid.innerHTML = '';
-            empty.classList.remove('hidden');
-            return;
-        }
-        empty.classList.add('hidden');
-
-        grid.innerHTML = skillsets.map(s => `
-            <div class="ag-card tp-card">
-                <div class="ag-card-top">
-                    <span class="tp-ic"><i data-lucide="layers"></i></span>
-                    <div class="ag-title">
-                        <div class="ag-name-row"><h3 class="ag-name">${esc(s.name || s.id)}</h3></div>
-                        <span class="ag-id">${esc(s.id)}</span>
-                    </div>
-                </div>
-                <p class="ag-desc">${esc(s.description || 'No description')}</p>
-                <div class="tp-stats"><span>${s.tools_count || 0} tool${(s.tools_count || 0) === 1 ? '' : 's'}</span></div>
-                <div class="tp-actions">
-                    <button type="button" onclick="previewSkillset('${esc(s.id)}')" class="ag-btn ag-btn-ghost">Preview</button>
-                    <button type="button" onclick="window.location.href='/skillset/${esc(s.id)}'" class="ag-btn ag-btn-primary">Edit</button>
-                </div>
-            </div>
-        `).join('');
-        if (window.refreshLucideIcons) refreshLucideIcons();
-    } catch (e) {
-        console.error('Failed to load skillsets:', e);
-    }
-}
-
-async function previewSkillset(skillId) {
-    try {
-        const res = await fetch(`/api/skillsets/${skillId}/resolve`);
-        const data = await res.json();
-        if (!res.ok) return;
-
-        const toolsHtml = (data.resolved_tools || []).map(t =>
-            `<span class="sk-tag">${esc(t)}</span>`
-        ).join('');
-        const unresolvedHtml = (data.unresolved_tools || []).map(t =>
-            `<span class="sk-tag is-bad">${esc(t)}</span>`
-        ).join('');
-
-        const promptPreview = (data.system_prompt || '').substring(0, 200) + (data.system_prompt && data.system_prompt.length > 200 ? '...' : '');
-
-        const modal = document.getElementById('skillset-preview-modal');
-        document.getElementById('preview-name').textContent = data.name || skillId;
-        document.getElementById('preview-desc').textContent = data.description || '';
-        document.getElementById('preview-prompt').textContent = promptPreview;
-        document.getElementById('preview-tools').innerHTML = toolsHtml || '<span class="sk-drop-f">No tools</span>';
-        document.getElementById('preview-unresolved').innerHTML = unresolvedHtml || '';
-        document.getElementById('preview-unresolved').parentElement.classList.toggle('hidden', !data.unresolved_tools || data.unresolved_tools.length === 0);
-        document.getElementById('preview-create-btn').onclick = function() {
-            closeSkillsetPreview();
-            window.location.href = `/agents?skillset=${skillId}`;
-        };
-        document.getElementById('preview-edit-btn').onclick = function() {
-            closeSkillsetPreview();
-            window.location.href = `/skillset/${skillId}`;
-        };
-        modal.classList.remove('hidden');
-    } catch (e) {
-        console.error('Failed to preview skillset:', e);
-    }
-}
-
-function closeSkillsetPreview() {
-    document.getElementById('skillset-preview-modal').classList.add('hidden');
-}
-
 function esc(s) {
     const d = document.createElement('div');
     d.textContent = s || '';
@@ -368,36 +253,5 @@ function esc(s) {
 // before the fetch callback renders — a fast API response can otherwise beat it.
 document.addEventListener('DOMContentLoaded', loadSkills);
 </script>
-
-<!-- Skillset Preview Modal -->
-<div id="skillset-preview-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
-    <div class="absolute inset-0 bg-black/50" onclick="closeSkillsetPreview()"></div>
-    <div class="relative ev-modal w-[90%] max-w-[560px] max-h-[80vh] overflow-y-auto">
-        <div class="p-6">
-            <h3 class="ev-modal-t" id="preview-name"></h3>
-            <p class="ev-modal-s" id="preview-desc"></p>
-
-            <div class="mb-4">
-                <p class="sk-sect">System prompt</p>
-                <div class="sk-box" id="preview-prompt"></div>
-            </div>
-
-            <div class="mb-4">
-                <p class="sk-sect">Tools</p>
-                <div id="preview-tools"></div>
-            </div>
-
-            <div class="mb-4 hidden">
-                <p class="sk-sect" style="color:#ef4444">Unresolved tools</p>
-                <div id="preview-unresolved"></div>
-            </div>
-        </div>
-        <div class="ev-modal-btns px-6 pb-6">
-            <button onclick="closeSkillsetPreview()" class="ev-btn">Cancel</button>
-            <button id="preview-edit-btn" class="ev-btn">Edit</button>
-            <button id="preview-create-btn" class="ev-btn ev-btn-primary">Create Agent from this</button>
-        </div>
-    </div>
-</div>
 
 {% endblock %}

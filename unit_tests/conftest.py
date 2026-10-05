@@ -8,7 +8,14 @@ import os
 import sys
 import tempfile
 import shutil
+import logging as _logging
 import threading as _threading
+
+# atexit handlers (runtime graceful shutdown, docker backend cleanup) log during
+# interpreter teardown, after pytest has already closed its capture streams.  Such
+# emits raise ValueError and print noisy "--- Logging error ---" tracebacks.  They
+# are a test-harness artifact, not a product defect, so silence them globally.
+_logging.raiseExceptions = False
 
 # Signal to app.py that we are running under test — skip the single-instance
 # flock guard.  Must be set at module level before app.py is ever imported.

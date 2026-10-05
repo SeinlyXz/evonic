@@ -176,7 +176,7 @@ def attach(agent: dict, target: dict, when: dict, note: str = "",
            expires_in: int = _DEFAULT_EXPIRES) -> dict:
     """Create a monitor. Returns {'monitor_id', ...} or {'error': ...}."""
     from backend.agent_runtime.background_jobs import (
-        background_jobs, build_manual_status_script)
+        background_jobs, build_manual_status_script, snapshot_backend_ctx)
     from backend.tools.lib.long_running_guard import build_status_scripts
     from backend.scheduler import scheduler
 
@@ -278,6 +278,12 @@ def attach(agent: dict, target: dict, when: dict, note: str = "",
         "note": (note or "")[:500],
         "probe_script": probe,
         "deadline_ts": time.time() + expires_in,
+        # Sandbox identity for the poll ticks: prefer the spawn-time snapshot
+        # kept on the job; otherwise snapshot the live agent. run_monitor_poll
+        # overlays this on the DB-rebuilt agent so get_backend resolves the
+        # SAME sandbox the watched process runs in.
+        "backend_ctx": (job.backend_ctx if job_id else None)
+                       or snapshot_backend_ctx(agent),
     }
 
     try:
@@ -397,6 +403,12 @@ def run_monitor_poll(action_config: dict) -> dict:
         return {"done": True, "state": "expired"}
 
     agent = db.get_agent(action_config.get("agent_id")) or {}
+    # Overlay the spawn-time sandbox snapshot (captured in attach) so
+    # get_backend resolves the SAME sandbox the watched process runs in —
+    # a workspace/identity mismatch would recreate the container mid-watch
+    # and report a bogus "finished".
+    agent = {**agent, **(action_config.get("backend_ctx") or {})}
+    agent.setdefault("id", action_config.get("agent_id"))
     try:
         backend = registry.get_backend(session_id, agent)
     except Exception as e:

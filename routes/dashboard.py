@@ -10,7 +10,7 @@ from flask import Blueprint, render_template, jsonify, request, redirect
 from models.db import db
 from backend.plugin_manager import plugin_manager
 from backend.skills_manager import skills_manager
-from backend.skillsets import list_skillsets, count_skillsets
+
 from backend.setup import (run_setup, test_connection, PROVIDER_DEFAULTS,
                             LANGUAGE_PRESETS, DEFAULT_SUPER_AGENT_NAME,
                             check_docker_available)
@@ -156,7 +156,6 @@ def api_dashboard_data():
         model_usage = db.get_model_usage(_conn=conn)
 
     skill_stats = skills_manager.get_skill_stats()
-    skill_stats['skillset_count'] = count_skillsets()
 
     all_plugins = plugin_manager.list_plugins()
     plugin_stats = {

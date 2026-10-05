@@ -280,6 +280,12 @@ app.register_blueprint(realtime_bp)
 app.register_blueprint(templates_bp)
 
 
+# Browser fallback for user agents that request the conventional root favicon path.
+@app.get('/favicon.ico')
+def favicon():
+    return redirect(url_for('static', filename='favicon/favicon.ico'), code=302)
+
+
 # ---- Backward-compatible redirect: /settings/* → /system/* ----
 @app.route('/settings')
 @app.route('/settings/<path:subpath>')
@@ -751,6 +757,8 @@ def enforce_auth():
         return None  # Evonet binary download is unauthenticated (uses embedded connector_token)
     if request.path == '/ws/connector':
         return None  # Evonet connector authenticates via Bearer token, not session
+    if request.path == '/favicon.ico':
+        return None
     if request.path.startswith('/static/'):
         return None
     if request.path.startswith('/webhook'):
