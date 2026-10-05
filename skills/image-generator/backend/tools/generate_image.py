@@ -90,9 +90,14 @@ def _audit_event(agent: Mapping[str, Any], outcome: str, *, provider: str | None
     )
 
 
-def _provider_enabled(provider_id: str, config: Mapping[str, Any]) -> bool:
+def _provider_enabled(provider_id: str | None, config: Mapping[str, Any]) -> bool:
     """Return the selected provider's explicit administrator-controlled state."""
-    return _boolean(config.get(f"{provider_id.replace('-', '_')}_enabled"))
+    # Fail closed for malformed/partially saved configuration instead of
+    # leaking an opaque ``NoneType.replace`` exception to tool callers.
+    if not isinstance(provider_id, str) or not provider_id.strip():
+        return False
+    config_key = f"{provider_id.strip().replace('-', '_')}_enabled"
+    return _boolean(config.get(config_key))
 
 
 def _boolean(value: Any) -> bool:
