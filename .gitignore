@@ -326,11 +326,18 @@ backend/promptpurify/model.int8.onnx
 
 # -------------------------------
 # Agent templates (per-install data, NOT source)
-# Keep the directory itself, never index its contents. The versioned
-# example below is a shipped product fixture; all other local templates
-# remain untracked.
+# Keep the directory itself, never index its contents. The entries below are
+# shipped product fixtures; all other local templates remain untracked.
 # -------------------------------
 agent_templates/*
 !agent_templates/.gitkeep
 !agent_templates/support_triage_bot/
 !agent_templates/support_triage_bot/**
+!agent_templates/coder.json
+!agent_templates/customer_service.json
+!agent_templates/data_analyst.json
+!agent_templates/devops.json
+!agent_templates/fullstack_dev.json
+!agent_templates/pentester.json
+!agent_templates/reverse_engineer.json
+!agent_templates/sysadmin.json

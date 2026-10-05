@@ -4,11 +4,10 @@ The template engine is the user-facing layer that turns a JSON blueprint
 (tools, skills, variables, KB files, parameterized system prompt) into a real
 agent through :mod:`backend.agent_factory`.  These tests pin the contract that:
 
-* storage is two-root (writable ``agent_templates/`` + read-only ``skillsets/``)
-  with explicit precedence and no silent shadowing.  The canonical root holds
-  each template in one of **two equivalent shapes**: a single ``<id>.json`` file
-  or a directory ``<id>/`` (``meta.json`` + prompt file + ``kb/**``).  Both load
-  to the same canonical mapping and a same-id clash between the two shapes is a
+* storage is a single writable root (``agent_templates/``) holding each
+  template in one of **two equivalent shapes**: a single ``<id>.json`` file or a
+  directory ``<id>/`` (``meta.json`` + prompt file + ``kb/**``).  Both load to
+  the same canonical mapping and a same-id clash between the two shapes is a
   hard error, never silent precedence,
 * every id / KB filename that becomes a filesystem path is traversal-guarded,
 * the renderer is a hardened single pass: unknown or malformed placeholders are
@@ -25,7 +24,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from unittest import mock
+import unittest.mock
 
 from models.db import db
 
@@ -43,7 +42,6 @@ from backend.agent_templates import (
     PARAM_NAME_RE,
     SLUG_RE,
     TEMPLATE_SCHEMA_VERSION,
-    TemplateError,
     TemplateExistsError,
     TemplateNotFoundError,
     TemplateRenderError,
@@ -100,9 +98,7 @@ class TemplateTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="agent_templates_test_")
         self.templates_dir = os.path.join(self.tmp, "agent_templates")
-        self.legacy_dir = os.path.join(self.tmp, "skillsets")
         os.makedirs(self.templates_dir, exist_ok=True)
-        os.makedirs(self.legacy_dir, exist_ok=True)
         self.write_skill("github")
 
     def tearDown(self):
@@ -121,16 +117,8 @@ class TemplateTestCase(unittest.TestCase):
     def canonical_path(self, template_id):
         return os.path.join(self.templates_dir, template_id + ".json")
 
-    def legacy_path(self, template_id):
-        return os.path.join(self.legacy_dir, template_id + ".json")
-
     def write_canonical(self, payload, filename=None):
         path = self.canonical_path(filename or payload.get("id", "unnamed"))
-        self._write_json(path, payload)
-        return path
-
-    def write_legacy(self, payload, filename=None):
-        path = self.legacy_path(filename or payload.get("id", "unnamed"))
         self._write_json(path, payload)
         return path
 
@@ -147,9 +135,6 @@ class TemplateTestCase(unittest.TestCase):
 
     def template_files(self):
         return sorted(os.listdir(self.templates_dir))
-
-    def legacy_files(self):
-        return sorted(os.listdir(self.legacy_dir))
 
     def create(self, payload=None, **kwargs):
         return create_template(payload or template_payload(), base_dir=self.tmp, **kwargs)
@@ -606,12 +591,10 @@ class StorageTests(TemplateTestCase):
 
     def test_delete_removes_only_the_canonical_file(self):
         self.create()
-        self.write_legacy({"id": "legacy_bot", "name": "Legacy"})
         self.assertTrue(delete_template("support_bot", base_dir=self.tmp))
         self.assertFalse(has_template("support_bot", base_dir=self.tmp))
         with self.assertRaises(TemplateNotFoundError):
             delete_template("support_bot", base_dir=self.tmp)
-        self.assertEqual(self.legacy_files(), ["legacy_bot.json"])
 
     def test_has_template_and_get_raise_for_unknown_ids(self):
         self.assertFalse(has_template("nope", base_dir=self.tmp))
@@ -659,103 +642,11 @@ class StorageTests(TemplateTestCase):
         with self.assertRaises(TemplateValidationError):
             get_template("other_name", base_dir=self.tmp)
 
-    # -- legacy root --------------------------------------------------
-
-    def test_legacy_template_is_read_only_and_adapted(self):
-        legacy = {
-            "id": "legacy_bot",
-            "name": "Legacy Bot",
-            "description": "Old style.",
-            "system_prompt": "Legacy prompt",
-            "model": "gpt-4o-mini",
-            "tools": ["read_file"],
-            "skills": ["github"],
-            "kb_files": {"old.md": "old"},
-        }
-        self.write_legacy(legacy)
-        loaded = get_template("legacy_bot", base_dir=self.tmp)
-        self.assertEqual(loaded["defaults"], {"model_id": "gpt-4o-mini"})
-        self.assertEqual(loaded["category"], "legacy")
-        self.assertEqual(loaded["kb_files"], {"old.md": "old"})
-        # The legacy root is read-only: the loader must advertise that and must
-        # not create a canonical copy behind the caller's back.
-        self.assertTrue(loaded["_meta"]["legacy"])
-        self.assertFalse(loaded["_meta"]["writable"])
-        self.assertEqual(loaded["_meta"]["source"], "skillsets")
-        self.assertEqual(loaded["_meta"]["file"], "legacy_bot.json")
-        self.assertEqual(self.template_files(), [])
-
-    def test_legacy_only_template_cannot_be_updated_or_deleted(self):
-        self.write_legacy({"id": "legacy_bot", "name": "Legacy", "system_prompt": "x"})
-        with self.assertRaises(TemplateError) as ctx:
-            update_template("legacy_bot", {"name": "New"}, base_dir=self.tmp)
-        self.assertIn("read-only legacy skillset", str(ctx.exception))
-        with self.assertRaises(TemplateError):
-            delete_template("legacy_bot", base_dir=self.tmp)
-        self.assertEqual(self.legacy_files(), ["legacy_bot.json"])
-
-    def test_legacy_files_are_never_modified(self):
-        path = self.write_legacy({
-            "id": "legacy_bot",
-            "name": "Legacy",
-            "system_prompt": "x",
-            "tools": ["read_file"],
-            "skills": [],
-            "kb_files": {"a.md": "A"},
-        })
-        before_bytes = self.read_text(path)
-        before_mtime = os.path.getmtime(path)
-        list_templates(base_dir=self.tmp)
-        list_collisions(base_dir=self.tmp)
-        get_template("legacy_bot", base_dir=self.tmp)
-        resolve_template("legacy_bot", base_dir=self.tmp)
-        self.create(template_payload(id="fresh"))
-        self.assertEqual(self.read_text(path), before_bytes)
-        self.assertEqual(os.path.getmtime(path), before_mtime)
-        self.assertEqual(self.legacy_files(), ["legacy_bot.json"])
-
-    def test_legacy_duplicate_ids_are_reported(self):
-        self.write_legacy({"id": "dup", "name": "One", "system_prompt": "a"}, filename="a")
-        self.write_legacy({"id": "dup", "name": "Two", "system_prompt": "b"}, filename="b")
-        collisions = list_collisions(base_dir=self.tmp)
-        self.assertEqual(len(collisions), 1)
-        self.assertEqual(collisions[0]["id"], "dup")
-        self.assertEqual(collisions[0]["kind"], "legacy_duplicate")
-        self.assertIn("duplicate_file", collisions[0])
-
-    # -- collisions / precedence --------------------------------------
-
-    def test_cross_root_collision_is_reported_and_precedence_is_explicit(self):
-        self.write_legacy({
-            "id": "support_bot",
-            "name": "Legacy Support",
-            "system_prompt": "legacy prompt",
-        })
-        with self.assertRaises(TemplateExistsError) as ctx:
-            self.create()
-        self.assertIn("shadow", str(ctx.exception))
-        created = self.create(allow_shadow=True)
-        self.assertEqual(created["name"], "Support Bot")
-        # Canonical wins.
-        self.assertEqual(get_template("support_bot", base_dir=self.tmp)["name"], "Support Bot")
-        entries = {(t["id"], t["source"]): t for t in list_templates(base_dir=self.tmp)}
-        self.assertFalse(entries[("support_bot", "agent_templates")]["shadowed"])
-        self.assertTrue(entries[("support_bot", "agent_templates")]["shadows"])
-        self.assertTrue(entries[("support_bot", "skillsets")]["shadowed"])
-        self.assertFalse(entries[("support_bot", "skillsets")]["shadows"])
-        collisions = list_collisions(base_dir=self.tmp)
-        self.assertEqual(len(collisions), 1)
-        self.assertEqual(collisions[0]["id"], "support_bot")
-        self.assertEqual(collisions[0]["kind"], "canonical_legacy")
-        self.assertEqual(collisions[0]["chosen"], "agent_templates")
-
-    def test_list_templates_sorts_and_can_skip_legacy(self):
+    def test_list_templates_sorts_by_id(self):
         self.create(template_payload(id="zeta"))
-        self.write_legacy({"id": "alpha", "name": "Alpha", "system_prompt": "x"})
+        self.create(template_payload(id="alpha"))
         everything = list_templates(base_dir=self.tmp)
         self.assertEqual([t["id"] for t in everything], ["alpha", "zeta"])
-        canonical_only = list_templates(base_dir=self.tmp, include_legacy=False)
-        self.assertEqual([t["id"] for t in canonical_only], ["zeta"])
 
     def test_missing_roots_are_treated_as_empty(self):
         empty = tempfile.mkdtemp(prefix="agent_templates_empty_")
@@ -772,10 +663,6 @@ class StorageTests(TemplateTestCase):
         self.assertEqual(
             os.path.realpath(agent_templates.templates_dir()),
             os.path.realpath(os.path.join(REPO_ROOT, "agent_templates")),
-        )
-        self.assertEqual(
-            os.path.realpath(agent_templates.legacy_templates_dir()),
-            os.path.realpath(os.path.join(REPO_ROOT, "skillsets")),
         )
 
 
@@ -1014,21 +901,7 @@ class InstantiationTests(TemplateTestCase):
                 "support_bot", db=db, base_dir=self.tmp, overrides={"memory_engine": "sqlite"}
             )
 
-    def test_legacy_template_can_be_instantiated_but_not_edited(self):
-        self.write_legacy({
-            "id": "legacy_bot",
-            "name": "Legacy Bot",
-            "description": "Old style.",
-            "system_prompt": "Legacy prompt",
-            "model": "",
-            "tools": ["read_file"],
-            "skills": [],
-            "kb_files": {},
-        })
-        agent_id = create_agent_from_template("legacy_bot", db=db, base_dir=self.tmp)
-        self.assertEqual(agent_id, "legacy_bot")
-        self.assertEqual(self.system_prompt(agent_id), "Legacy prompt")
-        self.assertEqual(self.legacy_files(), ["legacy_bot.json"])
+
 
 
 class PreviewTests(TemplateTestCase):

@@ -2,8 +2,7 @@
 
 An **agent template** is a JSON blueprint for a complete agent: identity, a parameterized system prompt, configuration defaults (basic *and* advanced settings), tools, skills, variables and knowledge-base files. Templates are the supported way to hand out a repeatable agent — from the **Templates** tab on `/agents`, from the template editor, or programmatically from a plugin or skill.
 
-- Canonical (writable) templates live in `agent_templates/` in one of **two equivalent storage shapes**: a single JSON file `agent_templates/<id>.json`, or a directory `agent_templates/<id>/` with `meta.json` + a real prompt file + `kb/**` (see [Directory form](#directory-form-optional)).
-- `skillsets/` is the **legacy, read-only** root. Both are listed, `agent_templates/` wins an id collision, and a collision is always reported (never silent shadowing).
+- Templates live in `agent_templates/` in one of **two equivalent storage shapes**: a single JSON file `agent_templates/<id>.json`, or a directory `agent_templates/<id>/` with `meta.json` + a real prompt file + `kb/**` (see [Directory form](#directory-form-optional)). When both shapes exist for the same id it is a hard validation error, always reported by the API (never silent precedence).
 - The storage shape is an authoring detail only: the API, the editor, the renderer and the resolver always see the same single document (`system_prompt` + `kb_files`), so reads re-inline a directory template on the fly.
 - Templates store **declarations only**. Secret variable *values* are supplied when an agent is created and are never written into a template file.
 
@@ -169,7 +168,7 @@ Interception is a denylist, not a wall:
 
 ## 5. Verification
 
-- `unit_tests/test_agent_templates.py` — engine contract (storage roots, traversal guards, renderer, defaults/params validation, instantiate precedence).
+- `unit_tests/test_agent_templates.py` — engine contract (storage, traversal guards, renderer, defaults/params validation, instantiate precedence).
 - `unit_tests/test_templates_routes.py` — HTTP contract (authZ, rate limits, idempotent instantiate, render persistence).
 - `unit_tests/test_simulation_runtime.py`, `test_simulation_containment.py`, `test_simulation_outbound_interceptor.py` — containment, force-sandbox and interceptor behaviour.
 - `unit_tests/test_template_examples_e2e.py` — end-to-end check of the shipped examples: schema/load round-trip, dependency resolution, feature coverage, **UI instantiation vs `create_agent_from_template` producing the same agent spec**, and a simulation that leaves no DB rows, no files under `BASE_DIR` and no secret in any log record.

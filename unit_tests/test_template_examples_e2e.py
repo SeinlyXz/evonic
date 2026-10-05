@@ -2,7 +2,7 @@
 
 ``agent_templates/`` now ships one example blueprint that is meant to be
 copied, edited and instantiated.  ``support_triage_bot`` uses the additive
-**directory form** (``meta.json`` + ``system.md`` + ``kb/**``); the legacy
+**directory form** (``meta.json`` + ``system.md`` + ``kb/**``); the classic
 single ``<id>.json`` shape is resolved shape-aware alongside it.
 Nothing else in the suite would notice if one of them regressed, so this module
 pins the whole user-visible path:
@@ -185,7 +185,6 @@ def make_examples_root(tmp_path, name):
     """
     root = tmp_path / name
     (root / "agent_templates").mkdir(parents=True, exist_ok=True)
-    (root / "skillsets").mkdir(parents=True, exist_ok=True)
 
     skill_ids = set()
     for template_id in shipped_ids():

@@ -2,8 +2,12 @@
   "id": "sysadmin",
   "name": "System Administrator",
   "description": "System administration agent for server management, monitoring, user administration, and troubleshooting.",
+  "category": "general",
+  "icon": "",
+  "schema_version": 1,
+  "parameters": [],
   "system_prompt": "You are a system administrator responsible for server management, monitoring, security hardening, user administration, and troubleshooting. You maintain system uptime, manage configurations, and respond to incidents promptly.",
-  "model": "",
+  "defaults": {},
   "tools": [
     "bash",
     "read_file",
@@ -15,5 +19,6 @@
     "sshc"
   ],
   "skills": [],
+  "variables": [],
   "kb_files": {}
 }

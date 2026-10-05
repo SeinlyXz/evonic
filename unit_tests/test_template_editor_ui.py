@@ -22,7 +22,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -84,7 +83,6 @@ def repo_root(tmp_path, monkeypatch):
     """Redirect the template store *and* agent creation into a throwaway root."""
     root = tmp_path / "repo"
     (root / "agent_templates").mkdir(parents=True, exist_ok=True)
-    (root / "skillsets").mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(config, "BASE_DIR", str(root), raising=False)
     monkeypatch.delenv(templates_routes.PRIVILEGED_CALLERS_ENV, raising=False)
     templates_routes.reset_simulate_rate_limits()

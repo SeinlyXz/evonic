@@ -2,8 +2,12 @@
   "id": "data_analyst",
   "name": "Data Analyst",
   "description": "Data analysis agent for statistical analysis, data processing, visualization, and reporting using Python.\n",
+  "category": "general",
+  "icon": "",
+  "schema_version": 1,
+  "parameters": [],
   "system_prompt": "You are a data analyst skilled in statistical analysis, data cleaning, visualization, and reporting. You use Python (pandas, numpy, matplotlib) to process data, derive insights, and present findings clearly. Always validate data quality before analysis.",
-  "model": "",
+  "defaults": {},
   "tools": [
     "bash",
     "read_file",
@@ -16,5 +20,6 @@
   "skills": [
     "scheduler"
   ],
+  "variables": [],
   "kb_files": {}
 }

@@ -18,8 +18,8 @@ single source of truth for the mutable agent field surface.
 Storage
 -------
 
-Templates are read from two roots, relative to ``base_dir`` (``config.BASE_DIR``
-by default):
+Templates are read from one root, relative to ``base_dir`` (``config.BASE_DIR``
+by default): ``agent_templates/``, in two storage shapes:
 
 ``agent_templates/<id>.json``
     The canonical, writable location (single-file form).  ``create_template``,
@@ -37,18 +37,7 @@ by default):
     ``<id>.json`` and ``<id>/`` exist the id is a hard validation error on
     both entries and :func:`list_collisions` reports it, so precedence is
     never silent.
-``skillsets/<id>.json``
-    The legacy, **READ-ONLY** location (see :mod:`backend.skillsets`).  Legacy
-    files are adapted on read (``model`` becomes ``defaults.model_id``,
-    ``kb_files`` is kept as-is) and are never modified, moved or deleted.
-    Updating or deleting a legacy-only template raises a clear error telling
-    the caller to create a canonical copy first.
 
-``agent_templates/`` wins when the same id exists in both roots.  Shadowing is
-never silent: :func:`list_collisions` reports it, entries in
-:func:`list_templates` carry ``shadowed``/``shadows`` flags, and
-``create_template`` refuses to shadow a legacy skillset unless the caller
-explicitly passes ``allow_shadow=True``.
 
 Path safety
 -----------
@@ -91,11 +80,11 @@ never logged — error messages reference keys/names only.
 Public API
 ----------
 
-``list_templates(*, base_dir=None, include_legacy=True) -> list[dict]``
+``list_templates(*, base_dir=None) -> list[dict]``
 ``has_template(template_id, *, base_dir=None) -> bool``
 ``get_template(template_id, *, base_dir=None) -> dict``
 ``list_collisions(*, base_dir=None) -> list[dict]``
-``create_template(data, *, base_dir=None, allow_shadow=False) -> dict``
+``create_template(data, *, base_dir=None, shape=None) -> dict``
 ``update_template(template_id, data, *, base_dir=None) -> dict``
 ``delete_template(template_id, *, base_dir=None) -> bool``
 ``validate_template(payload) -> dict``
@@ -104,15 +93,6 @@ Public API
 ``preview_template(template_id, params=None, *, base_dir=None, strict=False) -> dict``
 ``resolve_template(template_id, *, base_dir=None) -> dict``
 ``create_agent_from_template(template_id, params=None, overrides=None, *, ...) -> str``
-
-Legacy skillset compatibility views (consumed by ``routes/skills.py`` so that the
-``/api/skillsets*`` surface keeps its pre-template response shape while reading
-through this module):
-
-``legacy_skillsets(*, base_dir=None) -> list[dict]``
-``get_legacy_skillset(template_id, *, base_dir=None) -> dict | None``
-``resolve_legacy_skillset(template_id, *, base_dir=None) -> dict | None``
-``build_legacy_skillset_spec(template_id, agent_data, *, base_dir=None) -> dict``
 
 ``get_template`` returns the canonical template with a read-only ``_meta``
 block (``source``, ``legacy``, ``writable``, ``file``).  ``_meta`` is stripped
@@ -172,7 +152,6 @@ __all__ = [
     "TemplateResolveError",
     # Storage helpers
     "templates_dir",
-    "legacy_templates_dir",
     # Read API
     "list_templates",
     "has_template",
@@ -190,11 +169,6 @@ __all__ = [
     # Resolution / instantiation
     "resolve_template",
     "create_agent_from_template",
-    # Legacy skillset compatibility views
-    "legacy_skillsets",
-    "get_legacy_skillset",
-    "resolve_legacy_skillset",
-    "build_legacy_skillset_spec",
 ]
 
 logger = logging.getLogger(__name__)
@@ -340,13 +314,6 @@ _STRUCTURAL_OVERRIDE_KEYS = frozenset({
 #: Every key accepted in ``create_agent_from_template(overrides=...)``.
 OVERRIDE_KEYS = frozenset(SPEC_FIELD_ALLOWLIST | _STRUCTURAL_OVERRIDE_KEYS)
 
-#: Keys a legacy ``skillsets/*.json`` may contain (``model`` is mapped to
-#: ``defaults.model_id``).
-_LEGACY_KEYS = frozenset({
-    "id", "name", "description", "system_prompt", "model",
-    "tools", "skills", "kb_files",
-})
-
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -365,11 +332,11 @@ class TemplateRenderError(TemplateValidationError):
 
 
 class TemplateNotFoundError(TemplateError):
-    """No template with the requested id exists in any storage root."""
+    """No template with the requested id exists in the template root."""
 
 
 class TemplateExistsError(TemplateError):
-    """A template with that id already exists (or would shadow a legacy one)."""
+    """A template with that id already exists (in either storage shape)."""
 
 
 class TemplateResolveError(TemplateError):
@@ -397,16 +364,6 @@ def templates_dir(base_dir: Optional[str] = None) -> str:
     """Return the canonical (writable) template root."""
     root = base_dir if base_dir is not None else _default_base_dir()
     return os.path.join(root, "agent_templates")
-
-
-def legacy_templates_dir(base_dir: Optional[str] = None) -> str:
-    """Return the legacy, read-only skillset root."""
-    root = base_dir if base_dir is not None else _default_base_dir()
-    return os.path.join(root, "skillsets")
-
-
-def _roots(base_dir: Optional[str] = None) -> Tuple[str, str]:
-    return templates_dir(base_dir), legacy_templates_dir(base_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -1664,30 +1621,8 @@ def validate_template(payload: Any) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Legacy (skillsets/) adaptation + scanning
+# Scanning
 # ---------------------------------------------------------------------------
-
-def _adapt_legacy(raw: Mapping[str, Any], template_id: str) -> Dict[str, Any]:
-    """Convert a legacy ``skillsets/*.json`` payload to the canonical shape."""
-    defaults: Dict[str, Any] = {}
-    model = raw.get("model")
-    if isinstance(model, str) and model.strip():
-        defaults["model_id"] = model.strip()
-    return {
-        "id": template_id,
-        "name": raw.get("name") or template_id,
-        "description": raw.get("description") or "",
-        "category": "legacy",
-        "icon": "",
-        "schema_version": TEMPLATE_SCHEMA_VERSION,
-        "parameters": [],
-        "system_prompt": raw.get("system_prompt") or "",
-        "defaults": defaults,
-        "tools": raw.get("tools") or [],
-        "skills": raw.get("skills") or [],
-        "variables": [],
-        "kb_files": raw.get("kb_files") or {},
-    }
 
 
 def _scan_dir(root: str) -> Tuple[List[str], List[str]]:
@@ -1818,55 +1753,7 @@ def _scan_canonical(
     return entries, collisions
 
 
-def _scan_legacy(root: str) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
-    """Map id -> entry for legacy skillset files, plus duplicate reports."""
-    entries: Dict[str, Dict[str, Any]] = {}
-    duplicates: List[Dict[str, Any]] = []
-    files, _directories = _scan_dir(root)
-    for file_name in files:
-        stem = file_name[: -len(".json")]
-        entry: Dict[str, Any] = {
-            "id": stem,
-            "source": "skillsets",
-            "file": file_name,
-            "valid": False,
-            "error": None,
-            "template": None,
-            "raw": None,
-        }
-        try:
-            raw = _read_json_object(os.path.join(root, file_name))
-        except TemplateError as exc:
-            entry["error"] = str(exc)
-            entries.setdefault(stem, entry)
-            continue
-        entry["raw"] = raw
-        declared_id = raw.get("id")
-        template_id = declared_id.strip() if isinstance(declared_id, str) and declared_id.strip() else stem
-        entry["id"] = template_id
-        if template_id in entries:
-            duplicates.append({
-                "id": template_id,
-                "kind": "legacy_duplicate",
-                "chosen": "skillsets",
-                "shadowed": "skillsets",
-                "canonical_file": None,
-                "legacy_file": entries[template_id]["file"],
-                "duplicate_file": file_name,
-                "message": (
-                    "Skillset id '%s' is declared by both '%s' and '%s' in skillsets/; the "
-                    "first file wins and the second is shadowed (neither is modified)."
-                    % (template_id, entries[template_id]["file"], file_name)
-                ),
-            })
-            continue
-        try:
-            entry["template"] = validate_template(_adapt_legacy(raw, template_id))
-            entry["valid"] = True
-        except (TemplateValidationError, AgentFactoryError) as exc:
-            entry["error"] = str(exc)
-        entries[template_id] = entry
-    return entries, duplicates
+
 
 
 # ---------------------------------------------------------------------------
@@ -1875,7 +1762,6 @@ def _scan_legacy(root: str) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, A
 
 def _entry_summary(entry: Mapping[str, Any], *, shadowed: bool, shadows: bool) -> Dict[str, Any]:
     """Project a scan entry onto the public list-summary shape."""
-    legacy = bool(entry.get("legacy")) or entry.get("source") == "skillsets"
     template = entry.get("template")
     if template is not None:
         summary = {
@@ -1897,7 +1783,7 @@ def _entry_summary(entry: Mapping[str, Any], *, shadowed: bool, shadows: bool) -
             "id": entry.get("id"),
             "name": raw.get("name") or entry.get("id"),
             "description": raw.get("description") or "",
-            "category": "legacy" if legacy else "general",
+            "category": "general",
             "icon": "",
             "schema_version": raw.get("schema_version") or TEMPLATE_SCHEMA_VERSION,
             "parameter_count": len(raw.get("parameters") or []),
@@ -1910,11 +1796,11 @@ def _entry_summary(entry: Mapping[str, Any], *, shadowed: bool, shadows: bool) -
         "source": entry.get("source"),
         "shape": entry.get("shape") or SHAPE_FILE,
         "file": entry.get("file"),
-        "legacy": legacy,
-        "writable": not legacy,
+        "legacy": False,
+        "writable": True,
         "shadowed": bool(shadowed),
         "shadows": bool(shadows),
-        "collision": bool(shadowed and not legacy),
+        "collision": bool(shadowed),
         "valid": bool(entry.get("valid")),
         "error": entry.get("error"),
     })
@@ -1924,77 +1810,41 @@ def _entry_summary(entry: Mapping[str, Any], *, shadowed: bool, shadows: bool) -
 def list_templates(
     *,
     base_dir: Optional[str] = None,
-    include_legacy: bool = True,
 ) -> List[Dict[str, Any]]:
-    """List template summaries from both storage roots.
+    """List template summaries from the template root.
 
-    Both canonical shapes are listed (``shape`` is ``"file"`` or ``"dir"``).  The
-    canonical entry wins; the legacy entry (if any) is still listed with
-    ``shadowed=True`` so the UI can surface the collision explicitly.
+    Both canonical shapes are listed (``shape`` is ``"file"`` or ``"dir"``).
     """
-    canonical_root, legacy_root = _roots(base_dir)
-    canonical, _shape_collisions = _scan_canonical(canonical_root)
-    legacy, _duplicates = _scan_legacy(legacy_root) if include_legacy else ({}, [])
-
-    summaries: List[Dict[str, Any]] = []
-    for template_id in sorted(set(canonical) | set(legacy)):
-        in_canonical = template_id in canonical
-        in_legacy = template_id in legacy
-        if in_canonical:
-            summaries.append(_entry_summary(
-                canonical[template_id], shadowed=False, shadows=in_legacy
-            ))
-        if in_legacy and include_legacy:
-            summaries.append(_entry_summary(
-                legacy[template_id], shadowed=in_canonical, shadows=False
-            ))
-    return summaries
+    root = templates_dir(base_dir)
+    canonical, _shape_collisions = _scan_canonical(root)
+    return [
+        _entry_summary(canonical[template_id], shadowed=False, shadows=False)
+        for template_id in sorted(canonical)
+    ]
 
 
 def has_template(template_id: str, *, base_dir: Optional[str] = None) -> bool:
-    """Return whether *template_id* exists in any storage root (either shape)."""
-    canonical_root, legacy_root = _roots(base_dir)
+    """Return whether *template_id* exists in the template root (either shape)."""
+    root = templates_dir(base_dir)
     cleaned = _validate_template_id(template_id)
-    canonical_map, _shape_collisions = _scan_canonical(canonical_root)
-    if cleaned in canonical_map:
-        return True
-    legacy_map, _duplicates = _scan_legacy(legacy_root)
-    return cleaned in legacy_map
+    canonical_map, _shape_collisions = _scan_canonical(root)
+    return cleaned in canonical_map
 
 
 def list_collisions(*, base_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """Report every id that exists in more than one place.
 
-    Covers two same-root collisions (``<id>.json`` + ``<id>/``; duplicate legacy
-    files) and the cross-root ``agent_templates/`` vs ``skillsets/`` shadowing.
-    Collisions are never resolved silently.
+    The only collision kind is the same-root shape collision (``<id>.json`` +
+    ``<id>/``), a hard validation error on both entries.  Collisions are never
+    resolved silently.
     """
-    canonical_root, legacy_root = _roots(base_dir)
-    canonical, shape_collisions = _scan_canonical(canonical_root)
-    legacy, duplicates = _scan_legacy(legacy_root)
-    collisions: List[Dict[str, Any]] = list(shape_collisions)
-    for template_id in sorted(set(canonical) & set(legacy)):
-        collisions.append({
-            "id": template_id,
-            "kind": "canonical_legacy",
-            "chosen": "agent_templates",
-            "shadowed": "skillsets",
-            "canonical_file": canonical[template_id]["file"],
-            "legacy_file": legacy[template_id]["file"],
-            "duplicate_file": None,
-            "message": (
-                "Template id '%s' exists in both agent_templates/ ('%s') and skillsets/ "
-                "('%s'); the canonical template wins and the legacy skillset is shadowed "
-                "(it is never modified or deleted)."
-                % (template_id, canonical[template_id]["file"], legacy[template_id]["file"])
-            ),
-        })
-    collisions.extend(duplicates)
-    return collisions
+    root = templates_dir(base_dir)
+    _canonical, shape_collisions = _scan_canonical(root)
+    return list(shape_collisions)
 
 
 def get_template(template_id: str, *, base_dir: Optional[str] = None) -> Dict[str, Any]:
-    """Load a template (canonical first, then legacy) as a canonical mapping.
+    """Load a template (either storage shape) as a canonical mapping.
 
     Both canonical shapes are supported: the single-file ``<id>.json`` form and
     the directory form (``<id>/meta.json`` + prompt + ``kb/**``), which is
@@ -2003,7 +1853,7 @@ def get_template(template_id: str, *, base_dir: Optional[str] = None) -> Dict[st
     The returned mapping carries a read-only ``_meta`` block describing where
     the template came from and whether it is writable.
     """
-    canonical_root, legacy_root = _roots(base_dir)
+    canonical_root = templates_dir(base_dir)
     cleaned = _validate_template_id(template_id)
 
     canonical_path = _template_path(canonical_root, cleaned)
@@ -2043,22 +1893,7 @@ def get_template(template_id: str, *, base_dir: Optional[str] = None) -> Dict[st
         }
         return template
 
-    legacy_entries, _duplicates = _scan_legacy(legacy_root)
-    entry = legacy_entries.get(cleaned)
-    if entry is None:
-        raise TemplateNotFoundError("Template '%s' was not found." % cleaned)
-    if not entry["valid"]:
-        raise TemplateValidationError(
-            "Legacy skillset '%s' is not a valid template: %s" % (cleaned, entry["error"])
-        )
-    template = dict(entry["template"])
-    template[_META_KEY] = {
-        "source": "skillsets",
-        "legacy": True,
-        "writable": False,
-        "file": entry["file"],
-    }
-    return template
+    raise TemplateNotFoundError("Template '%s' was not found." % cleaned)
 
 
 # ---------------------------------------------------------------------------
@@ -2069,7 +1904,6 @@ def create_template(
     data: Any,
     *,
     base_dir: Optional[str] = None,
-    allow_shadow: bool = False,
     shape: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Validate, then atomically write a new canonical template.
@@ -2077,8 +1911,7 @@ def create_template(
     ``shape`` selects the storage form: the default ``"file"`` writes
     ``agent_templates/<id>.json``; ``"dir"`` opts into the directory form
     (``<id>/meta.json`` + prompt + ``kb/**``).  Refuses to overwrite an existing
-    canonical template in either shape, and refuses to shadow a legacy skillset
-    unless ``allow_shadow=True`` is passed explicitly.
+    canonical template in either shape.
     """
     if not isinstance(data, Mapping):
         raise TemplateValidationError("Template must be a JSON object.")
@@ -2092,19 +1925,12 @@ def create_template(
     cleaned = _validate_template_id(_strip_meta(data).get("id"))
     template = validate_template({**_strip_meta(data), "id": cleaned})
 
-    canonical_root, legacy_root = _roots(base_dir)
+    canonical_root = templates_dir(base_dir)
     path = _template_path(canonical_root, cleaned)
     dir_path = _template_dir_path(canonical_root, cleaned)
     if os.path.lexists(path) or os.path.lexists(dir_path):
         raise TemplateExistsError(
             "A template with id '%s' already exists in agent_templates/." % cleaned
-        )
-    legacy_entries, _duplicates = _scan_legacy(legacy_root)
-    shadowed = legacy_entries.get(cleaned)
-    if shadowed is not None and not allow_shadow:
-        raise TemplateExistsError(
-            "Template id '%s' would shadow the legacy skillset '%s' in skillsets/. Pass "
-            "allow_shadow=True to shadow it explicitly." % (cleaned, shadowed["file"])
         )
 
     if requested_shape == SHAPE_DIR:
@@ -2126,15 +1952,14 @@ def update_template(
 
     The payload is persisted into whichever shape the template already has.  A
     dropped knowledge-base file is only pruned when the payload actually carries
-    ``kb_files``.  Legacy-only templates are read-only: create a canonical copy
-    first.
+    ``kb_files``.
     """
     cleaned = _validate_template_id(template_id)
     if not isinstance(data, Mapping):
         raise TemplateValidationError("Template must be a JSON object.")
     payload = _strip_meta(data)
 
-    canonical_root, legacy_root = _roots(base_dir)
+    canonical_root = templates_dir(base_dir)
     path = _template_path(canonical_root, cleaned)
     dir_path = _template_dir_path(canonical_root, cleaned)
     is_file = os.path.isfile(path)
@@ -2145,13 +1970,6 @@ def update_template(
             "remove one of them before editing." % (cleaned, cleaned, cleaned)
         )
     if not is_file and not is_dir:
-        legacy_entries, _duplicates = _scan_legacy(legacy_root)
-        if cleaned in legacy_entries:
-            raise TemplateError(
-                "Template '%s' is a read-only legacy skillset in skillsets/. Create a "
-                "canonical copy in agent_templates/ (for example with create_template) "
-                "before editing it." % cleaned
-            )
         raise TemplateNotFoundError("Template '%s' was not found." % cleaned)
 
     declared_id = payload.get("id")
@@ -2184,9 +2002,9 @@ def update_template(
 
 
 def delete_template(template_id: str, *, base_dir: Optional[str] = None) -> bool:
-    """Delete a canonical template (either shape).  Legacy files are never touched."""
+    """Delete a canonical template (either shape)."""
     cleaned = _validate_template_id(template_id)
-    canonical_root, legacy_root = _roots(base_dir)
+    canonical_root = templates_dir(base_dir)
     path = _template_path(canonical_root, cleaned)
     if os.path.isfile(path):
         os.unlink(path)
@@ -2197,12 +2015,6 @@ def delete_template(template_id: str, *, base_dir: Optional[str] = None) -> bool
         shutil.rmtree(dir_path)
         logger.info("agent_templates: deleted directory template '%s'", cleaned)
         return True
-    legacy_entries, _duplicates = _scan_legacy(legacy_root)
-    if cleaned in legacy_entries:
-        raise TemplateError(
-            "Template '%s' is a read-only legacy skillset in skillsets/ and cannot be "
-            "deleted through the template engine." % cleaned
-        )
     raise TemplateNotFoundError("Template '%s' was not found." % cleaned)
 
 
@@ -2612,143 +2424,3 @@ def create_agent_from_template(
     )
     return agent_id
 
-
-# ---------------------------------------------------------------------------
-# Legacy skillset compatibility views
-#
-# ``routes/skills.py`` serves the pre-template ``/api/skillsets*`` surface.  It
-# reads through the functions below (this module owns the legacy root) and then
-# adapts the payloads back to the exact legacy response shape, so the old UI
-# (``templates/skills.html``, ``templates/agents.html``,
-# ``templates/edit_skillset.html``) keeps working unchanged.
-#
-# These views deliberately reproduce ``backend.skillsets`` semantics for the
-# legacy root only: they never look at ``agent_templates/`` and they never
-# write, move or validate the legacy files.
-# ---------------------------------------------------------------------------
-
-def legacy_skillsets(*, base_dir: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Return the raw payload of every legacy ``skillsets/*.json`` file.
-
-    Files are returned in legacy file order (``sorted(os.listdir())``) so the
-    adapter in ``routes/skills.py`` reproduces the legacy listing byte for byte.
-    A file that cannot be read as a JSON *object* (unparseable, not UTF-8, not
-    an object, or oversized) is skipped, exactly like the legacy loader skipped
-    the files it could not parse.  Legacy files are never modified.
-    """
-    _canonical_root, legacy_root = _roots(base_dir)
-    payloads: List[Dict[str, Any]] = []
-    files, _directories = _scan_dir(legacy_root)
-    for file_name in files:
-        try:
-            payloads.append(_read_json_object(os.path.join(legacy_root, file_name)))
-        except TemplateError:
-            continue
-    return payloads
-
-
-def get_legacy_skillset(
-    template_id: str,
-    *,
-    base_dir: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
-    """Return one raw legacy skillset payload, or ``None`` when absent.
-
-    Lookup matches the *declared* ``id`` field, which is what the legacy
-    ``backend.skillsets.get_skillset`` did (a file whose name and declared id
-    disagree is matched by its declared id, not by its file name).
-    """
-    if not isinstance(template_id, str) or not template_id:
-        return None
-    for payload in legacy_skillsets(base_dir=base_dir):
-        if payload.get("id") == template_id:
-            return payload
-    return None
-
-
-def resolve_legacy_skillset(
-    template_id: str,
-    *,
-    base_dir: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
-    """Return a raw legacy payload plus ``resolved_tools``/``unresolved_tools``.
-
-    Mirrors ``backend.skillsets.resolve_skillset``: declared tool names the
-    registry knows are reported as *resolved*, unknown ones as *unresolved*, and
-    when dependency checking is impossible (registry unavailable) every declared
-    name is reported as resolved rather than wrongly reported as missing.
-    """
-    payload = get_legacy_skillset(template_id, base_dir=base_dir)
-    if payload is None:
-        return None
-
-    declared = payload.get("tools") or []
-    if not isinstance(declared, (list, tuple)):
-        declared = []
-    names = [name for name in declared if isinstance(name, str) and name]
-
-    available = _available_tool_ids()
-    resolved = (
-        list(names) if available is None
-        else [name for name in names if name in available]
-    )
-    result = dict(payload)
-    result["resolved_tools"] = resolved
-    result["unresolved_tools"] = [name for name in names if name not in resolved]
-    return result
-
-
-def build_legacy_skillset_spec(
-    template_id: str,
-    agent_data: Optional[Mapping[str, Any]],
-    *,
-    base_dir: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Merge a legacy skillset with ``agent_data`` into an agent-factory spec.
-
-    This is the legacy ``backend.skillsets.apply_skillset`` merge — ``agent_data``
-    wins over the skillset, the identity fields always come from ``agent_data`` —
-    expressed as a spec that :func:`backend.agent_factory.create_agent` accepts:
-
-    * the skillset's ``model`` (and a caller-supplied ``model``/``model_id``)
-      becomes the spec's ``model_id``, adapting the legacy key exactly like
-      :func:`_adapt_legacy` does for the canonical template path;
-    * ``kb_files`` (a ``{path: content}`` object) becomes ``knowledge_base`` and
-      goes through the same path validation as a template's KB files;
-    * keys the factory does not model are ignored, which is what the legacy
-      route did when it handed the merge result to ``Database.create_agent``.
-
-    Raises :class:`TemplateNotFoundError` when the skillset does not exist and
-    :class:`TemplateValidationError` when the merge produces an unusable spec.
-    """
-    payload = get_legacy_skillset(template_id, base_dir=base_dir)
-    if payload is None:
-        raise TemplateNotFoundError("Skillset '%s' was not found." % template_id)
-    if agent_data is None:
-        agent_data = {}
-    if not isinstance(agent_data, Mapping):
-        raise TemplateValidationError("Agent data must be a JSON object.")
-
-    def merged(key: str, default: Any) -> Any:
-        return agent_data[key] if key in agent_data else default
-
-    spec: Dict[str, Any] = {
-        "id": agent_data.get("id") or "",
-        "name": merged("name", payload.get("name") or "") or "",
-        "description": merged("description", payload.get("description") or "") or "",
-        "system_prompt": merged("system_prompt", payload.get("system_prompt") or "") or "",
-        "tools": merged("tools", payload.get("tools") or []),
-        "skills": merged("skills", payload.get("skills") or []),
-    }
-
-    model = agent_data.get(
-        "model", agent_data.get("model_id", payload.get("model") or "")
-    )
-    if isinstance(model, str) and model.strip():
-        spec["model_id"] = model.strip()
-
-    kb_files = _normalize_kb_files(merged("kb_files", payload.get("kb_files") or {}))
-    spec["knowledge_base"] = [
-        {"path": path, "content": content} for path, content in kb_files.items()
-    ]
-    return spec
