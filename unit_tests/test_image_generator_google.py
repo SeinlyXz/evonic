@@ -88,7 +88,7 @@ def test_google_provider_requires_administrator_credential_before_request(monkey
     assert "credential" in error.value.message.lower()
 
 
-def test_google_provider_normalizes_only_valid_png_inline_data():
+def test_google_provider_normalizes_valid_png_and_jpeg_inline_data():
     provider = GoogleGeminiProvider()
     result = provider._artifacts(_response())
 
@@ -96,6 +96,14 @@ def test_google_provider_normalizes_only_valid_png_inline_data():
     assert result[0].mime_type == "image/png"
     assert result[0].filename == "google-gemini-1.png"
     assert result[0].data == _PNG
+
+    jpeg = b"\xff\xd8\xffvalid-jpeg"
+    jpeg_response = _response(jpeg)
+    jpeg_response["candidates"][0]["content"]["parts"][0]["inlineData"]["mimeType"] = "image/jpeg"
+    jpeg_result = provider._artifacts(jpeg_response)
+    assert jpeg_result[0].mime_type == "image/jpeg"
+    assert jpeg_result[0].filename == "google-gemini-1.jpg"
+    assert jpeg_result[0].data == jpeg
 
     with pytest.raises(ImageGenerationError) as malformed:
         provider._artifacts(_response(b"not-a-png"))

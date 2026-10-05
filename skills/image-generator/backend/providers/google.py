@@ -23,7 +23,8 @@ from .network import BoundedHttpClient, SafeEndpoint, bounded_timeout
 
 _GOOGLE_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 _GOOGLE_IMAGE_MODEL = "gemini-2.5-flash-image"
-_SUPPORTED_MODELS = (_GOOGLE_IMAGE_MODEL,)
+_GOOGLE_GEMINI_31_IMAGE_MODEL = "gemini-3.1-flash-image"
+_SUPPORTED_MODELS = (_GOOGLE_IMAGE_MODEL, _GOOGLE_GEMINI_31_IMAGE_MODEL)
 
 
 class GoogleGeminiProvider(ImageProvider):
@@ -34,7 +35,7 @@ class GoogleGeminiProvider(ImageProvider):
     capabilities = ProviderCapabilities(
         supported_sizes=("512x512", "768x768", "1024x1024"),
         max_images_per_request=1,
-        supported_output_formats=("png",),
+        supported_output_formats=("png", "jpeg"),
         supported_models=_SUPPORTED_MODELS,
     )
     config_fields: Sequence[ProviderConfigField] = (
@@ -109,15 +110,17 @@ class GoogleGeminiProvider(ImageProvider):
                     continue
                 mime_type = inline_data.get("mimeType")
                 encoded = inline_data.get("data")
-                if mime_type != "image/png" or not isinstance(encoded, str):
+                if mime_type not in {"image/png", "image/jpeg"} or not isinstance(encoded, str):
                     raise ImageGenerationError(SafeErrorCode.ARTIFACT_INVALID, "The provider returned an invalid image artifact.")
                 try:
                     data = base64.b64decode(encoded, validate=True)
                 except (ValueError, TypeError) as exc:
                     raise ImageGenerationError(SafeErrorCode.ARTIFACT_INVALID, "The provider returned an invalid image artifact.") from exc
-                if not data.startswith(b"\x89PNG\r\n\x1a\n"):
-                    raise ImageGenerationError(SafeErrorCode.ARTIFACT_INVALID, "The provider returned an invalid PNG artifact.")
-                artifacts.append(ImageArtifact(mime_type="image/png", filename=f"google-gemini-{len(artifacts) + 1}.png", data=data))
+                signatures = {"image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff"}
+                if not data.startswith(signatures[mime_type]):
+                    raise ImageGenerationError(SafeErrorCode.ARTIFACT_INVALID, "The provider returned invalid image data.")
+                extension = ".png" if mime_type == "image/png" else ".jpg"
+                artifacts.append(ImageArtifact(mime_type=mime_type, filename=f"google-gemini-{len(artifacts) + 1}{extension}", data=data))
 
         if not artifacts:
             raise ImageGenerationError(SafeErrorCode.ARTIFACT_INVALID, "The provider returned no image artifacts.")

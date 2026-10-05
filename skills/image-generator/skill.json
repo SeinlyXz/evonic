@@ -41,20 +41,44 @@
       "empty_label": "\u2014 No default provider \u2014"
     },
     {
-      "name": "allowed_providers",
-      "label": "Allowed Providers",
-      "type": "string",
-      "default": "",
-      "description": "Comma-separated provider IDs permitted for this skill. Keep this allowlist limited to reviewed cloud or local providers.",
-      "section": "global"
-    },
-    {
       "name": "allow_local_providers",
       "label": "Allow Approved Local Providers",
       "type": "boolean",
       "default": false,
-      "description": "When enabled, permits providers declared as local only when they also appear in Allowed Providers.",
+      "description": "When enabled, permits enabled providers declared as local.",
       "section": "global"
+    },
+    {
+      "name": "automatic1111_enabled",
+      "label": "Enabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable this provider after configuring its approved local endpoint and trusted hosts.",
+      "provider": "automatic1111"
+    },
+    {
+      "name": "comfyui_enabled",
+      "label": "Enabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable this provider after configuring its approved local endpoint and workflow.",
+      "provider": "comfyui"
+    },
+    {
+      "name": "google_gemini_enabled",
+      "label": "Enabled",
+      "type": "boolean",
+      "default": true,
+      "description": "Enable Google Gemini image generation using the configured credential and model.",
+      "provider": "google-gemini"
+    },
+    {
+      "name": "mock_enabled",
+      "label": "Enabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Development and test only. Enable the deterministic mock provider explicitly.",
+      "provider": "mock"
     },
     {
       "name": "automatic1111_endpoint",
@@ -148,7 +172,8 @@
       "type": "string",
       "default": "gemini-2.5-flash-image",
       "choices": [
-        "gemini-2.5-flash-image"
+        "gemini-2.5-flash-image",
+        "gemini-3.1-flash-image"
       ],
       "description": "Approved Google image-generation model.",
       "provider": "google-gemini"
@@ -230,14 +255,6 @@
       "description": "Per-agent UTC rolling daily image quota. Set to 0 only to disable this skill through quota.",
       "section": "global",
       "advanced": true
-    },
-    {
-      "name": "mock_enabled",
-      "label": "Enable Deterministic Mock Provider",
-      "type": "boolean",
-      "default": false,
-      "description": "Development and test only. The mock provider remains unavailable unless this is explicitly enabled.",
-      "section": "global"
     },
     {
       "name": "provider_api_key",

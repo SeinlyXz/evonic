@@ -90,12 +90,9 @@ def _audit_event(agent: Mapping[str, Any], outcome: str, *, provider: str | None
     )
 
 
-def _configured_providers(value: Any) -> set[str]:
-    if isinstance(value, str):
-        return {item.strip() for item in value.split(",") if item.strip()}
-    if isinstance(value, (list, tuple, set)):
-        return {str(item).strip() for item in value if str(item).strip()}
-    return set()
+def _provider_enabled(provider_id: str, config: Mapping[str, Any]) -> bool:
+    """Return the selected provider's explicit administrator-controlled state."""
+    return _boolean(config.get(f"{provider_id.replace('-', '_')}_enabled"))
 
 
 def _boolean(value: Any) -> bool:
@@ -222,12 +219,10 @@ def _resolve_provider(args: Mapping[str, Any], config: Mapping[str, Any]):
     explicit = _optional_text(args, "provider", 128)
     default = str(config.get("default_provider") or "").strip() or None
     provider = provider_registry.resolve(explicit, default)
-    if provider.id not in _configured_providers(config.get("allowed_providers")):
+    if not _provider_enabled(provider.id, config):
         raise ImageGenerationError(SafeErrorCode.PROVIDER_DISABLED, "The selected image provider is not enabled for this skill.")
     if provider.is_local and not _boolean(config.get("allow_local_providers")):
         raise ImageGenerationError(SafeErrorCode.PROVIDER_DISABLED, "Local image providers are not enabled for this skill.")
-    if provider.id == "mock" and not _boolean(config.get("mock_enabled")):
-        raise ImageGenerationError(SafeErrorCode.PROVIDER_DISABLED, "The deterministic mock provider is disabled.")
     return provider
 
 
