@@ -176,6 +176,17 @@ def api_dashboard_data():
     # Plugin-provided dashboard cards (zero core-plugin coupling)
     plugin_cards = plugin_manager.get_dashboard_cards()
 
+    # "Needs attention": invalid workspaces, overdue schedules, a very low latest evaluation
+    try:
+        from backend.dashboard_attention import build_attention
+        every_agent = db.get_recent_agents(limit=500)
+        attention = build_attention(
+            every_agent, all_schedules, recent_runs[0] if recent_runs else None,
+            workplace_type=lambda wid: (db.get_workplace(wid) or {}).get('type'),
+        )
+    except Exception:
+        attention = []
+
     return jsonify({
         'stats': stats,
         'recent_agents': recent_agents,
@@ -187,6 +198,7 @@ def api_dashboard_data():
         'schedule_stats': schedule_stats,
         'schedules': schedules,
         'plugin_cards': plugin_cards,
+        'attention': attention,
     })
 
 

@@ -639,6 +639,23 @@ def api_set_agent_variables(agent_id):
     return jsonify({'success': True})
 
 
+@agents_bp.route('/api/agents/<agent_id>/variables/<key>/reveal', methods=['POST'])
+def api_reveal_agent_variable(agent_id, key):
+    """Return the real value of ONE secret variable, on an explicit user action (the eye button).
+
+    GET /variables keeps masking secrets; this is a deliberate POST (never cached, never part of a list response) so a
+    value only leaves the server when someone asks to see that specific key.
+    """
+    if not db.get_agent(agent_id):
+        return jsonify({'error': 'Agent not found'}), 404
+    for v in db.get_agent_variables(agent_id):
+        if v.get('key') == key and v.get('is_secret'):
+            resp = jsonify({'key': key, 'value': v.get('value') or ''})
+            resp.headers['Cache-Control'] = 'no-store'
+            return resp
+    return jsonify({'error': 'Secret variable not found'}), 404
+
+
 @agents_bp.route('/api/agents/<agent_id>/variables/<key>', methods=['DELETE'])
 def api_delete_agent_variable(agent_id, key):
     if not db.get_agent(agent_id):
@@ -1177,8 +1194,9 @@ def api_get_avatar(agent_id):
     import config as _cfg
     svg = generate_avatar_svg(agent.get('name') or agent_id,
                               variant=_cfg.AVATAR_STYLE, colors=_cfg.AVATAR_COLORS or None)
+    # Short freshness: the default style is configurable (AVATAR_STYLE), so don't pin an old look in caches.
     return Response(svg, mimetype='image/svg+xml',
-                    headers={'Cache-Control': 'private, max-age=300, must-revalidate'})
+                    headers={'Cache-Control': 'private, max-age=30, must-revalidate'})
 
 
 @agents_bp.route('/api/agents/<agent_id>/avatar', methods=['POST'])

@@ -20,8 +20,8 @@ MIT License notice (boring-avatars):
 import math
 import re
 
-DEFAULT_VARIANT = "beam"
-VARIANTS = ("marble", "beam", "pixel", "sunset", "ring", "bauhaus")
+DEFAULT_VARIANT = "initials"
+VARIANTS = ("initials", "marble", "beam", "pixel", "sunset", "ring", "bauhaus")
 # Boring Avatars' own default palette
 DEFAULT_COLORS = ("#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90")
 
@@ -264,7 +264,29 @@ def _marble(name, colors, size, ident):
     return _svg(SIZE, size, ident, body, defs)
 
 
+
+# Calm, flat tones from the app palette (indigo/slate family) used by the "initials" variant.
+_INITIAL_TONES = ("#6366F1", "#4F46E5", "#7C83F5", "#475569", "#0F766E", "#7C3AED")
+
+
+def _initials(name, colors, size, ident):
+    """Flat circle with the agent's first letter. Only an alphanumeric character from the name is ever emitted."""
+    SIZE = 80
+    ch = next((c for c in name if c.isalnum()), "?").upper()
+    if not (ch.isalnum() or ch == "?"):
+        ch = "?"
+    bg = _INITIAL_TONES[_hash_code(name) % len(_INITIAL_TONES)]
+    body = (
+        f'<rect width="{SIZE}" height="{SIZE}" fill="{bg}"/>'
+        f'<text x="{SIZE // 2}" y="{SIZE // 2}" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" '
+        f'font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="{int(SIZE * 0.46)}" '
+        f'font-weight="600">{ch}</text>'
+    )
+    return _svg(SIZE, size, ident, body)
+
+
 _RENDERERS = {
+    "initials": _initials,
     "marble": _marble, "beam": _beam, "pixel": _pixel,
     "sunset": _sunset, "ring": _ring, "bauhaus": _bauhaus,
 }
