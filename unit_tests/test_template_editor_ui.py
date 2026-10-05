@@ -22,12 +22,12 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from unit_tests._node_runtime import node_bin
 import config
 from app import app
 from models.db import db
@@ -83,7 +83,6 @@ def repo_root(tmp_path, monkeypatch):
     """Redirect the template store *and* agent creation into a throwaway root."""
     root = tmp_path / "repo"
     (root / "agent_templates").mkdir(parents=True, exist_ok=True)
-    (root / "skillsets").mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(config, "BASE_DIR", str(root), raising=False)
     monkeypatch.delenv(templates_routes.PRIVILEGED_CALLERS_ENV, raising=False)
     templates_routes.reset_simulate_rate_limits()
@@ -215,6 +214,34 @@ def test_editor_bootstrap_carries_the_resolved_report(client, repo_root):
 
     # Byte-for-byte agreement with the engine's own view.
     assert report["template"] == tpl.get_template(TEMPLATE_ID)
+
+
+def test_editor_page_renders_a_directory_form_template(client, repo_root):
+    """The editor renders the directory shape from the re-inlined template."""
+    login(client)
+    tpl.create_template(
+        template_payload(id="dir_editor_bot",
+                         system_prompt="You support {{company}}.",
+                         kb_files={"guide/start.md": "# Start\n"}),
+        base_dir=repo_root, shape="dir",
+    )
+
+    response = client.get("/template/dir_editor_bot")
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    for element_id in ("tpl-editor", "tpl-field-prompt", "tpl-kb-list"):
+        assert 'id="%s"' % element_id in body, element_id
+
+    boot = bootstrap_of(body)
+    assert boot["template_id"] == "dir_editor_bot"
+    report = boot["report"]
+    assert report["template"]["id"] == "dir_editor_bot"
+    # The prompt and the knowledge base are re-inlined from disk, so the editor
+    # needs no shape knowledge at all.
+    assert report["template"]["system_prompt"] == "You support {{company}}."
+    assert report["template"]["kb_files"] == {"guide/start.md": "# Start\n"}
+    assert report["template"]["_meta"]["file"] is None
+    assert report["ok"] is True
 
 
 def test_create_then_edit_round_trip_is_visible_in_the_editor(client, repo_root):
@@ -362,7 +389,7 @@ def test_simulate_route_captures_outbox_without_side_effects(
 
 PAGE_PATH = Path(__file__).resolve().parents[1] / "templates" / "edit_template.html"
 
-NODE = shutil.which("node") or shutil.which("nodejs")
+NODE = node_bin()
 
 
 def _extract_js_function(source, name):

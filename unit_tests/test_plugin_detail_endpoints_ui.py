@@ -27,6 +27,8 @@ from app import app
 import routes.plugins as plugins_routes
 from backend.plugin_manager import plugin_manager
 
+from unit_tests._node_runtime import node_bin
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "templates" / "plugin_detail.html"
 
@@ -209,9 +211,9 @@ process.stdout.write(JSON.stringify(out));
 
 
 def _run_harness(tmp_path, endpoints):
-    node = shutil.which("node")
+    node = node_bin()
     if not node:
-        pytest.skip("Node.js is required for the endpoints renderer behaviour test")
+        pytest.skip("A working Node.js runtime is required for the endpoints renderer behaviour test")
 
     import json
 

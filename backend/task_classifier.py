@@ -204,12 +204,18 @@ def _get_classifier_client(setting_key: str = 'task_classifier_model_id') -> LLM
         if model_id:
             model = db.get_model_by_id(model_id)
             if model:
-                return LLMClient(model_config=model,
-                                 fallback_model_config=_global_fallback_model())
+                fallback_model = _global_fallback_model()
+                if fallback_model:
+                    return LLMClient(model_config=model,
+                                     fallback_model_config=fallback_model)
+                return LLMClient(model_config=model)
             _logger.warning("Classifier model_id '%s' not found, falling back to default", model_id)
     except Exception as e:
         _logger.warning("Could not load classifier model config: %s", e)
-    return LLMClient(fallback_model_config=_global_fallback_model())
+    fallback_model = _global_fallback_model()
+    if fallback_model:
+        return LLMClient(fallback_model_config=fallback_model)
+    return LLMClient()
 
 
 def _global_fallback_model() -> Optional[dict]:

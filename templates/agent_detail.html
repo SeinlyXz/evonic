@@ -145,6 +145,92 @@ html.dark #tab-artifacts .text-gray-600 { color: #d1d5db !important; }
 html.dark #tab-artifacts .text-red-500 { color: #f87171 !important; }
 html.dark #tab-artifacts .hover\:text-red-700:hover { color: #fca5a5 !important; }
 html.dark #tab-artifacts .bg-red-50 { background: #451a1a !important; }
+/* Artifacts tab: Finder-style browser — file pane (icons or list) + an always-on preview pane */
+#tab-artifacts {
+    --af-border: #e5e7eb; --af-text: #1f2937; --af-muted: #6b7280; --af-subtle: #9ca3af;
+    --af-pane: #f9fafb; --af-hover: #f3f4f6; --af-stripe: #fafafa;
+    --af-sel: #eef2ff; --af-sel-border: #a5b4fc; --af-accent: #4f46e5;
+}
+html.dark #tab-artifacts {
+    --af-border: #374151; --af-text: #f3f4f6; --af-muted: #9ca3af; --af-subtle: #6b7280;
+    --af-pane: #111827; --af-hover: #374151; --af-stripe: rgba(255,255,255,.02);
+    --af-sel: rgba(99,102,241,.18); --af-sel-border: #6366f1; --af-accent: #a5b4fc;
+}
+.af-view-toggle { display: inline-flex; padding: 2px; border: 1px solid var(--af-border); border-radius: 8px; background: var(--af-pane); }
+.af-view-toggle button { display: flex; align-items: center; justify-content: center; width: 30px; height: 26px; border-radius: 6px; color: var(--af-muted); cursor: pointer; }
+.af-view-toggle button svg { width: 16px; height: 16px; }
+.af-view-toggle button:hover { color: var(--af-text); }
+.af-view-toggle button.is-active { background: var(--af-sel); color: var(--af-accent); }
+.af-browser { display: flex; gap: 16px; align-items: flex-start; }
+.af-files { flex: 1; min-width: 0; }
+.af-name { display: flex; min-width: 0; max-width: 100%; }
+.af-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.af-name > span:last-child { flex-shrink: 0; white-space: nowrap; }
+.af-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.af-tile:hover .af-actions, .af-row:hover .af-actions, .af-tile.is-selected .af-actions, .af-row.is-selected .af-actions { opacity: 1; }
+.af-actions button { padding: 5px; border-radius: 6px; color: var(--af-muted); cursor: pointer; }
+.af-actions button svg { width: 15px; height: 15px; }
+.af-actions button:hover { background: var(--af-hover); color: var(--af-accent); }
+.af-actions button.af-danger:hover { color: #ef4444; }
+/* Icon view */
+.af-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 6px; }
+.af-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px 10px; border: 1px solid transparent; border-radius: 10px; cursor: pointer; user-select: none; }
+.af-tile:hover { background: var(--af-hover); }
+.af-tile.is-selected { background: var(--af-sel); border-color: var(--af-sel-border); }
+.af-tile .af-actions { position: absolute; top: 4px; right: 4px; }
+.af-thumb { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 64px; height: 64px; border-radius: 12px; overflow: hidden; flex-shrink: 0; }
+.af-thumb svg { width: 26px; height: 26px; }
+.af-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.af-thumb-ext { font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+/* Icon view names wrap to two lines like Finder; long ones are middle-truncated in JS */
+.af-tile-name { max-width: 100%; font-size: 13px; font-weight: 500; line-height: 1.3; text-align: center; color: var(--af-text); word-break: break-all; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.af-tile .af-meta { font-size: 11px; color: var(--af-subtle); }
+/* List view */
+.af-list { border: 1px solid var(--af-border); border-radius: 10px; overflow: hidden; }
+.af-list-head, .af-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px 80px 150px 64px; align-items: center; gap: 12px; padding: 0 12px; }
+.af-list-head { height: 32px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--af-muted); background: var(--af-pane); border-bottom: 1px solid var(--af-border); }
+.af-row { height: 40px; font-size: 13px; color: var(--af-text); cursor: pointer; user-select: none; }
+.af-row:nth-child(even) { background: var(--af-stripe); }
+.af-row:hover { background: var(--af-hover); }
+.af-row.is-selected { background: var(--af-sel); box-shadow: inset 3px 0 0 var(--af-sel-border); }
+.af-row-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 500; }
+.af-row-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0; }
+.af-row-icon svg { width: 14px; height: 14px; }
+.af-row .af-col-dim { color: var(--af-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.af-col-right { text-align: right; }
+.af-row .af-actions { justify-content: flex-end; }
+@media (max-width: 640px) {
+    .af-list-head, .af-row { grid-template-columns: minmax(0, 1fr) 64px 56px; }
+    .af-col-kind, .af-col-date { display: none; }
+}
+/* Preview pane: hidden on small screens, where a click opens the full viewer instead.
+   On large screens the card fills the tab and both panes scroll on their own, like Finder. */
+.af-preview { display: none; }
+@media (min-width: 1024px) {
+    .af-card { height: 100%; display: flex; flex-direction: column; }
+    .af-browser { flex: 1; min-height: 420px; align-items: stretch; }
+    .af-files { overflow-y: auto; }
+    .af-preview { display: flex; flex-direction: column; width: 360px; flex-shrink: 0; border: 1px solid var(--af-border); border-radius: 10px; background: var(--af-pane); overflow: hidden; }
+}
+@media (min-width: 1536px) { .af-preview { width: 460px; } }
+.af-preview-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; color: var(--af-subtle); }
+.af-preview-empty svg { width: 44px; height: 44px; opacity: .6; }
+.af-preview-empty p { font-size: 13px; }
+.af-preview-empty small { font-size: 11px; }
+.af-preview-head { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--af-border); }
+.af-preview-title { flex: 1; min-width: 0; }
+.af-preview-title h4 { font-size: 14px; font-weight: 600; color: var(--af-text); overflow-wrap: anywhere; line-height: 1.35; }
+.af-preview-title p { font-size: 12px; color: var(--af-muted); margin-top: 2px; }
+.af-preview-head .af-actions { opacity: 1; flex-shrink: 0; }
+.af-preview-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; }
+.af-preview-body iframe { min-height: 0 !important; height: 100%; }
+.af-preview-body pre { max-height: none !important; font-size: 12px !important; }
+.af-preview-body img, .af-preview-body video { max-height: none !important; }
+.af-preview-info { border-top: 1px solid var(--af-border); padding: 10px 14px; font-size: 12px; }
+.af-preview-info h5 { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--af-muted); margin-bottom: 6px; }
+.af-preview-info dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; }
+.af-preview-info dt { color: var(--af-muted); }
+.af-preview-info dd { color: var(--af-text); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Dark mode: Artifact viewer modal */
 html.dark #artifact-viewer-modal > div { background: #1f2937; }
 html.dark #artifact-viewer-modal .border-gray-200 { border-color: #374151; }
@@ -650,7 +736,7 @@ html.dark .agent-tab.active {
                             {{ toggle_widget(id='agent-safety-checker', checked=(agent.safety_checker_enabled is none or agent.safety_checker_enabled)) }}
                             <div>
                                 <span class="text-gray-600 dark:text-gray-300 text-sm font-medium">Safety Checker</span>
-                                <p class="text-xs text-gray-400 mt-0.5">Heuristic safety check on Bash/Python scripts. Disable for full autopilot — agent runs all code without approval prompts.</p>
+                                <p class="text-xs text-gray-400 mt-0.5">Heuristic safety check on Bash/Python scripts. Disable to skip its approval prompts (destructive-command and custom-rule checks). Two system-level guards are separate and still apply regardless: the root filesystem scan guard (<code>find /</code>, <code>tree /</code>) and the long-running build command guard — disable those with the <code>RFS_GUARD_DISABLED</code> / <code>LR_GUARD_DISABLED</code> env vars or System &rarr; Settings.</p>
                             </div>
                         </label>
                     </div>
@@ -956,9 +1042,13 @@ html.dark .agent-tab.active {
 
     <!-- Artifacts Tab -->
     <div id="tab-artifacts" class="tab-content hidden flex-1 min-h-0 overflow-y-auto">
-        <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 max-w-5xl">
+        <div class="af-card bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Artifacts</h3>
+                <div class="af-view-toggle" role="group" aria-label="View">
+                    <button type="button" data-view="icons" onclick="setArtifactView('icons')" title="Icons" aria-label="Icon view"><i data-lucide="layout-grid"></i></button>
+                    <button type="button" data-view="list" onclick="setArtifactView('list')" title="List" aria-label="List view"><i data-lucide="list"></i></button>
+                </div>
             </div>
 
             <!-- Search & Sort Bar -->
@@ -990,10 +1080,10 @@ html.dark .agent-tab.active {
                 <button class="artifacts-filter-chip px-3 py-1.5 text-xs font-medium rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700" data-type="data" onclick="setArtifactFilter('data')">Data / Other</button>
             </div>
 
-            <!-- Artifacts Grid -->
-            <div id="artifacts-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                <!-- Artifacts loaded dynamically -->
-            </div>
+            <div class="af-browser">
+            <div class="af-files">
+            <!-- Artifacts (icon or list view, rendered by renderArtifacts) -->
+            <div id="artifacts-grid"></div>
 
             <!-- Pagination Controls -->
             <div id="artifacts-pagination" class="hidden flex items-center justify-between mt-4 pt-3 border-t border-gray-200 dark:border-gray-600">
@@ -1028,6 +1118,11 @@ html.dark .agent-tab.active {
                 </svg>
                 <p class="text-sm">No artifacts yet.</p>
                 <p class="text-xs mt-1">Artifacts are files that agents save during their work. When an agent produces a report, analysis, or any output, it can be saved here.</p>
+            </div>
+            </div>
+
+            <!-- Preview pane: always visible on large screens, filled by selectArtifact() -->
+            <aside id="artifacts-preview" class="af-preview" aria-label="Preview"></aside>
             </div>
         </div>
     </div>
@@ -6575,7 +6670,10 @@ setInterval(pollWorkplaceStatus, 5000);
     const isValid = hash && document.querySelector('.tab-btn[data-tab="' + CSS.escape(hash) + '"]');
     window._tabInitHash = isValid ? hash : 'chat';
     if (window._tabInitHash !== 'chat') {
-        showTab(window._tabInitHash);
+        // Wait until the rest of this script has run: tab loaders such as
+        // loadArtifacts() use `let` state declared further down, which is not
+        // initialized yet at this point (TDZ ReferenceError on #artifacts).
+        document.addEventListener('DOMContentLoaded', () => showTab(window._tabInitHash));
     }
 })();
 
@@ -6626,50 +6724,273 @@ async function loadArtifacts() {
     }
 }
 
+const ARTIFACT_KIND_LABELS = { document: 'Document', text: 'Text', image: 'Image', sound: 'Audio', video: 'Video', data: 'File' };
+const _ARTIFACT_SVG = {
+    download: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>',
+    trash: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>',
+    expand: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>',
+    copy: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>',
+    eye: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>',
+};
+
+let _artifactsView = (() => {
+    try { return localStorage.getItem('evonic.artifacts.view') === 'list' ? 'list' : 'icons'; } catch (e) { return 'icons'; }
+})();
+let _artifactSelected = null;       // filename shown in the preview pane
+let _artifactPreviewToken = 0;      // invalidates in-flight preview renders
+let _artifactPreviewRaw = null;     // text content of the previewed file, for Copy
+
+function _artifactUrl(filename) {
+    return `/api/agents/${AGENT_ID}/artifacts/${encodeURIComponent(filename)}`;
+}
+
+function _artifactExt(filename) {
+    const dot = filename.lastIndexOf('.');
+    return dot > 0 ? filename.slice(dot + 1).toLowerCase() : '';
+}
+
+function _artifactSize(size) {
+    return size < 1024 ? size + ' B' : size < 1048576 ? (size / 1024).toFixed(1) + ' KB' : (size / 1048576).toFixed(1) + ' MB';
+}
+
+function _artifactKind(f) {
+    const ext = _artifactExt(f.filename);
+    const label = ARTIFACT_KIND_LABELS[f.category] || 'File';
+    return ext ? `${ext.toUpperCase()} ${label}` : label;
+}
+
+function _artifactDateTime(ts) {
+    return new Date(ts * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// Middle-truncate long names (Finder style): only the head shrinks to an
+// ellipsis, so the tail of the name and the extension stay visible.
+function _artifactNameHtml(filename) {
+    const dot = filename.lastIndexOf('.');
+    const stem = dot > 0 ? filename.slice(0, dot) : filename;
+    const ext = dot > 0 ? filename.slice(dot) : '';
+    const tailLen = stem.length > 16 ? 8 : 0;
+    const head = stem.slice(0, stem.length - tailLen);
+    const tail = stem.slice(stem.length - tailLen) + ext;
+    return `<span>${escapeHtml(head)}</span><span>${escapeHtml(tail)}</span>`;
+}
+
+// escapeHtml() leaves quotes alone; attribute values also need them escaped.
+function _artifactAttr(text) {
+    return escapeHtml(text).replace(/"/g, '&quot;');
+}
+
+// Two-line icon-view label: keep short names whole, otherwise keep the start
+// and the end (with the extension) around a middle ellipsis.
+function _artifactShortName(filename, max = 28) {
+    if (filename.length <= max) return filename;
+    const tail = Math.floor((max - 1) / 2);
+    return filename.slice(0, max - 1 - tail) + '\u2026' + filename.slice(-tail);
+}
+
+function _artifactSvg(path, cls = '') {
+    return `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24">${path}</svg>`;
+}
+
+function _artifactItemActions() {
+    return `
+        <div class="af-actions">
+            <button type="button" onclick="event.stopPropagation(); downloadArtifact(this.closest('[data-filename]').dataset.filename)" title="Download">${_artifactSvg(_ARTIFACT_SVG.download)}</button>
+            <button type="button" class="af-danger" onclick="event.stopPropagation(); deleteArtifact(this.closest('[data-filename]').dataset.filename)" title="Delete">${_artifactSvg(_ARTIFACT_SVG.trash)}</button>
+        </div>`;
+}
+
 function renderArtifacts() {
     const grid = document.getElementById('artifacts-grid');
     const empty = document.getElementById('artifacts-empty');
-    
+    _syncArtifactViewToggle();
+    const pane = document.getElementById('artifacts-preview');
+    if (pane && !pane.firstElementChild) renderArtifactPreview(null);
+
     // Server already applies search and type filtering; just render what we have
-    const filtered = _artifactsData;
-    
-    if (filtered.length === 0) {
+    const files = _artifactsData;
+
+    if (files.length === 0) {
+        grid.className = '';
         grid.innerHTML = '';
         empty.classList.remove('hidden');
         return;
     }
     empty.classList.add('hidden');
-    
-    grid.innerHTML = filtered.map(f => {
-        const sizeStr = f.size < 1024 ? f.size + ' B' : f.size < 1048576 ? (f.size / 1024).toFixed(1) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB';
-        const date = new Date(f.modified * 1000);
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const item = f => {
+        const sel = f.filename === _artifactSelected ? ' is-selected' : '';
+        const attrs = `data-filename="${_artifactAttr(f.filename)}" data-category="${f.category}" title="${_artifactAttr(f.filename)}" onclick="onArtifactClick(this)" ondblclick="onArtifactDblClick(this)"`;
         const icon = getArtifactIcon(f.category);
-        const ext = f.filename.split('.').pop();
-        
+        if (_artifactsView === 'list') {
+            return `
+                <div class="af-row${sel}" ${attrs}>
+                    <div class="af-row-name">
+                        <span class="af-row-icon ${icon.bg}">${_artifactSvg(icon.path, icon.color)}</span>
+                        <span class="af-name">${_artifactNameHtml(f.filename)}</span>
+                    </div>
+                    <span class="af-col-dim af-col-kind">${_artifactKind(f)}</span>
+                    <span class="af-col-dim af-col-right">${_artifactSize(f.size)}</span>
+                    <span class="af-col-dim af-col-date">${_artifactDateTime(f.modified)}</span>
+                    ${_artifactItemActions()}
+                </div>`;
+        }
+        const ext = _artifactExt(f.filename);
+        const thumb = f.category === 'image'
+            ? `<img src="${_artifactUrl(f.filename)}" alt="" loading="lazy">`
+            : `${_artifactSvg(icon.path, icon.color)}${ext ? `<span class="af-thumb-ext ${icon.color}">${escapeHtml(ext.slice(0, 5))}</span>` : ''}`;
         return `
-            <div class="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 hover:border-indigo-300 dark:hover:border-indigo-500 transition-colors cursor-pointer flex items-center gap-2.5 group" onclick="openArtifact('${f.filename}', '${f.category}')">
-                <div class="flex items-center justify-center w-8 h-8 rounded-md flex-shrink-0 ${icon.bg}">
-                    <svg class="w-4 h-4 ${icon.color}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        ${icon.path}
-                    </svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title="${f.filename}">${f.filename}</p>
-                    <p class="text-xs text-gray-400">${sizeStr} &middot; ${dateStr}</p>
-                </div>
-                <div class="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onclick="event.stopPropagation(); downloadArtifact('${f.filename}')" title="Download" class="p-1.5 text-indigo-500 hover:text-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    </button>
-                    <button onclick="event.stopPropagation(); deleteArtifact('${f.filename}')" title="Delete" class="p-1.5 text-red-400 hover:text-red-600 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
+            <div class="af-tile${sel}" ${attrs}>
+                <div class="af-thumb ${icon.bg}">${thumb}</div>
+                <div class="af-tile-name">${escapeHtml(_artifactShortName(f.filename))}</div>
+                <div class="af-meta">${_artifactSize(f.size)}</div>
+                ${_artifactItemActions()}
+            </div>`;
+    };
+
+    if (_artifactsView === 'list') {
+        grid.className = 'af-list';
+        grid.innerHTML = `
+            <div class="af-list-head">
+                <span>Name</span>
+                <span class="af-col-kind">Kind</span>
+                <span class="af-col-right">Size</span>
+                <span class="af-col-date">Date Modified</span>
+                <span></span>
+            </div>` + files.map(item).join('');
+    } else {
+        grid.className = 'af-icons';
+        grid.innerHTML = files.map(item).join('');
+    }
 }
+
+function setArtifactView(view) {
+    _artifactsView = view === 'list' ? 'list' : 'icons';
+    try { localStorage.setItem('evonic.artifacts.view', _artifactsView); } catch (e) { /* storage unavailable */ }
+    renderArtifacts();
+}
+
+function _syncArtifactViewToggle() {
+    document.querySelectorAll('.af-view-toggle button').forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.view === _artifactsView);
+    });
+}
+
+// The preview pane is hidden on small screens; there a click opens the full viewer instead.
+function _artifactPreviewVisible() {
+    const pane = document.getElementById('artifacts-preview');
+    return !!pane && getComputedStyle(pane).display !== 'none';
+}
+
+function onArtifactClick(el) {
+    const { filename, category } = el.dataset;
+    if (_artifactPreviewVisible()) selectArtifact(filename);
+    else openArtifact(filename, category);
+}
+
+function onArtifactDblClick(el) {
+    if (_artifactPreviewVisible()) openArtifact(el.dataset.filename, el.dataset.category);
+}
+
+function selectArtifact(filename) {
+    if (filename === _artifactSelected) return;
+    const f = _artifactsData.find(x => x.filename === filename);
+    if (!f) return;
+    _artifactSelected = filename;
+    document.querySelectorAll('#artifacts-grid [data-filename]').forEach(el => {
+        el.classList.toggle('is-selected', el.dataset.filename === filename);
+    });
+    renderArtifactPreview(f);
+}
+
+function clearArtifactSelection() {
+    _artifactSelected = null;
+    _artifactPreviewRaw = null;
+    document.querySelectorAll('#artifacts-grid .is-selected').forEach(el => el.classList.remove('is-selected'));
+    renderArtifactPreview(null);
+}
+
+function renderArtifactPreview(f) {
+    const pane = document.getElementById('artifacts-preview');
+    if (!pane) return;
+    const token = ++_artifactPreviewToken;
+    _artifactPreviewRaw = null;
+    if (!f) {
+        pane.innerHTML = `
+            <div class="af-preview-empty">
+                ${_artifactSvg(_ARTIFACT_SVG.eye)}
+                <p>Select a file to preview it here</p>
+                <small>Double-click a file to open it full size</small>
+            </div>`;
+        return;
+    }
+
+    const url = _artifactUrl(f.filename);
+    const ext = _artifactExt(f.filename);
+    const icon = getArtifactIcon(f.category);
+    const canCopy = f.category === 'text' || ext === 'md';
+    pane.innerHTML = `
+        <div class="af-preview-head" data-filename="${_artifactAttr(f.filename)}">
+            <span class="af-row-icon ${icon.bg}">${_artifactSvg(icon.path, icon.color)}</span>
+            <div class="af-preview-title">
+                <h4>${escapeHtml(f.filename)}</h4>
+                <p>${_artifactKind(f)} &middot; ${_artifactSize(f.size)}</p>
+            </div>
+            <div class="af-actions">
+                <button type="button" onclick="openArtifact(this.closest('[data-filename]').dataset.filename, '${f.category}')" title="Open full size">${_artifactSvg(_ARTIFACT_SVG.expand)}</button>
+                <button type="button" onclick="downloadArtifact(this.closest('[data-filename]').dataset.filename)" title="Download">${_artifactSvg(_ARTIFACT_SVG.download)}</button>
+                ${canCopy ? `<button type="button" onclick="copyArtifactContent(this, _artifactPreviewRaw)" title="Copy content">${_artifactSvg(_ARTIFACT_SVG.copy)}</button>` : ''}
+                <button type="button" class="af-danger" onclick="deleteArtifact(this.closest('[data-filename]').dataset.filename)" title="Delete">${_artifactSvg(_ARTIFACT_SVG.trash)}</button>
+            </div>
+        </div>
+        <div class="af-preview-body" id="artifacts-preview-body">
+            <div class="flex items-center justify-center py-16">
+                <svg class="animate-spin w-6 h-6 text-indigo-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            </div>
+        </div>
+        <div class="af-preview-info">
+            <h5>Information</h5>
+            <dl>
+                <dt>Kind</dt><dd>${_artifactKind(f)}</dd>
+                <dt>Size</dt><dd>${_artifactSize(f.size)} (${f.size.toLocaleString('en-US')} bytes)</dd>
+                <dt>Modified</dt><dd>${_artifactDateTime(f.modified)}</dd>
+            </dl>
+        </div>`;
+
+    const isStale = () => token !== _artifactPreviewToken;
+    renderArtifactContent(f.filename, f.category, url, ext, document.getElementById('artifacts-preview-body'), isStale)
+        .then(raw => { if (!isStale()) _artifactPreviewRaw = raw; });
+}
+
+// Finder-style keyboard navigation while a file is selected in the preview pane.
+document.addEventListener('keydown', e => {
+    const tab = document.getElementById('tab-artifacts');
+    if (!_artifactSelected || !tab || tab.classList.contains('hidden')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || document.getElementById('artifact-viewer-modal')) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(t.tagName))) return;
+    const idx = _artifactsData.findIndex(f => f.filename === _artifactSelected);
+    if (idx < 0) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openArtifact(_artifactSelected, _artifactsData[idx].category);
+        return;
+    }
+    let step = 0;
+    if (e.key === 'ArrowRight') step = 1;
+    else if (e.key === 'ArrowLeft') step = -1;
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        // In icon view up/down move a whole row, like Finder.
+        const grid = document.getElementById('artifacts-grid');
+        const cols = _artifactsView === 'icons' ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 1;
+        step = e.key === 'ArrowDown' ? cols : -cols;
+    } else return;
+    const next = _artifactsData[idx + step];
+    if (!next) return;
+    e.preventDefault();
+    selectArtifact(next.filename);
+    document.querySelector(`#artifacts-grid [data-filename="${CSS.escape(next.filename)}"]`)?.scrollIntoView({ block: 'nearest' });
+});
 
 function getArtifactIcon(category) {
     switch(category) {
@@ -6763,15 +7084,17 @@ function goArtifactPage(target) {
 }
 
 function downloadArtifact(filename) {
-    window.open(`/api/agents/${AGENT_ID}/artifacts/${filename}`, '_blank');
+    window.open(_artifactUrl(filename), '_blank');
 }
+
+let _artifactModalToken = 0;
 
 function openArtifact(filename, category) {
     // Image branch: use Lightbox for prev/next navigation among image artifacts only
     if (category === 'image') {
         const imageArtifacts = _artifactsData.filter(f => f.category === 'image');
         if (!imageArtifacts.length) return;
-        const imageUrls = imageArtifacts.map(f => `/api/agents/${AGENT_ID}/artifacts/${f.filename}`);
+        const imageUrls = imageArtifacts.map(f => _artifactUrl(f.filename));
         const idx = imageArtifacts.findIndex(f => f.filename === filename);
         Lightbox.open(imageUrls, Math.max(0, idx));
         return;
@@ -6780,8 +7103,9 @@ function openArtifact(filename, category) {
     const existing = document.getElementById('artifact-viewer-modal');
     if (existing) existing.remove();
 
-    const fileUrl = `/api/agents/${AGENT_ID}/artifacts/${filename}`;
+    const fileUrl = _artifactUrl(filename);
     const ext = filename.split('.').pop().toLowerCase();
+    _artifactRawContent = null;
 
     const html = `
     <div id="artifact-viewer-modal" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4" onclick="if(event.target===this)closeArtifactViewer()">
@@ -6792,7 +7116,7 @@ function openArtifact(filename, category) {
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                     </span>
                     <div class="min-w-0">
-                        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate">${filename}</h3>
+                        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate">${escapeHtml(filename)}</h3>
                         <p class="text-xs text-gray-400">${category.charAt(0).toUpperCase() + category.slice(1)}</p>
                     </div>
                 </div>
@@ -6821,7 +7145,10 @@ function openArtifact(filename, category) {
     document.body.insertAdjacentHTML('beforeend', html);
     document.addEventListener('keydown', _artifactViewerEscHandler);
 
-    renderArtifactContent(filename, category, fileUrl, ext);
+    const token = ++_artifactModalToken;
+    const isStale = () => token !== _artifactModalToken || !document.getElementById('artifact-viewer-modal');
+    renderArtifactContent(filename, category, fileUrl, ext, document.getElementById('artifact-viewer-body'), isStale)
+        .then(raw => { if (!isStale()) _artifactRawContent = raw; });
 }
 
 function closeArtifactViewer() {
@@ -6830,17 +7157,17 @@ function closeArtifactViewer() {
     document.removeEventListener('keydown', _artifactViewerEscHandler);
 }
 
-async function copyArtifactContent(btn) {
-    if (!_artifactRawContent) {
+async function copyArtifactContent(btn, text = _artifactRawContent) {
+    if (!text) {
         showToast('No content to copy.', 'warning');
         return;
     }
     try {
-        await navigator.clipboard.writeText(_artifactRawContent);
+        await navigator.clipboard.writeText(text);
     } catch(e) {
         // Fallback for older browsers or non-HTTPS
         const textarea = document.createElement('textarea');
-        textarea.value = _artifactRawContent;
+        textarea.value = text;
         textarea.style.position = 'fixed';
         textarea.style.opacity = '0';
         document.body.appendChild(textarea);
@@ -6864,16 +7191,20 @@ function _artifactViewerEscHandler(e) {
     if (e.key === 'Escape') closeArtifactViewer();
 }
 
-async function renderArtifactContent(filename, category, fileUrl, ext) {
-    const body = document.getElementById('artifact-viewer-body');
-    if (!body) return;
+// Renders a preview of the file into `body` (the viewer modal or the preview pane).
+// Returns the file's text for text-like files (for Copy), otherwise null.
+// `isStale` lets the caller drop a render that a newer one has replaced.
+async function renderArtifactContent(filename, category, fileUrl, ext, body, isStale = () => false) {
+    if (!body) return null;
+    let raw = null;
 
     try {
         if (ext === 'md') {
             // Fetch and render markdown
             const res = await fetch(fileUrl);
             const text = await res.text();
-            _artifactRawContent = text;
+            if (isStale()) return null;
+            raw = text;
             body.innerHTML = '<div class="recap-prose max-w-none">' + marked.parse(text) + '</div>';
             ui.addCopyButtons(body);
         } else if (ext === 'pdf') {
@@ -6896,7 +7227,7 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
                         <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
                     </div>
                     <div class="text-center mb-2">
-                        <p class="text-sm font-medium text-gray-700 dark:text-gray-300">${filename}</p>
+                        <p class="text-sm font-medium text-gray-700 dark:text-gray-300">${escapeHtml(filename)}</p>
                     </div>
                     <audio controls class="w-full max-w-lg">
                         <source src="${fileUrl}" type="audio/${ext === 'm4a' ? 'mp4' : ext === 'wma' ? 'x-ms-wma' : ext}">
@@ -6907,7 +7238,7 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
             // Image viewer
             body.innerHTML = `
                 <div class="flex justify-center">
-                    <img src="${fileUrl}" alt="${filename}" class="max-w-full max-h-[70vh] rounded-md shadow-lg object-contain">
+                    <img src="${fileUrl}" alt=" class="max-w-full max-h-[70vh] rounded-md shadow-lg object-contain">
                 </div>`;
         } else if (['txt', 'csv', 'json', 'yaml', 'yml', 'xml', 'log',
                      'py', 'c', 'rs', 'js', 'ts', 'jsx', 'tsx', 'cpp', 'cc', 'cxx',
@@ -6919,7 +7250,8 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
             // Plain text / code viewer
             const res = await fetch(fileUrl);
             const text = await res.text();
-            _artifactRawContent = text;
+            if (isStale()) return null;
+            raw = text;
             const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             body.innerHTML = `<pre class="bg-gray-50 dark:bg-gray-900 rounded-md p-4 text-sm text-gray-800 dark:text-gray-200 overflow-x-auto max-h-[70vh] whitespace-pre-wrap font-mono">${escaped}</pre>`;
         } else {
@@ -6935,6 +7267,7 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
                 </div>`;
         }
     } catch(e) {
+        if (isStale()) return null;
         body.innerHTML = `
             <div class="flex flex-col items-center gap-3 py-12 text-red-400">
                 <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86l-8.6 14.86A1 1 0 002.56 20h18.88a1 1 0 00.87-1.5l-8.6-14.86a1 1 0 00-1.74 0z"></path></svg>
@@ -6942,15 +7275,17 @@ async function renderArtifactContent(filename, category, fileUrl, ext) {
             </div>`;
         console.error('Failed to render artifact:', e);
     }
+    return raw;
 }
 
 async function deleteArtifact(filename) {
     if (!await showConfirm({title: 'Delete Artifact', message: `Delete artifact "${filename}"? This cannot be undone.`, confirmText: 'Delete'})) return;
     try {
-        const res = await fetch(`/api/agents/${AGENT_ID}/artifacts/${filename}`, { method: 'DELETE' });
+        const res = await fetch(_artifactUrl(filename), { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
             showToast('Artifact deleted.', 'success');
+            if (filename === _artifactSelected) clearArtifactSelection();
             loadArtifacts();
         } else {
             showToast(data.error || 'Failed to delete artifact.', 'error');
@@ -7462,6 +7797,9 @@ window.softSwitchAgent = async function (newId, opts = {}) {
     kbGraphDataEpoch = -1;
     kbTree = [];
     kbTreeState = {};
+
+    // Empty the artifacts preview pane so it doesn't keep showing the previous agent's file
+    clearArtifactSelection();
 
     // Plugin tabs cache the previous agent's HTML — drop it so the next open re-fetches
     _pluginTabCache.clear();

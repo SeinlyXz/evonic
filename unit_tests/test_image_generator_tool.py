@@ -44,7 +44,6 @@ def image_tool(monkeypatch, tmp_path):
         "backend.skills_manager.skills_manager.get_skill_config",
         lambda _skill_id: {
             "default_provider": "mock",
-            "allowed_providers": "mock",
             "allow_local_providers": True,
             "mock_enabled": True,
             "max_images_per_request": 2,
@@ -88,7 +87,6 @@ def test_generate_image_uses_no_implicit_provider_fallback(image_tool, monkeypat
         "backend.skills_manager.skills_manager.get_skill_config",
         lambda _skill_id: {
             "default_provider": "",
-            "allowed_providers": "mock",
             "allow_local_providers": True,
             "mock_enabled": True,
             "max_images_per_request": 1,
@@ -106,13 +104,13 @@ def test_generate_image_uses_no_implicit_provider_fallback(image_tool, monkeypat
     }
 
 
-def test_generate_image_enforces_allowlist_and_capabilities(image_tool, monkeypatch):
+def test_generate_image_enforces_provider_enablement_and_capabilities(image_tool, monkeypatch):
     monkeypatch.setattr(
         "backend.skills_manager.skills_manager.get_skill_config",
         lambda _skill_id: {
             "default_provider": "mock",
-            "allowed_providers": "",
             "allow_local_providers": True,
+            "mock_enabled": False,
             "max_images_per_request": 1,
         },
     )
@@ -123,7 +121,6 @@ def test_generate_image_enforces_allowlist_and_capabilities(image_tool, monkeypa
         "backend.skills_manager.skills_manager.get_skill_config",
         lambda _skill_id: {
             "default_provider": "mock",
-            "allowed_providers": "mock",
             "allow_local_providers": True,
             "mock_enabled": True,
             "max_images_per_request": 1,

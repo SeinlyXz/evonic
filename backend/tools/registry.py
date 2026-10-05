@@ -340,6 +340,7 @@ class ToolRegistry:
         """
         tool_path = os.path.join(TOOLS_DIR, f"{tool_name}.py")
         skill_backend_dir = None
+        skill_owner = skill_id  # skill ID owning the resolved backend
         plugin_owner = None  # plugin_id owning the resolved backend
 
         # If skill_id is specified, search that skill first
@@ -351,6 +352,7 @@ class ToolRegistry:
                 skill_dir = skills_manager.find_tool_skill_dir(tool_name, skill_id=skill_id)
                 if skill_dir:
                     skill_backend_dir = os.path.join(skill_dir, 'backend')
+                    skill_owner = skill_id
             # Fall through to default search if not found in specified skill
         elif plugin_id:
             from backend.plugin_manager import plugin_manager
@@ -369,6 +371,7 @@ class ToolRegistry:
                 skill_dir = skills_manager.find_tool_skill_dir(tool_name)
                 if skill_dir:
                     skill_backend_dir = os.path.join(skill_dir, 'backend')
+                    skill_owner = os.path.basename(skill_dir)
             else:
                 from backend.plugin_manager import plugin_manager
                 p_path, p_owner = plugin_manager.find_plugin_tool_backend(tool_name)
@@ -380,8 +383,8 @@ class ToolRegistry:
         current_mtime = os.path.getmtime(tool_path)
         if plugin_owner:
             cache_key = f"{tool_name}:plugin:{plugin_owner}"
-        elif skill_id:
-            cache_key = f"{tool_name}:{skill_id}"
+        elif skill_owner:
+            cache_key = f"{tool_name}:skill:{skill_owner}"
         else:
             cache_key = tool_name
         cached = self._module_cache.get(cache_key)
@@ -393,18 +396,25 @@ class ToolRegistry:
             module = self._exec_plugin_tool_module(
                 plugin_owner, os.path.dirname(tool_path), tool_name, tool_path)
         elif skill_backend_dir:
-            # Skill tools: use a unique namespace (like plugin_tools_{plugin_id})
-            # so relative imports (from ._utils import ...) resolve against the
-            # skill's own backend/tools/ dir, not the main backend/tools/ package.
-            pkg_name = f"skill_tools_{skill_id}"
+            # Skill tools use backend as their package root, so relative imports
+            # can reach sibling packages such as ``..providers``.
+            pkg_name = f"skill_tools_{skill_owner.replace('-', '_')}"
             pkg = sys.modules.get(pkg_name)
             if pkg is None:
                 pkg = types.ModuleType(pkg_name)
                 pkg.__package__ = pkg_name
                 sys.modules[pkg_name] = pkg
-            pkg.__path__ = [os.path.dirname(tool_path)]
+            pkg.__path__ = [skill_backend_dir]
 
-            mod_name = f"{pkg_name}.{tool_name}"
+            tools_pkg_name = f"{pkg_name}.tools"
+            tools_pkg = sys.modules.get(tools_pkg_name)
+            if tools_pkg is None:
+                tools_pkg = types.ModuleType(tools_pkg_name)
+                tools_pkg.__package__ = tools_pkg_name
+                sys.modules[tools_pkg_name] = tools_pkg
+            tools_pkg.__path__ = [os.path.dirname(tool_path)]
+
+            mod_name = f"{tools_pkg_name}.{tool_name}"
             spec = importlib.util.spec_from_file_location(mod_name, tool_path)
             module = importlib.util.module_from_spec(spec)
             sys.modules[mod_name] = module

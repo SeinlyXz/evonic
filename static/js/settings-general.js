@@ -79,6 +79,7 @@ window.settingsGeneral = {
         set("kb-organizer-nightly-time-input", s.kb_organizer_nightly_time);
         check("public-history-toggle", s.public_history);
         check("long-running-guard-toggle", s.long_running_guard_enabled);
+        check("root-fs-scan-guard-toggle", s.root_fs_scan_guard_enabled);
         check("message-wrapper-toggle", s.message_wrapper_enabled);
         check("whatsapp-safe-delivery-toggle", s.whatsapp_safe_delivery_enabled);
         check("whatsapp-natural-formatting-toggle", s.whatsapp_natural_formatting_enabled);
