@@ -2192,14 +2192,13 @@ class AgentRuntime:
             tools = _ctx.build_tools(agent)
 
             # Build agent context for tool backends. Explorers use their own
-            # configured tool set; everyone else inherits from the DB.
+            # configured tool set; everyone else resolves through sim_spec so
+            # this allowlist matches what build_tools() exposed to the model.
             if agent.get('is_explorer'):
                 from backend.agent_runtime import explorer as _explorer
                 assigned_tool_ids = list(_explorer.tool_ids(agent))
-            elif agent.get('is_simulation'):
-                assigned_tool_ids = list(sim_spec.tools(agent, db_agent_id))
             else:
-                assigned_tool_ids = db.get_agent_tools(db_agent_id)
+                assigned_tool_ids = list(sim_spec.tools(agent, db_agent_id))
 
             # Inter-agent communication is enabled by the agent-level toggle;
             # send_agent_message is therefore available without a separate tool

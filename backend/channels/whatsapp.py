@@ -11,7 +11,7 @@ import threading
 import uuid
 import requests
 from typing import Dict, Any, Optional
-from backend.channels.base import BaseChannel, strip_system_tags
+from backend.channels.base import BaseChannel, strip_system_tags, unique_attachment_path
 from backend.channels.whatsapp_dispatcher import WhatsAppOutboundDispatcher
 
 _logger = logging.getLogger(__name__)
@@ -1165,10 +1165,9 @@ class WhatsAppChannel(BaseChannel):
                 'image/jpeg': '.jpg', 'image/png': '.png',
                 'image/webp': '.webp', 'image/gif': '.gif',
             }.get(mime_type, '.jpg')
-            filename = f"{int(time.time())}_whatsapp{ext}"
             target_dir = os.path.join('data', 'attachments', agent_id, session_id)
-            os.makedirs(target_dir, exist_ok=True)
-            file_path = os.path.join(target_dir, filename)
+            file_path = unique_attachment_path(target_dir, f"whatsapp{ext}")
+            filename = os.path.basename(file_path)
             with open(file_path, 'wb') as f:
                 f.write(image_bytes)
             attachment_id = db.save_attachment(
@@ -1226,10 +1225,9 @@ class WhatsAppChannel(BaseChannel):
                 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a',
                 'audio/wav': '.wav', 'audio/webm': '.webm',
             }.get(mime_type, '.ogg')
-            filename = f"{int(time.time())}_whatsapp_voice{ext}"
             target_dir = os.path.join('data', 'attachments', agent_id, session_id)
-            os.makedirs(target_dir, exist_ok=True)
-            file_path = os.path.join(target_dir, filename)
+            file_path = unique_attachment_path(target_dir, f"whatsapp_voice{ext}")
+            filename = os.path.basename(file_path)
             with open(file_path, 'wb') as f:
                 f.write(audio_bytes)
             attachment_id = db.save_attachment(
@@ -1279,10 +1277,9 @@ class WhatsAppChannel(BaseChannel):
                 return None
 
             safe_name = _sanitize_attachment_filename(original_filename)
-            filename = f"{int(time.time())}_{safe_name}"
             target_dir = os.path.join('data', 'attachments', agent_id, session_id)
-            os.makedirs(target_dir, exist_ok=True)
-            file_path = os.path.join(target_dir, filename)
+            file_path = unique_attachment_path(target_dir, safe_name)
+            filename = os.path.basename(file_path)
             with open(file_path, 'wb') as handle:
                 handle.write(document_bytes)
             attachment_id = db.save_attachment(

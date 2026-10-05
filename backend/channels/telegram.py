@@ -7,7 +7,7 @@ import re
 import time
 import threading
 from typing import Dict, Any, Optional, Tuple
-from backend.channels.base import BaseChannel, strip_system_tags
+from backend.channels.base import BaseChannel, strip_system_tags, unique_attachment_path
 
 _logger = logging.getLogger(__name__)
 
@@ -134,8 +134,7 @@ async def _ingest_non_photo_attachment(message, context, agent_id, session_id,
     safe = _sanitize_filename(original_filename)
     target_dir = os.path.join('data', 'attachments', agent_id, session_id)
     try:
-        os.makedirs(target_dir, exist_ok=True)
-        target_path = os.path.join(target_dir, f"{int(time.time())}_{safe}")
+        target_path = unique_attachment_path(target_dir, safe)
         tg_file = await context.bot.get_file(file_id)
         await tg_file.download_to_drive(target_path)
     except Exception as e:
@@ -251,10 +250,7 @@ async def _ingest_photo(message, context, agent_id, session_id, user_id,
                 target_dir = os.path.join(
                     'data', 'attachments', agent_id, session_id
                 )
-                os.makedirs(target_dir, exist_ok=True)
-                target_path = os.path.join(
-                    target_dir, f"{int(time.time())}_{safe}"
-                )
+                target_path = unique_attachment_path(target_dir, safe)
                 if photo_bytes_for_attachment is not None:
                     with open(target_path, 'wb') as f:
                         f.write(photo_bytes_for_attachment)

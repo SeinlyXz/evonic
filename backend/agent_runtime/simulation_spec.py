@@ -41,11 +41,26 @@ def is_simulation(agent: Optional[dict]) -> bool:
 # ---------------------------------------------------------------------------
 
 def tools(agent: Optional[dict], eid: Optional[str] = None) -> List[str]:
-    """Assigned tool ids for *agent* (inline spec for sims)."""
+    """Assigned tool ids for *agent* (inline spec for sims).
+
+    For a DB agent the ``artifacts_enabled`` tool lock is applied on read as
+    well: ``ARTIFACT_TOOLS`` are managed by that flag alone, but the lock only
+    ran when an agent was created or edited, so agents whose rows were written
+    another way (e.g. a plugin provisioning tenant agents) had
+    ``artifacts_enabled=1`` without ``read_attachment`` and could never open
+    an inbound document. Simulations carry an already-locked inline spec, and
+    a bare dict without the ``artifacts_enabled`` column is passed through.
+    """
     if is_simulation(agent):
         return list(agent.get(SIM_TOOL_IDS) or [])
     from models.db import db
-    return db.get_agent_tools(eid if eid is not None else (agent or {}).get("id", ""))
+    ids = db.get_agent_tools(eid if eid is not None else (agent or {}).get("id", ""))
+    if not agent or agent.get("is_explorer") or "artifacts_enabled" not in agent:
+        return ids
+    from backend.agent_factory import ARTIFACT_TOOLS
+    if agent.get("artifacts_enabled"):
+        return ids + sorted(ARTIFACT_TOOLS - set(ids))
+    return [tool_id for tool_id in ids if tool_id not in ARTIFACT_TOOLS]
 
 
 def skills(agent: Optional[dict], eid: Optional[str] = None) -> List[str]:
