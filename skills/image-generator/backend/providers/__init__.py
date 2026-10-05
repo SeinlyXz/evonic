@@ -13,6 +13,7 @@ from .base import (
 from .automatic1111 import Automatic1111Provider
 from .google import GoogleGeminiProvider
 from .mock import DeterministicMockProvider
+from .openrouter import OpenRouterProvider
 from .registry import ImageProviderRegistry, provider_registry
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "ImageGenerationResult",
     "ImageProvider",
     "ImageProviderRegistry",
+    "OpenRouterProvider",
     "ProviderCapabilities",
     "ProviderConfigField",
     "SafeErrorCode",

@@ -21,12 +21,14 @@ def test_image_generator_declares_provider_first_settings_metadata():
         "automatic1111",
         "comfyui",
         "mock",
+        "openrouter",
     }
 
     variables = {variable["name"]: variable for variable in manifest["variables"]}
     assert variables["google_gemini_api_key"]["provider"] == "google-gemini"
     assert variables["automatic1111_endpoint"]["provider"] == "automatic1111"
     assert variables["comfyui_endpoint"]["provider"] == "comfyui"
+    assert variables["openrouter_api_key"]["provider"] == "openrouter"
     assert variables["comfyui_workflow_template"]["default"] == "default"
     assert variables["comfyui_timeout_seconds"]["advanced"] is True
     assert variables["comfyui_polling_interval_seconds"]["advanced"] is True
