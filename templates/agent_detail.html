@@ -376,6 +376,41 @@ html.dark .gcard-ic { color: #a5b4fc; background: rgb(99 102 241 / .18); }
 #tab-general label.flex.items-center.gap-3.cursor-pointer > div { flex: 1 1 auto; min-width: 0; }
 #tab-general .gcard .mb-4:last-child { margin-bottom: 0; }
 #advanced-section { border-top-color: rgb(148 163 184 / .2) !important; }
+/* ── Settings tab = sub-pages: one section at a time (rail children on desktop, chips on mobile) ──
+   All sections stay in the DOM (only hidden), so every field id and the auto-save keep working. */
+#general-shell { max-width: 56rem; }
+#general-shell > div { display: contents; }                      /* the two old columns just group; sections are the grid items */
+#general-shell .gsec-pane { margin: 0 !important; }
+#general-shell .gsec-pane:not(.gsec-on) { display: none !important; }
+/* Wide screens: a section is a two-column form (it used to be one narrow card with the rest of the screen empty).
+   Long things (textareas, safety rules, sandbox, avatar) span both columns; field/toggle pairs sit side by side. */
+@media (min-width: 1100px) {
+  #general-shell { max-width: 80rem; }
+  #general-shell .gsec-pane.gcard, #general-shell #advanced-section { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1.75rem; align-items: start; }
+  #general-shell .gsec-pane.gcard > .gcard-h { grid-column: 1 / -1; }
+  #general-shell #advanced-section { row-gap: 1rem; }
+  #general-shell #advanced-section > * { margin: 0 !important; }
+  #general-shell #advanced-section { padding-top: 1.25rem; }
+  #general-shell #advanced-section > .pt-4 { padding-top: 0; }   /* the first block used to carry its own top padding and sat lower than its neighbour */
+  #general-shell .gsec-pane.gcard > :is(.mb-4, #agent-safety-rules-section, #sandbox-section):is(:has(textarea), :has(#avatar-input), #agent-safety-rules-section, #sandbox-section),
+  #general-shell #advanced-section > :is(:has(textarea), :has(#agent-summarize-prompt-override)) { grid-column: 1 / -1; }
+}
+#general-shell [data-gsec="advanced"] > button { pointer-events: none; cursor: default; }   /* Advanced is its own page now: no collapsing */
+#general-shell #adv-arrow { display: none; }
+.agent-subtabs { display: none; flex-direction: column; gap: .125rem; margin: .125rem 0 .5rem 1.125rem; padding-left: .5rem; border-left: 1px solid rgb(148 163 184 / .25); min-width: 0; }
+@media (min-width: 1024px) { body[data-agent-tab="general"] .agent-subtabs { display: flex; } }
+.agent-subtab { display: block; width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; text-align: left; padding: .4375rem .75rem; border: 0; border-radius: 9999px; background: transparent; color: var(--text-secondary); font-size: .8125rem; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background-color .15s, color .15s; }
+.agent-subtab[hidden], .gsec-chip[hidden] { display: none; }
+.agent-subtab:hover { background: rgb(148 163 184 / .1); color: var(--text-primary); }
+.agent-subtab.active { background: rgb(99 102 241 / .1); color: #4f46e5; }
+html.dark .agent-subtab.active { background: rgb(129 140 248 / .16); color: #a5b4fc; }
+.agent-subtab:focus-visible, .gsec-chip:focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+.gsec-chips { display: flex; gap: .5rem; overflow-x: auto; padding: .125rem 0 1rem; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.gsec-chips::-webkit-scrollbar { display: none; }
+@media (min-width: 1024px) { .gsec-chips { display: none; } }
+.gsec-chip { flex: none; height: 2.25rem; padding: 0 1rem; border-radius: 9999px; border: 1px solid rgb(148 163 184 / .35); background: transparent; color: var(--text-secondary); font-size: .8125rem; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background-color .15s, color .15s, border-color .15s; }
+.gsec-chip.active { background: rgb(99 102 241 / .12); border-color: rgb(99 102 241 / .4); color: #4f46e5; font-weight: 600; }
+html.dark .gsec-chip.active { background: rgb(129 140 248 / .18); border-color: rgb(129 140 248 / .45); color: #c7d2fe; }
 /* Main sections of every agent tab: same radius as the chat message box (#chat-panel) */
 #agent-tab-area .tab-content > .rounded-lg,
 #agent-tab-area .tab-content > .grid > .rounded-lg,
@@ -892,6 +927,15 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
         <button class="agent-tab tab-btn active" onclick="showTab('chat')" data-tab="chat"><i data-lucide="message-square"></i><span>Chat</span></button>
         <hr class="agent-tab-sep" aria-hidden="true">
         <button class="agent-tab tab-btn" onclick="showTab('general')" data-tab="general"><i data-lucide="sliders-horizontal"></i><span>Settings</span></button>
+        <div class="agent-subtabs" role="tablist" aria-label="Settings sections">
+            <button type="button" class="agent-subtab active" data-gsec-btn="profile" onclick="showGeneralSection('profile')">Profile</button>
+            <button type="button" class="agent-subtab" data-gsec-btn="model" title="Model &amp; Environment" onclick="showGeneralSection('model')">Model &amp; Env</button>
+            <button type="button" class="agent-subtab" data-gsec-btn="prompt" title="Prompt &amp; Safety" onclick="showGeneralSection('prompt')">Prompt &amp; Safety</button>
+            <button type="button" class="agent-subtab" data-gsec-btn="capabilities" onclick="showGeneralSection('capabilities')">Capabilities</button>
+            <button type="button" class="agent-subtab" data-gsec-btn="advanced" onclick="showGeneralSection('advanced')">Advanced</button>
+            <button type="button" class="agent-subtab" data-gsec-btn="variables" onclick="showGeneralSection('variables')">Variables</button>
+            <button type="button" class="agent-subtab" data-gsec-btn="plugins" id="gsec-rail-plugins" hidden onclick="showGeneralSection('plugins')">Plugins</button>
+        </div>
         <button class="agent-tab tab-btn" onclick="showTab('knowledge')" data-tab="knowledge"><i data-lucide="book-open"></i><span>Knowledge</span></button>
         <button class="agent-tab tab-btn" onclick="showTab('tools')" data-tab="tools"><i data-lucide="wrench"></i><span>Tools</span></button>
         {# Always rendered so softSwitchAgent can toggle without a full reload #}
@@ -955,9 +999,18 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
 
     <!-- Settings Tab -->
     <div id="tab-general" class="tab-content hidden flex-1 min-h-0 overflow-y-auto">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="gsec-chips" role="tablist" aria-label="Settings sections">
+            <button type="button" class="gsec-chip active" data-gsec-btn="profile" onclick="showGeneralSection('profile')">Profile</button>
+            <button type="button" class="gsec-chip" data-gsec-btn="model" onclick="showGeneralSection('model')">Model &amp; Environment</button>
+            <button type="button" class="gsec-chip" data-gsec-btn="prompt" onclick="showGeneralSection('prompt')">Prompt &amp; Safety</button>
+            <button type="button" class="gsec-chip" data-gsec-btn="capabilities" onclick="showGeneralSection('capabilities')">Capabilities</button>
+            <button type="button" class="gsec-chip" data-gsec-btn="advanced" onclick="showGeneralSection('advanced')">Advanced</button>
+            <button type="button" class="gsec-chip" data-gsec-btn="variables" onclick="showGeneralSection('variables')">Variables</button>
+            <button type="button" class="gsec-chip" data-gsec-btn="plugins" id="gsec-chip-plugins" hidden onclick="showGeneralSection('plugins')">Plugins</button>
+        </div>
+        <div id="general-shell" class="grid grid-cols-1 gap-6">
         <div class="space-y-6">
-        <div class="gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+        <div data-gsec="profile" class="gsec-pane gsec-on gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
             <div class="gcard-h"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><div><h3>Profile</h3><p>Name, identity and avatar</p></div></div>
             <div class="mb-4">
                 <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Name</label>
@@ -987,7 +1040,7 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
                 <p class="text-xs text-gray-400 mt-1">Upload a PNG, JPEG, GIF, WebP, or SVG image. Recommended: square aspect ratio.</p>
             </div>
         </div>
-        <div class="gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+        <div data-gsec="model" class="gsec-pane gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
             <div class="gcard-h"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></svg></span><div><h3>Model &amp; Environment</h3><p>Which model runs the agent and where it executes</p></div></div>
             <div class="mb-4">
                 <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Model</label>
@@ -1031,7 +1084,7 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
                 <div id="sandbox-warning" class="hidden mt-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2.5 py-1.5">⚠ Docker Sandbox only available for local workplace.</div>
             </div>
         </div>
-        <div class="gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+        <div data-gsec="prompt" class="gsec-pane gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
             <div class="gcard-h"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span><div><h3>Prompt &amp; Safety</h3><p>Persona and the rules that guard it</p></div></div>
             <!-- HMADS: Agent-specific safety rules -->
             <div class="mb-4" id="agent-safety-rules-section">
@@ -1047,7 +1100,7 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
                 <a href="javascript:void(0)" onclick="openSystemPromptModal()" class="inline-block mt-1 text-xs text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors">Edit in full screen &#8599;</a>
             </div>
         </div>
-        <div class="gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+        <div data-gsec="capabilities" class="gsec-pane gcard bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
             <div class="gcard-h"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg></span><div><h3>Capabilities</h3><p>What the agent can receive and what gets injected</p></div></div>
             <div class="mb-4">
                 <label class="flex items-center gap-3 cursor-pointer select-none">
@@ -1114,7 +1167,7 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
         <!-- Right column -->
         <div class="space-y-6">
             <!-- Advanced Settings -->
-            <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
+            <div data-gsec="advanced" class="gsec-pane bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
                 <button type="button" onclick="toggleAdvanced()" class="w-full flex justify-between items-center px-6 py-4 text-sm font-semibold dark:text-gray-200 text-gray-700 hover:text-gray-900 dark:hover:text-gray-50 transition-colors">
                     <span class="flex items-center gap-3"><span class="gcard-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg></span><span class="text-left"><span class="block text-sm font-semibold">Advanced Settings</span><span class="block text-xs font-normal text-gray-400">Memory, execution, safety and slash commands</span></span></span>
                     <span id="adv-arrow" class="text-xs transition-transform">&#9654;</span>
@@ -1341,7 +1394,7 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
                 </div>
             </div>
             <!-- Variables Card -->
-            <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
+            <div data-gsec="variables" class="gsec-pane bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
                 <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Variables</h3>
                 <p class="text-xs text-gray-400 mb-4">Key-value config for tools &amp; skills (e.g. <code>SSH_HOST</code>, <code>SSH_USERNAME</code>). Mark as secret to mask values.</p>
                 <div id="agent-variables-list" class="space-y-2 mb-3"></div>
@@ -1378,7 +1431,7 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
                 </div>
             </div>
             <!-- Plugin Settings Card (dynamic, hidden if no plugin declares agent_settings) -->
-            <div id="plugin-settings-card" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hidden">
+            <div id="plugin-settings-card" data-gsec="plugins" class="gsec-pane bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hidden">
                 <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Plugin Settings</h3>
                 <p class="text-xs text-gray-400 mb-4">Per-agent settings from active plugins.</p>
                 <div id="plugin-settings-container" class="space-y-4"></div>
@@ -2686,7 +2739,7 @@ function showTab(name) {
         // URL is already /agents/<id>#chat after a soft switch, so changing only
         // the hash won't reload. Set the hash, then force a real reload so the
         // server re-renders Settings for the current agent.
-        location.hash = 'general';
+        location.hash = 'general/' + _gsec;
         location.reload();
         return;
     }
@@ -2708,7 +2761,7 @@ function showTab(name) {
     if (name === 'channels') loadChannels();
     if (name === 'portals') loadPortals();
     if (name === 'artifacts') loadArtifacts();
-    if (name === 'general') loadGeneralTabData();
+    if (name === 'general') { loadGeneralTabData(); showGeneralSection(window._gsecInit || _gsec, {silent: true}); window._gsecInit = null; syncGsecButtons(); }
     if (name === 'chat' && !chatLoaded) { loadChatHistory(); refreshSessionState(); }
 
     const pluginTab = document.getElementById('tab-' + name);
@@ -2724,7 +2777,7 @@ function showTab(name) {
     }
 
     updateMobileAgentBar(name);
-    location.hash = name;
+    location.hash = name === 'general' ? 'general/' + _gsec : name;
 }
 
 const _pluginTabCache = new Map();
@@ -2794,6 +2847,37 @@ $(window).on('resize', function () {
 });
 
 // ==================== Settings Tab ====================
+// ==================== Settings sub-pages ====================
+let _gsec = 'profile';
+const GSEC_IDS = ['profile', 'model', 'prompt', 'capabilities', 'advanced', 'variables', 'plugins'];
+
+// The Plugins section only exists when some plugin declares agent settings (the card is shown/hidden by loadPluginSettings)
+function syncGsecButtons() {
+    const card = document.getElementById('plugin-settings-card');
+    const has = !!card && !card.classList.contains('hidden');
+    document.querySelectorAll('[data-gsec-btn="plugins"]').forEach(b => { b.hidden = !has; });
+    if (!has && _gsec === 'plugins') showGeneralSection('profile', {silent: true});
+}
+
+function showGeneralSection(id, opts) {
+    opts = opts || {};
+    if (!GSEC_IDS.includes(id)) id = 'profile';
+    _gsec = id;
+    document.querySelectorAll('#general-shell .gsec-pane').forEach(n => n.classList.toggle('gsec-on', n.dataset.gsec === id));
+    document.querySelectorAll('[data-gsec-btn]').forEach(b => {
+        const on = b.dataset.gsecBtn === id;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+    });
+    if (id === 'advanced') {   // its own page: always expanded
+        const adv = document.getElementById('advanced-section');
+        if (adv) adv.classList.remove('hidden');
+    }
+    const tab = document.getElementById('tab-general');
+    if (tab) tab.scrollTop = 0;
+    if (!opts.silent && tab && !tab.classList.contains('hidden')) location.hash = 'general/' + id;
+}
+
 function toggleAdvanced() {
     const section = document.getElementById('advanced-section');
     const arrow = document.getElementById('adv-arrow');
@@ -3233,8 +3317,9 @@ async function loadPluginSettings() {
         const plugins = data.plugin_settings || [];
         const container = document.getElementById('plugin-settings-container');
         const card = document.getElementById('plugin-settings-card');
-        if (!plugins.length) { card.classList.add('hidden'); return; }
+        if (!plugins.length) { card.classList.add('hidden'); syncGsecButtons(); return; }
         card.classList.remove('hidden');
+        syncGsecButtons();
         container.innerHTML = '';
         for (const plugin of plugins) {
             for (const s of plugin.settings) {
@@ -7926,7 +8011,9 @@ setInterval(pollWorkplaceStatus, 5000);
 // Restore tab from URL hash on page load (same pattern as settings.html).
 // Validity is checked against the rendered tab buttons so plugin tabs count too.
 (function() {
-    const hash = location.hash.replace('#', '');
+    const rawHash = location.hash.replace('#', '');
+    const hash = rawHash.split('/')[0];                     // "#general/model" -> tab "general", section "model"
+    if (hash === 'general' && rawHash.split('/')[1]) window._gsecInit = rawHash.split('/')[1];
     const isValid = hash && document.querySelector('.tab-btn[data-tab="' + CSS.escape(hash) + '"]');
     window._tabInitHash = isValid ? hash : 'chat';
     if (window._tabInitHash !== 'chat') {

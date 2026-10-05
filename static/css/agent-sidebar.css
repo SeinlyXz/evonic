@@ -34,6 +34,11 @@ html.dark {
     min-width: 64px;
     flex-shrink: 0;
     height: calc(100vh - 56px);
+    /* Pages that scroll (Evaluate, History, …) used to leave the rail behind: it was a fixed-height block that scrolled away and
+       ended mid-page. Sticky keeps it pinned under the navbar for the whole scroll. */
+    position: sticky;
+    top: 56px;
+    align-self: flex-start;
     background: var(--sidebar-bg);
     display: flex;
     flex-direction: column;
