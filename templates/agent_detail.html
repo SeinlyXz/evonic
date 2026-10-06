@@ -8379,13 +8379,19 @@ const _refreshSessionStateImpl = async function() {
             taskText: t => marked.parseInline(t.text),
             bgHtml: buildBgProcessesHtml(stateData.background_processes)
         });
+        const goal = stateData.active_goal;
+        const goalTitle = goal && (goal.title || goal.text) ? (goal.title || goal.text) : '';
+        const goalSummary = goal && goal.summary ? goal.summary : '';
+        const goalHtml = goalTitle
+            ? `<div class="mt-2 rounded border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100"><div class="font-medium">🎯 Goal mode</div><div class="mt-0.5 break-words font-medium">${esc(goalTitle)}</div>${goalSummary ? `<div class="mt-0.5 break-words text-[11px] opacity-80">${esc(goalSummary)}</div>` : ''}</div>`
+            : '';
 
         const content = document.getElementById('summary-content');
         const meta = document.getElementById('summary-meta');
         const mobileContent = document.getElementById('mobile-summary-content');
         const mobileMeta = document.getElementById('mobile-summary-meta');
         if (data.summary) {
-            const html = '<div class="st-stack">' + sectionsHtml + StateUI.summaryHtml(marked.parse(data.summary)) + '</div>';
+            const html = '<div class="st-stack">' + goalHtml + sectionsHtml + StateUI.summaryHtml(marked.parse(data.summary)) + '</div>';
             const metaText = `${data.message_count} messages summarized` + (data.updated_at ? ` \u00b7 ${data.updated_at}` : '');
             content.innerHTML = html;
             meta.textContent = metaText;
@@ -8397,7 +8403,7 @@ const _refreshSessionStateImpl = async function() {
             ui.addCopyButtons(mobileContent);
         } else if (sectionsHtml) {
             // Show state-only card when no summary yet
-            const html = '<div class="st-stack">' + sectionsHtml + '</div>';
+            const html = '<div class="st-stack">' + goalHtml + sectionsHtml + '</div>';
             content.innerHTML = html;
             meta.textContent = '';
             meta.classList.remove('hidden');

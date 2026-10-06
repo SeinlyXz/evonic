@@ -42,6 +42,28 @@ def _audit_ip():
 _SENSITIVE_AGENT_KEYS = frozenset({'workspace'})
 
 
+def _normalize_active_goal(goal: Any) -> Optional[Dict[str, Any]]:
+    """Return the bounded, UI-safe form of a session's active goal.
+
+    Legacy goals stored a raw ``text`` field; normalization upgrades them to the
+    current ``title``/``summary`` representation so the Session State panel never
+    renders an unbounded instruction verbatim.
+    """
+    if not isinstance(goal, dict):
+        return None
+    from backend.active_goal import normalize_active_goal
+    normalized = normalize_active_goal(goal)
+    if not normalized:
+        return None
+    # ``raw_instruction`` is audit-only and must not be sent to the browser.
+    return {
+        'id': normalized.get('id'),
+        'title': normalized.get('title'),
+        'summary': normalized.get('summary'),
+        'updated_at': normalized.get('updated_at'),
+    }
+
+
 
 def _sanitize_agent(agent: Dict[str, Any]) -> Dict[str, Any]:
     """Strip sensitive fields (workspace) from an agent dict before API response."""
@@ -2041,6 +2063,10 @@ def api_chat_agent_state(agent_id):
             'states': state.states,
             'focus': state.focus,
             'focus_reason': state.focus_reason,
+            # Goal state is session-scoped and intentionally compact. Expose the
+            # bounded title/summary so the Session State panel can show that work
+            # is still evaluated against a goal without rendering the raw request.
+            'active_goal': _normalize_active_goal(merged.get('active_goal')),
             'active_model': _resolve_active_model(),
             'loaded_skills': loaded_skills,
         }

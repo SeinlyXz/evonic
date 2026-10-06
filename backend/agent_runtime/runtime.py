@@ -1317,7 +1317,37 @@ class AgentRuntime:
                     "client_message_id": command_meta.get('client_message_id'),
                     "slash_command": True, "suppressed": True,
                 }
-            if response is not None:
+            if response is not None and cmd_name == "goal":
+                # /goal sets a durable, session-scoped objective. The literal
+                # command is retained for audit only (excluded from LLM context
+                # by its slash_command metadata); the turn itself is driven by a
+                # trusted [SYSTEM] goal event so the model never sees
+                # slash-command syntax and never re-reads its own raw command.
+                original_message = message
+                command_meta = {"slash_command": True, "audit_only": True}
+                if metadata and metadata.get('client_message_id'):
+                    command_meta['client_message_id'] = metadata['client_message_id']
+                audit_id = _db_retry(
+                    db.add_chat_message, session_id, 'user', original_message,
+                    agent_id=db_agent_id, metadata=command_meta,
+                    label="save goal command audit record",
+                )
+                _cl = chatlog_manager.get(db_agent_id, session_id)
+                _cl.append({'type': 'user', 'session_id': session_id,
+                            'content': original_message,
+                            'sender_id': external_user_id,
+                            'metadata': command_meta, 'message_id': audit_id})
+                event_stream.emit('message_received', {
+                    'agent_id': agent_id, 'session_id': session_id,
+                    'external_user_id': external_user_id, 'channel_id': channel_id,
+                    'message': original_message, 'message_id': audit_id,
+                    'client_message_id': command_meta.get('client_message_id'),
+                    'metadata': command_meta, 'role': 'user',
+                })
+                self._prefetcher.invalidate(session_id)
+                # Falls through to normal processing with the translated event.
+                message = str(response)
+            elif response is not None:
                 # Command was recognized — save command echo and response, then return
                 command_meta = {"slash_command": True}
                 if metadata and metadata.get('client_message_id'):
@@ -3205,7 +3235,29 @@ class AgentRuntime:
                 })
                 self._prefetcher.invalidate(session_id)
                 return True
-            if response is not None:
+            if response is not None and cmd_name == "goal":
+                # Mirror handle_message: keep the literal command out of LLM
+                # context and drive the turn with the translated goal event.
+                command_meta = {"slash_command": True, "audit_only": True}
+                if metadata and metadata.get("client_message_id"):
+                    command_meta["client_message_id"] = metadata["client_message_id"]
+                audit_id = db.add_chat_message(
+                    session_id, "user", text,
+                    agent_id=agent_id, metadata=command_meta,
+                )
+                chatlog_manager.get(agent_id, session_id).append(
+                    {"type": "user", "session_id": session_id, "content": text,
+                     "metadata": command_meta, "message_id": audit_id})
+                event_stream.emit("message_received", {
+                    "agent_id": agent_id, "session_id": session_id,
+                    "external_user_id": external_user_id, "channel_id": channel_id,
+                    "message": text, "message_id": audit_id,
+                    "client_message_id": command_meta.get("client_message_id"),
+                    "metadata": command_meta, "role": "user",
+                })
+                self._prefetcher.invalidate(session_id)
+                text = str(response)
+            elif response is not None:
                 # Command was recognized — save command echo and response, then return
                 command_meta = {'slash_command': True}
                 if metadata and metadata.get('client_message_id'):

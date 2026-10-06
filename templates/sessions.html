@@ -2466,6 +2466,13 @@ function _renderSessionStateSnapshot(stateData) {
         }
         planHtml += '</div>';
     }
+    if (stateData.active_goal && (stateData.active_goal.title || stateData.active_goal.text)) {
+        // Show a bounded caption + operational summary, never the raw request.
+        const goal = stateData.active_goal;
+        const goalTitle = goal.title || goal.text || '';
+        const goalSummary = goal.summary || '';
+        planHtml += `<div class="mt-2 rounded border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100"><div class="font-medium">🎯 Goal mode</div><div class="mt-0.5 break-words font-medium">${esc(goalTitle)}</div>${goalSummary ? `<div class="mt-0.5 break-words text-[11px] opacity-80">${esc(goalSummary)}</div>` : ''}</div>`;
+    }
     // --- Tasks: progress, open items first, finished ones folded ---
     if (stateData.tasks && stateData.tasks.length > 0) {
         const tasks = stateData.tasks;

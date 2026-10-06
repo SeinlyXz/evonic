@@ -109,6 +109,81 @@ def test_agent_mode_transition_still_requires_plan_file():
     assert state.mode == "plan"
 
 
+def test_goal_persists_goal_state_and_returns_system_event():
+    """`/goal` stores a structured goal and yields an agent-visible event.
+
+    The handler must never return the raw ``/goal ...`` literal (which would be
+    saved as the assistant reply), and the stored state must carry a bounded
+    title/summary rather than only the unbounded user text.
+    """
+    from backend.agent_state import AgentState
+
+    session_state = json.loads(AgentState(mode="plan").serialize())
+    session_state["workspace_marker"] = "preserve"
+    with patch("models.db.db.get_agent", return_value={"enable_agent_state": True}), \
+         patch("models.chat.agent_chat_manager.get") as get_chat:
+        chat_db = get_chat.return_value
+        chat_db.get_session_state.return_value = json.dumps(session_state)
+
+        response = execute_command(
+            "goal", "Deliver the requested report", "session-123", "agent-123", "user-123"
+        )
+
+    assert isinstance(response, str)
+    assert response.startswith("[SYSTEM] Active goal updated.")
+    assert "/goal" not in response
+    saved_state = json.loads(chat_db.upsert_session_state.call_args.args[1])
+    assert saved_state["mode"] == "execute"
+    assert saved_state["workspace_marker"] == "preserve"
+    goal = saved_state["active_goal"]
+    assert goal["title"] == "Deliver the requested report"
+    assert goal["summary"] == "Deliver the requested report"
+    assert goal["raw_instruction"] == "Deliver the requested report"
+    assert goal["nudges_used"] == 0
+    assert goal["last_nudge"] is None
+
+
+def test_goal_title_is_bounded_for_long_instructions():
+    from backend.active_goal import (
+        MAX_GOAL_SUMMARY_CHARS, MAX_GOAL_TITLE_CHARS, create_active_goal,
+    )
+
+    instruction = "Laporan mingguan " + ("sangat detail " * 200)
+    goal = create_active_goal(instruction)
+
+    assert len(goal["title"]) <= MAX_GOAL_TITLE_CHARS
+    assert len(goal["summary"]) <= MAX_GOAL_SUMMARY_CHARS
+    assert goal["raw_instruction"] == instruction.strip()
+
+
+def test_goal_event_never_exposes_slash_command_literal():
+    from backend.active_goal import create_active_goal, render_active_goal_event
+
+    event = render_active_goal_event(create_active_goal("Summarise the session within 2000 characters"))
+
+    assert event.startswith("[SYSTEM] Active goal updated.")
+    assert "/goal" not in event
+    assert "2000 characters" in event
+
+
+def test_legacy_goal_text_is_upgraded_to_title_and_summary():
+    from backend.active_goal import normalize_active_goal
+
+    normalized = normalize_active_goal({"text": "Summarise this session", "nudges_used": 2})
+
+    assert normalized is not None
+    assert normalized["title"] == "Summarise this session"
+    assert normalized["summary"] == "Summarise this session"
+    assert normalized["raw_instruction"] == "Summarise this session"
+    assert normalized["nudges_used"] == 2
+
+
+def test_goal_requires_nonempty_query():
+    response = execute_command("goal", "   ", "session-123", "agent-123", "user-123")
+
+    assert response == "Usage: /goal <what the agent should complete>"
+
+
 # ==================== /help suppression (help_enabled) ====================
 
 
