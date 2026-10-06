@@ -41,19 +41,11 @@
       "empty_label": "\u2014 No default provider \u2014"
     },
     {
-      "name": "allow_local_providers",
-      "label": "Allow Approved Local Providers",
-      "type": "boolean",
-      "default": false,
-      "description": "When enabled, permits enabled providers declared as local.",
-      "section": "global"
-    },
-    {
       "name": "automatic1111_enabled",
       "label": "Enabled",
       "type": "boolean",
       "default": false,
-      "description": "Enable this provider after configuring its approved local endpoint and trusted hosts.",
+      "description": "Enable this provider after configuring its approved local endpoint.",
       "provider": "automatic1111"
     },
     {
@@ -89,15 +81,6 @@
       "provider": "automatic1111"
     },
     {
-      "name": "automatic1111_trusted_hosts",
-      "label": "AUTOMATIC1111 Trusted Hosts",
-      "type": "string",
-      "default": "",
-      "description": "Comma-separated exact endpoint hostnames approved by an administrator. Required when enabling the local provider.",
-      "provider": "automatic1111",
-      "advanced": true
-    },
-    {
       "name": "automatic1111_timeout_seconds",
       "label": "AUTOMATIC1111 Timeout (seconds)",
       "type": "number",
@@ -122,15 +105,6 @@
       "default": "",
       "description": "Base URL for the approved local ComfyUI API.",
       "provider": "comfyui"
-    },
-    {
-      "name": "comfyui_trusted_hosts",
-      "label": "ComfyUI Trusted Hosts",
-      "type": "string",
-      "default": "",
-      "description": "Comma-separated exact endpoint hostnames approved by an administrator. Required when enabling the local provider.",
-      "provider": "comfyui",
-      "advanced": true
     },
     {
       "name": "comfyui_workflow_template",

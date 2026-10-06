@@ -226,8 +226,6 @@ def _resolve_provider(args: Mapping[str, Any], config: Mapping[str, Any]):
     provider = provider_registry.resolve(explicit, default)
     if not _provider_enabled(provider.id, config):
         raise ImageGenerationError(SafeErrorCode.PROVIDER_DISABLED, "The selected image provider is not enabled for this skill.")
-    if provider.is_local and not _boolean(config.get("allow_local_providers")):
-        raise ImageGenerationError(SafeErrorCode.PROVIDER_DISABLED, "Local image providers are not enabled for this skill.")
     return provider
 
 

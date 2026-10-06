@@ -48,8 +48,6 @@ class Automatic1111Provider(ImageProvider):
     config_fields: Sequence[ProviderConfigField] = (
         ProviderConfigField("automatic1111_endpoint", "AUTOMATIC1111 Endpoint", required=True,
                             description="Administrator-approved API base URL."),
-        ProviderConfigField("automatic1111_trusted_hosts", "Trusted Local Hosts", required=True,
-                            description="Comma-separated exact hostnames approved for this provider."),
         ProviderConfigField("automatic1111_timeout_seconds", "Request Timeout (seconds)", type="number", default=60,
                             description="Bounded between 1 and 120 seconds."),
         ProviderConfigField("automatic1111_steps", "Generation Steps", type="number", default=20,

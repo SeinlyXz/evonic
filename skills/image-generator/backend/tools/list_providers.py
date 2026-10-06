@@ -69,18 +69,12 @@ def _provider_enabled(provider_id: str, config: Mapping[str, Any]) -> bool:
 
 
 def _provider_usable(provider, config: Mapping[str, Any]) -> bool:
-    """A provider is listable only when it is registered *and* enabled.
+    """A provider is listable when it is registered *and* enabled.
 
-    Local providers additionally require the global local-provider opt-in, so a
-    local adapter that is toggled on but not approved never appears here.
+    Enabling the provider is the only administrator gate; local providers need
+    no separate opt-in.
     """
-    if not _provider_enabled(getattr(provider, "id", ""), config):
-        return False
-    if getattr(provider, "is_local", False) and not _boolean(
-        config.get("allow_local_providers")
-    ):
-        return False
-    return True
+    return _provider_enabled(getattr(provider, "id", ""), config)
 
 
 def _missing_required_config(provider, config: Mapping[str, Any]) -> List[str]:

@@ -9,8 +9,7 @@ prompt, seed and (when discoverable) latent dimensions.
 Security posture:
 
 * The endpoint is validated by :func:`configured_endpoint` with ``local=True``,
-  which requires the skill-wide local opt-in plus an exact ``comfyui_trusted_hosts``
-  match before any request is sent.
+  which permits a private/HTTP administrator endpoint before any request is sent.
 * Every outbound call goes through :class:`BoundedHttpClient`, so responses are
   size-capped, redirects are refused, and paths cannot escape the approved base
   URL.
@@ -111,12 +110,6 @@ class ComfyUiProvider(ImageProvider):
             label="ComfyUI Endpoint",
             required=True,
             description="Base URL for the approved local ComfyUI API.",
-        ),
-        ProviderConfigField(
-            name="comfyui_trusted_hosts",
-            label="ComfyUI Trusted Hosts",
-            required=True,
-            description="Comma-separated exact endpoint hostnames approved by an administrator. Required when enabling the local provider.",
         ),
         ProviderConfigField(
             name="comfyui_workflow_template",

@@ -44,7 +44,6 @@ def test_skill_manifest_registers_disabled_lazy_generation_tool():
     variables = {variable["name"]: variable for variable in manifest["variables"]}
     assert variables["default_provider"]["default"] == ""
     assert "allowed_providers" not in variables
-    assert variables["allow_local_providers"]["type"] == "boolean"
     assert variables["automatic1111_enabled"]["default"] is False
     assert variables["comfyui_enabled"]["default"] is False
     assert variables["google_gemini_enabled"]["default"] is True
@@ -53,7 +52,6 @@ def test_skill_manifest_registers_disabled_lazy_generation_tool():
     assert variables["max_concurrent_requests"]["default"] == 1
     assert variables["images_per_day"]["default"] == 20
     assert variables["automatic1111_endpoint"]["default"] == ""
-    assert variables["automatic1111_trusted_hosts"]["default"] == ""
     assert variables["provider_api_key"]["type"] == "secret"
     assert variables["google_gemini_api_key"]["type"] == "secret"
     assert variables["google_gemini_model"]["choices"] == ["gemini-2.5-flash-image", "gemini-3.1-flash-image"]

@@ -33,9 +33,7 @@ PNG = b"\x89PNG\r\n\x1a\nvalid-image-bytes"
 
 def _config(**overrides):
     config = {
-        "allow_local_providers": True,
         "comfyui_endpoint": "http://127.0.0.1:8188",
-        "comfyui_trusted_hosts": "127.0.0.1",
         "comfyui_timeout_seconds": 600,
         "comfyui_polling_interval_seconds": 1,
     }
@@ -298,23 +296,21 @@ def test_comfyui_reports_timeout_without_completing(install_workflow, monkeypatc
     assert error.value.code is SafeErrorCode.PROVIDER_UNAVAILABLE
 
 
-def test_comfyui_local_endpoint_requires_opt_in_and_trusted_host(monkeypatch):
+def test_comfyui_local_endpoint_is_accepted_without_extra_gates(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [(None, None, None, None, ("127.0.0.1", 0))])
 
-    with pytest.raises(ImageGenerationError) as disabled:
-        configured_endpoint(_config(allow_local_providers=False), "comfyui", local=True)
-    assert disabled.value.code is SafeErrorCode.PERMISSION_DENIED
-
-    with pytest.raises(ImageGenerationError) as untrusted:
-        configured_endpoint(_config(comfyui_trusted_hosts="localhost"), "comfyui", local=True)
-    assert untrusted.value.code is SafeErrorCode.PERMISSION_DENIED
-
-    # ``_client`` presents a bounded per-request timeout to the shared helper,
-    # while the administrator's larger job timeout only bounds polling.  Passing
-    # the job timeout straight to the helper would exceed the shared HTTP cap.
+    # A private/HTTP administrator endpoint is allowed directly: enabling the
+    # provider is the only gate, with no opt-in flag or trusted-host list.
     endpoint = configured_endpoint(_config(comfyui_timeout_seconds=60), "comfyui", local=True)
     assert endpoint.base_url == "http://127.0.0.1:8188"
+    assert endpoint.allow_private_network is True
     assert ComfyUiProvider()._client(_config()) is not None
+
+
+def test_comfyui_requires_a_configured_endpoint():
+    with pytest.raises(ImageGenerationError) as error:
+        configured_endpoint({"comfyui_endpoint": ""}, "comfyui", local=True)
+    assert error.value.code is SafeErrorCode.PROVIDER_CONFIGURATION
 
 
 def test_comfyui_capabilities_describe_a_local_workflow_provider():

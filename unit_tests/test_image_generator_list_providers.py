@@ -58,7 +58,6 @@ def test_lists_only_enabled_and_available_providers(list_tool, monkeypatch):
             "google_gemini_enabled": False,
             "mock_enabled": False,
             "automatic1111_enabled": False,
-            "allow_local_providers": False,
         },
     )
 
@@ -82,7 +81,6 @@ def test_disabled_providers_are_never_listed(list_tool, monkeypatch):
             "openrouter_enabled": False,
             "mock_enabled": False,
             "automatic1111_enabled": False,
-            "allow_local_providers": True,
         },
     )
 
@@ -95,26 +93,24 @@ def test_disabled_providers_are_never_listed(list_tool, monkeypatch):
     assert "message" in result
 
 
-def test_local_provider_requires_global_local_opt_in(list_tool, monkeypatch):
-    base = {
-        "default_provider": "mock",
-        "mock_enabled": True,
-        "automatic1111_enabled": True,
-        "google_gemini_enabled": False,
-        "openrouter_enabled": False,
-    }
+def test_local_providers_are_listed_whenever_enabled(list_tool, monkeypatch):
+    _set_config(
+        monkeypatch,
+        {
+            "default_provider": "mock",
+            "mock_enabled": True,
+            "automatic1111_enabled": True,
+            "google_gemini_enabled": False,
+            "openrouter_enabled": False,
+        },
+    )
 
-    _set_config(monkeypatch, {**base, "allow_local_providers": False})
-    denied = list_tool.execute({"id": "agent"}, {})
-    assert denied["providers"] == []
-    assert denied["default_provider"] is None
+    result = list_tool.execute({"id": "agent"}, {})
 
-    _set_config(monkeypatch, {**base, "allow_local_providers": True})
-    allowed = list_tool.execute({"id": "agent"}, {})
-    ids = [provider["id"] for provider in allowed["providers"]]
-    # Both local adapters are enabled; automatic1111 lacks required endpoint
-    # configuration but is still advertised with ``configured: false``.
-    assert ids == ["automatic1111", "mock"]
+    # Enabling a provider is the only gate; local adapters need no extra opt-in.
+    # automatic1111 lacks required endpoint configuration but is still advertised
+    # with ``configured: false``.
+    assert [provider["id"] for provider in result["providers"]] == ["automatic1111", "mock"]
 
 
 def test_enabled_but_unregistered_provider_is_omitted(list_tool, monkeypatch):
@@ -125,7 +121,6 @@ def test_enabled_but_unregistered_provider_is_omitted(list_tool, monkeypatch):
         {
             "default_provider": "",
             "unregistered_provider_enabled": True,
-            "allow_local_providers": True,
         },
     )
 
@@ -135,16 +130,13 @@ def test_enabled_but_unregistered_provider_is_omitted(list_tool, monkeypatch):
     assert result["providers"] == []
 
 
-def test_registered_comfyui_provider_is_listed_when_enabled_and_local(list_tool, monkeypatch):
-    # ``comfyui`` is a registered local adapter: once an administrator enables it
-    # and allows local providers it must appear, even before its required endpoint
-    # or trusted hosts are filled in (``configured`` reports the missing fields).
+def test_registered_comfyui_provider_is_listed_when_enabled(list_tool, monkeypatch):
+    # ``comfyui`` is a registered local adapter: enabling it is the only gate.
     _set_config(
         monkeypatch,
         {
             "default_provider": "comfyui",
             "comfyui_enabled": True,
-            "allow_local_providers": True,
         },
     )
 
@@ -200,7 +192,6 @@ def test_capabilities_and_stable_ordering(list_tool, monkeypatch):
             "google_gemini_enabled": True,
             "openrouter_enabled": True,
             "mock_enabled": True,
-            "allow_local_providers": True,
         },
     )
 
