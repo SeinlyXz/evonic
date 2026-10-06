@@ -75,6 +75,7 @@ window.settingsGeneral = {
         set("max-concurrent-llm-global-input", s.max_concurrent_llm_global);
         set("agent-queue-workers-input", s.agent_queue_workers);
         set("max-tool-iterations-input", s.max_tool_iterations);
+        set("max-goal-nudges-input", s.max_goal_nudges);
         set("agent-sidebar-limit-input", s.agent_sidebar_limit);
         set("kb-organizer-nightly-time-input", s.kb_organizer_nightly_time);
         check("public-history-toggle", s.public_history);

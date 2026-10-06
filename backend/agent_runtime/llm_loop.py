@@ -2100,6 +2100,51 @@ def run_tool_loop(agent: Dict[str, Any],
                     messages.append(inj)
                 continue  # re-enter loop so LLM can act on the injected reminder
 
+            # ── Active goal completion gate ───────────────────────────
+            # Before committing the candidate answer, ask the goal evaluator
+            # whether the session goal is actually done. complete/blocked (or
+            # an exhausted nudge budget) clears the goal so the Session State
+            # "Goal mode" indicator disappears; continue keeps the candidate as
+            # an intermediate step and emits a visible, session-persisted nudge
+            # so the agent keeps working on the objective. Nothing is injected
+            # into the system prompt.
+            _goal_ms = agent_context.get('agent_state')
+            if (_goal_ms is not None and getattr(_goal_ms, 'active_goal', None)
+                    and not stop_event.is_set()):
+                from backend.goal_runtime import (
+                    ACTION_NUDGE,
+                    clear_active_goal,
+                    evaluate_active_goal,
+                    record_goal_nudge,
+                )
+                _goal_outcome = evaluate_active_goal(ms=_goal_ms, candidate=content or '')
+                if (_goal_outcome.get('action') == ACTION_NUDGE
+                        and _goal_outcome.get('goal')):
+                    # Persist the candidate as an intermediate assistant turn so
+                    # the agent answers the nudge with the full context.
+                    _goal_inj_meta = (
+                        {'reasoning_content': reasoning_text}
+                        if reasoning_text else None)
+                    db.add_chat_message(session_id, 'assistant', content,
+                                        agent_id=db_agent_id, metadata=_goal_inj_meta)
+                    chatlog.append({'type': 'intermediate', 'session_id': session_id,
+                                    'content': content})
+                    _goal_asst_msg: Dict[str, Any] = {'role': 'assistant', 'content': content}
+                    if reasoning_text:
+                        _goal_asst_msg['reasoning_content'] = reasoning_text
+                    messages.append(_goal_asst_msg)
+                    _goal_nudge_msg = record_goal_nudge(
+                        ms=_goal_ms, outcome=_goal_outcome,
+                        session_id=session_id, agent_id=agent_id,
+                        db_agent_id=db_agent_id,
+                    )
+                    if _goal_nudge_msg:
+                        messages.append(_goal_nudge_msg)
+                        continue  # re-enter loop so the agent continues the goal
+                elif _goal_outcome.get('clear'):
+                    clear_active_goal(ms=_goal_ms, session_id=session_id,
+                                      agent_id=agent_id, db_agent_id=db_agent_id)
+
             # Final response — save with timeline metadata
             ms = agent_context.get('agent_state')
             # Skip the auto-complete guess when the agent reconciled its task

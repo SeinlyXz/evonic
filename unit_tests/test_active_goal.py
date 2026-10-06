@@ -9,11 +9,18 @@ slash-command line staying in the conversation history.
 import threading
 
 from backend.active_goal import (
+    DEFAULT_MAX_GOAL_NUDGES,
+    MAX_GOAL_NUDGE_CHARS,
     MAX_GOAL_SUMMARY_CHARS,
     MAX_GOAL_TITLE_CHARS,
+    MAX_MAX_GOAL_NUDGES,
+    bump_goal_nudges,
     create_active_goal,
+    goal_nudges_exhausted,
     normalize_active_goal,
+    normalize_max_goal_nudges,
     render_active_goal_event,
+    render_goal_nudge,
 )
 from backend.agent_state import AgentState
 from backend.agent_runtime.llm_response_parser import _emergency_compact_messages
@@ -133,3 +140,42 @@ def test_api_payload_upgrades_legacy_text_goal():
     assert payload is not None
     assert payload["title"]
     assert "text" not in payload
+
+
+def test_normalize_max_goal_nudges_clamps_and_defaults():
+    assert normalize_max_goal_nudges(3) == 3
+    assert normalize_max_goal_nudges(-5) == 0
+    assert normalize_max_goal_nudges(999) == MAX_MAX_GOAL_NUDGES
+    # Malformed input falls back to the default budget, never unbounded.
+    assert normalize_max_goal_nudges("not-a-number") == DEFAULT_MAX_GOAL_NUDGES
+    assert normalize_max_goal_nudges(None) == DEFAULT_MAX_GOAL_NUDGES
+
+
+def test_bump_goal_nudges_advances_and_bounds_the_nudge_text():
+    goal = bump_goal_nudges(_goal(), "keep going " * 200)
+
+    assert goal is not None
+    assert goal["nudges_used"] == 1
+    assert goal["last_nudge"]
+    assert len(goal["last_nudge"]) <= MAX_GOAL_NUDGE_CHARS
+    assert goal["updated_at"]
+
+
+def test_goal_nudges_exhausted_respects_the_budget():
+    goal = _goal()
+
+    assert goal_nudges_exhausted(goal, 1) is False
+    goal["nudges_used"] = 1
+    assert goal_nudges_exhausted(goal, 1) is True
+    # A zero budget means the goal is never nudged.
+    assert goal_nudges_exhausted(_goal(), 0) is True
+
+
+def test_render_goal_nudge_is_a_visible_contextual_message():
+    nudge = render_goal_nudge(_goal(), "Half of the request is still missing", "Add the missing tests")
+
+    assert "[System/Goal]" in nudge
+    assert "Half of the request is still missing" in nudge
+    assert "Add the missing tests" in nudge
+    # It is a normal session message, never a slash-command or prompt fragment.
+    assert "/goal" not in nudge

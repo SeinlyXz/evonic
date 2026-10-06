@@ -358,6 +358,7 @@ _DEFAULT_SETTINGS = [
     ("max_concurrent_llm_global", "1"),
     ("agent_queue_workers", str(config.AGENT_QUEUE_WORKERS)),
     ("max_tool_iterations", str(config.AGENT_MAX_TOOL_ITERATIONS)),
+    ("max_goal_nudges", str(config.AGENT_MAX_GOAL_NUDGES)),
     ("agent_sidebar_limit", str(config.AGENT_SIDEBAR_LIMIT)),
     # --- Privacy & Guards ---
     ("public_history", "0"),

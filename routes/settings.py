@@ -743,6 +743,21 @@ def api_max_tool_iterations():
     return jsonify({'value': int(val)})
 
 
+@settings_bp.route('/api/settings/max-goal-nudges', methods=['GET', 'PUT'])
+def api_max_goal_nudges():
+    """Get or set the maximum goal-continuation nudges per active `/goal` (0-50)."""
+    from backend.active_goal import normalize_max_goal_nudges
+    from models.db import db
+    if request.method == 'PUT':
+        data = request.get_json() or {}
+        raw_value = data.get('value', config.AGENT_MAX_GOAL_NUDGES)
+        value = normalize_max_goal_nudges(raw_value)
+        db.set_setting('max_goal_nudges', str(value))
+        return jsonify({'success': True, 'value': value})
+    val = db.get_setting('max_goal_nudges', str(config.AGENT_MAX_GOAL_NUDGES))
+    return jsonify({'value': normalize_max_goal_nudges(val)})
+
+
 @settings_bp.route('/api/settings/events-dispatch', methods=['GET', 'PUT'])
 def api_events_dispatch():
     """Get or set the global events dispatch toggle."""
@@ -886,6 +901,7 @@ def api_get_general_settings():
         'max_concurrent_llm_global': int(db.get_setting('max_concurrent_llm_global', '1')),
         'agent_queue_workers': int(db.get_setting('agent_queue_workers', str(config.AGENT_QUEUE_WORKERS))),
         'max_tool_iterations': int(db.get_setting('max_tool_iterations', str(config.AGENT_MAX_TOOL_ITERATIONS))),
+        'max_goal_nudges': int(db.get_setting('max_goal_nudges', str(config.AGENT_MAX_GOAL_NUDGES))),
         'agent_sidebar_limit': int(db.get_setting('agent_sidebar_limit', str(config.AGENT_SIDEBAR_LIMIT))),
         'theme': db.get_setting('theme', 'system'),
         'default_model_fallback_id': db.get_setting('default_model_fallback_id', ''),
@@ -1018,6 +1034,16 @@ def api_batch_save():
             results['max_tool_iterations'] = value
         except (ValueError, TypeError) as e:
             errors.append(f'max_tool_iterations: {e}')
+
+    # Max Goal Nudges
+    if 'max_goal_nudges' in settings:
+        try:
+            from backend.active_goal import normalize_max_goal_nudges
+            value = normalize_max_goal_nudges(settings['max_goal_nudges'])
+            db.set_setting('max_goal_nudges', str(value))
+            results['max_goal_nudges'] = value
+        except (ValueError, TypeError) as e:
+            errors.append(f'max_goal_nudges: {e}')
 
     # Agent Sidebar Limit
     if 'agent_sidebar_limit' in settings:

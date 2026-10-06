@@ -234,6 +234,9 @@ CONNECTOR_PAIRING_CODE_TTL = _get_env_int("CONNECTOR_PAIRING_CODE_TTL", 300, min
 
 AGENT_MAX_TOOL_ITERATIONS = _get_env_int("AGENT_MAX_TOOL_ITERATIONS", 100, min_val=1, max_val=1000)
 EVAL_MAX_TOOL_ITERATIONS = _get_env_int("EVAL_MAX_TOOL_ITERATIONS", 30, min_val=1, max_val=500)
+# Bounded continuation budget for an active `/goal` (see backend.goal_runtime).
+# Keeps an unfinished or impossible goal from looping the agent forever.
+AGENT_MAX_GOAL_NUDGES = _get_env_int("AGENT_MAX_GOAL_NUDGES", 5, min_val=0, max_val=50)
 AGENT_MAX_TOOL_RESULT_CHARS = _get_env_int("AGENT_MAX_TOOL_RESULT_CHARS", 8000, min_val=1, max_val=1_048_576)
 # Stream the model's reasoning to the browser live (OpenAI-compatible endpoints). Set AGENT_STREAM_THINKING=0 to fall back to one non-streaming call per step.
 AGENT_STREAM_THINKING = _get_env_bool("AGENT_STREAM_THINKING", True)

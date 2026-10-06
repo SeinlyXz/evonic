@@ -413,6 +413,23 @@
                 <span class="save-status" aria-live="polite"></span>
             </div>
         </div>
+        <div class="setting-row" data-search="max goal nudges continuation goal budget limit /goal loop">
+            <div class="setting-row-text">
+                <div class="setting-row-title">Max Goal Nudges</div>
+                <div class="setting-row-desc">
+                    How many times the goal evaluator may nudge the agent to keep
+                    working before an unachieved <code>/goal</code> is abandoned.
+                    0 disables nudges (the goal is cleared on the first final
+                    response). Range: 0&ndash;50.
+                </div>
+            </div>
+            <div class="setting-row-control">
+                <input type="number" id="max-goal-nudges-input" class="setting-num"
+                       min="0" max="50"
+                       data-setting-key="max_goal_nudges" data-setting-type="int" />
+                <span class="save-status" aria-live="polite"></span>
+            </div>
+        </div>
     </div>
 </section>
 
