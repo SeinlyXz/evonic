@@ -538,7 +538,7 @@ class WhatsAppChannel(BaseChannel):
             return True
 
         # Step 2: User NOT in allowlist — try pairing-code auto-approve
-        from backend.channels.pairing import extract_pair_code, format_pair_code as fmt_code
+        from backend.channels.pairing import extract_pair_code
         raw_code = extract_pair_code(text) if text else None
         if raw_code:
             _logger.info("WhatsApp pairing code received from %s (channel %s)", sender, self.channel_id)
@@ -556,28 +556,32 @@ class WhatsAppChannel(BaseChannel):
                         self._do_send(sender,
                             "✅ You're now approved! Welcome aboard. How can I help you today?")
                 return False
-            else:
+            # The code did not match a live pending approval. Never dead-end the
+            # sender: fall through so a pending approval is (re)created below and
+            # the admin can approve them from the channel's Pending Approvals.
+
+        # No live pairing code (or an unmatched one) — make sure the sender has a
+        # pending approval so they show up in the channel modal, then reply.
+        existing = db.get_pending_approvals(self.channel_id)
+        already_pending = any(
+            p.get('external_user_id') == sender for p in existing
+        )
+        if not already_pending:
+            allowed, pair_code = self._check_allowlist(sender, user_name)
+            if not allowed and pair_code:
                 self._do_send(sender,
-                    "❌ That pairing code is invalid or has expired. "
-                    "Please ask the administrator for a new one.")
-                return False
-        else:
-            # No pairing code in message — check if pending approval already exists
-            existing = db.get_pending_approvals(self.channel_id)
-            already_pending = any(
-                p.get('external_user_id') == sender for p in existing
-            )
-            if not already_pending:
-                allowed, pair_code = self._check_allowlist(sender, user_name)
-                if not allowed and pair_code:
-                    self._do_send(sender,
-                        "👋 You're not yet approved to chat here. "
-                        "Please ask the administrator for a pairing code, then send it in this chat.")
-                # If open mode, user IS allowed — would have been caught above
-            # If already pending, stay silent (don't spam the user)
-            _logger.info("WhatsApp DM from unapproved user %s (pending=%s, channel %s)",
-                         sender, already_pending, self.channel_id)
-            return False
+                    "👋 You're not yet approved to chat here. "
+                    "Please ask the administrator for a pairing code, then send it in this chat.")
+            # If open mode, user IS allowed — would have been caught above
+        elif raw_code:
+            # Already pending and the retried code no longer matches.
+            self._do_send(sender,
+                "❌ That pairing code is invalid or has expired. "
+                "Please ask the administrator for a new one.")
+        # If already pending (no code), stay silent (don't spam the user)
+        _logger.info("WhatsApp DM from unapproved user %s (pending=%s, code=%s, channel %s)",
+                     sender, already_pending, bool(raw_code), self.channel_id)
+        return False
 
     def start(self):
         # Register EventStream handlers first (before background bridge startup)

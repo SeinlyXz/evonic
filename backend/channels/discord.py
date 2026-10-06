@@ -356,12 +356,10 @@ class DiscordChannel(BaseChannel):
                                 "✅ You're now approved! Welcome aboard. How can I help you today?"
                             )
                     return
-                await message.channel.send(
-                    "❌ That pairing code is invalid or has expired. "
-                    "Please ask the administrator for a new one."
-                )
-                return
-            # No pairing code — create a pending approval once and prompt the user.
+                # Unmatched code — fall through so the sender is registered as a
+                # pending approval and stays approvable from the modal.
+            # No live pairing code (or an unmatched one) — make sure the sender
+            # has a pending approval visible in the channel modal.
             existing = db.get_pending_approvals(channel_id)
             already_pending = any(p.get('external_user_id') == user_id for p in existing)
             if not already_pending:
@@ -371,6 +369,11 @@ class DiscordChannel(BaseChannel):
                         "👋 You're not yet approved to chat here. "
                         "Please ask the administrator for a pairing code, then send it in this chat."
                     )
+            elif raw_code:
+                await message.channel.send(
+                    "❌ That pairing code is invalid or has expired. "
+                    "Please ask the administrator for a new one."
+                )
             return
 
         # Establish session early — needed for attachment storage paths.
