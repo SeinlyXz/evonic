@@ -78,7 +78,6 @@ _PREFERRED_PROMPT_NODE = "268"
 _PREFERRED_SEED_NODE = "306"
 _CLIP_SOURCE_NODE = "39"
 _SELF_REFERENCING_CLIP_NODES = ("455", "456")
-_SAVE_METADATA_NODES = ("457", "458")
 
 
 class ComfyUiProvider(ImageProvider):
@@ -267,10 +266,10 @@ class ComfyUiProvider(ImageProvider):
 
     @staticmethod
     def _apply_known_quirks(workflow: Dict[str, Any]) -> None:
-        """Repair the documented self-referencing inputs of the reference workflow.
+        """Repair documented ComfyUI quirks before submission.
 
-        These fixes are no-ops for unrelated templates: each one only fires when
-        the exact broken shape is present.
+        Each fix is a no-op unless the exact broken shape is present, so
+        unrelated templates are left untouched.
         """
         for node_id in _SELF_REFERENCING_CLIP_NODES:
             node = workflow.get(node_id)
@@ -288,10 +287,16 @@ class ComfyUiProvider(ImageProvider):
             # template that already points at its CLIP source is left untouched.
             if target_id == node_id or "lora" in target_class:
                 inputs["clip"] = [_CLIP_SOURCE_NODE, 0]
-        for node_id in _SAVE_METADATA_NODES:
-            node = workflow.get(node_id)
-            inputs = node.get("inputs") if isinstance(node, Mapping) else None
-            if isinstance(inputs, dict) and "save_metadata" in inputs:
+        # SaveImageExtended (common in community workflows) raises
+        # ``KeyError: 'workflow'`` when it records metadata through the API, so
+        # disable metadata saving on every instance of that node class -- not on
+        # a fixed set of node ids.
+        for node in workflow.values():
+            if not isinstance(node, Mapping):
+                continue
+            inputs = node.get("inputs")
+            class_type = str(node.get("class_type") or "").lower()
+            if isinstance(inputs, dict) and "saveimageextended" in class_type and "save_metadata" in inputs:
                 inputs["save_metadata"] = False
 
     @staticmethod

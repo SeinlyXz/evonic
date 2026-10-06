@@ -358,6 +358,20 @@ def test_comfyui_injects_prompt_into_user_prompt_primitive(install_workflow, mon
     assert submitted["30:3"]["inputs"]["seed"] == 11
 
 
+def test_comfyui_disables_save_image_extended_metadata():
+    # SaveImageExtended raises KeyError('workflow') when saving metadata via the
+    # API; the fix must track the node class, not a hard-coded node id.
+    workflow = {
+        "30:6": {"class_type": "CLIPTextEncode", "inputs": {"text": "template", "clip": ["30:11", 0]}},
+        "51": {"class_type": "SaveImageExtended", "inputs": {"save_metadata": True, "images": ["30:8", 0]}},
+    }
+
+    prepared = ComfyUiProvider._prepare_workflow(workflow, ImageGenerationRequest(prompt="x", size="512x512"), 1)
+
+    assert prepared["51"]["inputs"]["save_metadata"] is False
+    assert workflow["51"]["inputs"]["save_metadata"] is True  # source untouched
+
+
 def test_comfyui_capabilities_describe_a_local_workflow_provider():
     provider = ComfyUiProvider()
 
