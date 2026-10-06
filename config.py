@@ -320,6 +320,16 @@ WHATSAPP_NATURAL_FORMATTING_ENABLED = _get_env_bool("WHATSAPP_NATURAL_FORMATTING
 SESSION_ARCHIVE = _get_env_bool("EVONIC_SESSION_ARCHIVE", False)
 
 AGENT_MAX_SUMMARIZE_BATCH = _get_env_int("AGENT_MAX_SUMMARIZE_BATCH", 20, min_val=1, max_val=500)
+
+# Hard character cap for a persisted session summary. Enforced by *semantic*
+# compaction (see backend/agent_runtime/summary_compactor.py) — never by naive
+# mid-text truncation. Stale/irrelevant details are dropped first so the summary
+# stays useful as it condenses.
+AGENT_MAX_SUMMARY_CHARS = _get_env_int("AGENT_MAX_SUMMARY_CHARS", 2000, min_val=200, max_val=100_000)
+
+# Max LLM compaction attempts before the deterministic line-level fallback runs.
+AGENT_SUMMARY_COMPACT_ATTEMPTS = _get_env_int("AGENT_SUMMARY_COMPACT_ATTEMPTS", 2, min_val=0, max_val=5)
+
 AGENT_TIMEOUT_RETRIES = _get_env_int("AGENT_TIMEOUT_RETRIES", 2, min_val=0, max_val=20)
 AGENT_QUEUE_WORKERS = _get_env_int("AGENT_QUEUE_WORKERS", 5, min_val=1, max_val=32)
 AGENT_SIDEBAR_LIMIT = _get_env_int("AGENT_SIDEBAR_LIMIT", 10, min_val=1, max_val=500)
