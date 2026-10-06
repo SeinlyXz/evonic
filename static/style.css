@@ -1604,3 +1604,30 @@ html.dark .ev-keys-r { color: #e2e8f0; }
   html.dark .nav-ink { background: #818cf8; }
 }
 @media (prefers-reduced-motion: reduce) { .nav-ink { transition: opacity .1s linear !important; } }
+
+/* ── Banners under the navbar (WhatsApp disconnect, update notice, system alerts): one dark-aware component ── */
+.ev-banner { border-bottom: 1px solid; font-size: .875rem; line-height: 1.4; }
+.ev-banner.hidden { display: none; }
+.ev-banner-in { max-width: 1600px; margin: 0 auto; padding: .5rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.ev-banner-tx { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.ev-banner-ic { width: 16px; height: 16px; flex: none; }
+.ev-banner a { color: inherit; }
+.ev-banner a:hover { text-decoration-thickness: 2px; }
+.ev-banner-x { flex: none; width: 1.75rem; height: 1.75rem; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: .5rem; background: transparent; color: inherit; opacity: .6; cursor: pointer; transition: opacity .15s, background-color .15s; }
+.ev-banner-x:hover { opacity: 1; background: rgb(0 0 0 / .07); }
+html.dark .ev-banner-x:hover { background: rgb(255 255 255 / .1); }
+.ev-banner-x svg { width: 15px; height: 15px; }
+.ev-banner-warn { background: #fff8e6; border-color: #f0d9a3; color: #92400e; }
+.ev-banner-info { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
+.ev-banner-ok { background: #f0fdf4; border-color: #bde5cb; color: #166534; }
+.ev-banner-danger { background: #fef2f2; border-color: #f5c2c2; color: #991b1b; }
+html.dark .ev-banner-warn { background: rgb(245 158 11 / .1); border-color: rgb(245 158 11 / .3); color: #fcd34d; }
+html.dark .ev-banner-info { background: rgb(99 102 241 / .12); border-color: rgb(129 140 248 / .32); color: #c7d2fe; }
+html.dark .ev-banner-ok { background: rgb(34 197 94 / .1); border-color: rgb(34 197 94 / .3); color: #86efac; }
+html.dark .ev-banner-danger { background: rgb(239 68 68 / .1); border-color: rgb(239 68 68 / .32); color: #fca5a5; }
+
+/* Legacy tinted boxes: when the box turns dark, any hard-coded gray text inside must lighten too (it used to stay #1f2937 on a dark tint) */
+html.dark .bg-amber-50.border-amber-200 :is([class*="text-gray-"], strong, b, a),
+html.dark .bg-blue-50.border-blue-200 :is([class*="text-gray-"], strong, b, a),
+html.dark .bg-red-50.border-red-200 :is([class*="text-gray-"], strong, b, a),
+html.dark .bg-green-50.border-green-200 :is([class*="text-gray-"], strong, b, a) { color: inherit !important; }
