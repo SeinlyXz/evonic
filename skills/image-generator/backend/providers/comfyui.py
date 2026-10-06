@@ -57,7 +57,10 @@ _DEFAULT_WORKFLOW_TEMPLATE = "default"
 _WORKFLOW_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workflows")
 # Workflow template names are administrator-supplied, so restrict them to a safe
 # filename shape before they are resolved to a path on disk.
-_TEMPLATE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+# Administrators commonly name templates with spaces (for example
+# "KREA2-TURBO v2"), so internal spaces are allowed; path separators,
+# parent-directory segments, and leading dots are not.
+_TEMPLATE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]*$")
 _SAFE_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _EXTENSION_BY_MIME = {
     "image/png": ".png",
@@ -119,7 +122,7 @@ class ComfyUiProvider(ImageProvider):
             name="comfyui_workflow_template",
             label="ComfyUI Workflow Template",
             default=_DEFAULT_WORKFLOW_TEMPLATE,
-            description="Name of the administrator-approved workflow template used for image generation.",
+            description="Name of the administrator-approved workflow template (a JSON file under this provider's workflows directory) used for image generation.",
         ),
         ProviderConfigField(
             name="comfyui_timeout_seconds",

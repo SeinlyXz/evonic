@@ -220,13 +220,24 @@ def test_comfyui_missing_workflow_template_is_reported(tmp_path, monkeypatch):
 def test_comfyui_rejects_unsafe_template_names(install_workflow):
     install_workflow(_reference_workflow())
 
-    for name in ("../escape", "nested/name", "bad name"):
+    for name in ("../escape", "nested/name", "bad\\name", ".hidden"):
         with pytest.raises(ImageGenerationError) as error:
             ComfyUiProvider._load_workflow(_config(comfyui_workflow_template=name))
         assert error.value.code is SafeErrorCode.PROVIDER_CONFIGURATION
 
     # A blank template name intentionally falls back to the bundled default.
     assert ComfyUiProvider._load_workflow(_config(comfyui_workflow_template="")) == _reference_workflow()
+
+
+def test_comfyui_loads_a_template_name_containing_spaces(tmp_path, monkeypatch):
+    # Administrators routinely name templates with spaces; the sanitizer must
+    # allow them while still blocking path separators (see the rejection test).
+    (tmp_path / "KREA2-TURBO v2.json").write_text(json.dumps(_reference_workflow()), encoding="utf-8")
+    monkeypatch.setattr(ComfyUiProvider, "_workflow_directory", staticmethod(lambda: str(tmp_path)))
+
+    workflow = ComfyUiProvider._load_workflow(_config(comfyui_workflow_template="KREA2-TURBO v2"))
+
+    assert "268" in workflow
 
 
 def test_comfyui_sends_api_key_as_bearer_header(install_workflow, monkeypatch):

@@ -137,7 +137,7 @@
       "label": "ComfyUI Workflow Template",
       "type": "string",
       "default": "default",
-      "description": "Name of the administrator-approved workflow template used for image generation.",
+      "description": "Name of the administrator-approved workflow template used for image generation. Resolves to a JSON file in the skill's providers/workflows directory; spaces in the name are allowed.",
       "provider": "comfyui"
     },
     {
