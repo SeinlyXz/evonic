@@ -313,6 +313,51 @@ def test_comfyui_requires_a_configured_endpoint():
     assert error.value.code is SafeErrorCode.PROVIDER_CONFIGURATION
 
 
+def _linked_prompt_workflow():
+    """A graph whose encoder prompt is linked through a user-prompt primitive."""
+    return {
+        "30:3": {
+            "class_type": "KSampler",
+            "inputs": {"seed": 0, "positive": ["30:6", 0], "negative": ["30:13", 0], "latent_image": ["30:5", 0]},
+        },
+        "30:5": {"class_type": "EmptyLatentImage", "inputs": {"width": 1024, "height": 1024, "batch_size": 1}},
+        "30:6": {"class_type": "CLIPTextEncode", "inputs": {"text": ["30:28", 0], "clip": ["30:11", 0]}},
+        "30:18": {
+            "class_type": "PrimitiveStringMultiline",
+            "_meta": {"title": "Text String (System Prompt)"},
+            "inputs": {"value": "system prompt text"},
+        },
+        "30:19": {
+            "class_type": "PrimitiveStringMultiline",
+            "_meta": {"title": "Text String (User Prompt)"},
+            "inputs": {"value": "template"},
+        },
+    }
+
+
+def test_comfyui_injects_prompt_into_user_prompt_primitive(install_workflow, monkeypatch):
+    provider = ComfyUiProvider()
+    install_workflow(_linked_prompt_workflow())
+    client = _Client(_history())
+
+    _generate(
+        provider,
+        client,
+        ImageGenerationRequest(prompt="a starlit lake", size="768x1344", seed=11),
+        monkeypatch=monkeypatch,
+    )
+
+    submitted = client.calls[0]["payload"]["prompt"]
+    # The prompt is written to the node titled as the user prompt ...
+    assert submitted["30:19"]["inputs"]["value"] == "a starlit lake"
+    # ... the system prompt is preserved ...
+    assert submitted["30:18"]["inputs"]["value"] == "system prompt text"
+    # ... and the linked encoder text is left untouched.
+    assert submitted["30:6"]["inputs"]["text"] == ["30:28", 0]
+    assert submitted["30:5"]["inputs"]["width"] == 768
+    assert submitted["30:3"]["inputs"]["seed"] == 11
+
+
 def test_comfyui_capabilities_describe_a_local_workflow_provider():
     provider = ComfyUiProvider()
 

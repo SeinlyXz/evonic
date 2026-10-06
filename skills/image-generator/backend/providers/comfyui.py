@@ -243,7 +243,8 @@ class ComfyUiProvider(ImageProvider):
         """Return an isolated workflow copy tuned for a single submission."""
         prepared = copy.deepcopy(dict(workflow))
         cls._apply_known_quirks(prepared)
-        cls._prompt_inputs(prepared)["text"] = request.prompt
+        prompt_inputs, prompt_key = cls._prompt_inputs(prepared)
+        prompt_inputs[prompt_key] = request.prompt
         seed_inputs = cls._seed_inputs(prepared, required=request.seed is not None)
         if seed_inputs is not None:
             seed_inputs["seed"] = seed
@@ -294,13 +295,13 @@ class ComfyUiProvider(ImageProvider):
                 inputs["save_metadata"] = False
 
     @staticmethod
-    def _prompt_inputs(workflow: Mapping[str, Any]) -> Dict[str, Any]:
-        """Locate the positive conditioning node's ``inputs`` mapping."""
+    def _prompt_inputs(workflow: Mapping[str, Any]) -> tuple[Dict[str, Any], str]:
+        """Locate the node and input key that receive the user prompt."""
         preferred = workflow.get(_PREFERRED_PROMPT_NODE)
         if isinstance(preferred, Mapping):
             inputs = preferred.get("inputs")
             if isinstance(inputs, dict) and isinstance(inputs.get("text"), str):
-                return inputs
+                return inputs, "text"
         # Follow the first sampler's positive conditioning edge.
         for node in workflow.values():
             if not isinstance(node, Mapping):
@@ -313,7 +314,7 @@ class ComfyUiProvider(ImageProvider):
                 target = workflow.get(str(reference[0]))
                 target_inputs = target.get("inputs") if isinstance(target, Mapping) else None
                 if isinstance(target_inputs, dict) and isinstance(target_inputs.get("text"), str):
-                    return target_inputs
+                    return target_inputs, "text"
         # Fall back to the first text-encoding node carrying a literal prompt.
         for node in workflow.values():
             if not isinstance(node, Mapping):
@@ -323,7 +324,41 @@ class ComfyUiProvider(ImageProvider):
             if isinstance(inputs, dict) and isinstance(inputs.get("text"), str) and (
                 "encode" in class_type or "text" in class_type or "prompt" in class_type
             ):
-                return inputs
+                return inputs, "text"
+        # Some templates (for example the Krea-2 graph) feed the positive prompt
+        # through a string primitive, so the encoder text is a link rather than a
+        # literal.  Fall back to that primitive when it is unambiguous.
+        return ComfyUiProvider._user_prompt_primitive(workflow)
+
+    @staticmethod
+    def _user_prompt_primitive(workflow: Mapping[str, Any]) -> tuple[Dict[str, Any], str]:
+        """Locate a writable user-prompt string primitive.
+
+        Only a node titled as the user prompt (or an unambiguous single string
+        node) is selected, so a system-prompt primitive is never overwritten.
+        """
+        candidates: List[tuple[Dict[str, Any], str, str]] = []
+        for node in workflow.values():
+            if not isinstance(node, Mapping):
+                continue
+            inputs = node.get("inputs")
+            class_type = str(node.get("class_type") or "").lower()
+            if not isinstance(inputs, dict) or "string" not in class_type:
+                continue
+            if isinstance(inputs.get("value"), str):
+                key = "value"
+            elif isinstance(inputs.get("text"), str):
+                key = "text"
+            else:
+                continue
+            meta = node.get("_meta")
+            title = str(meta.get("title") or "").lower() if isinstance(meta, Mapping) else ""
+            candidates.append((inputs, key, title))
+        for inputs, key, title in candidates:
+            if "user prompt" in title or "user" in title:
+                return inputs, key
+        if len(candidates) == 1:
+            return candidates[0][0], candidates[0][1]
         raise ImageGenerationError(
             SafeErrorCode.PROVIDER_CONFIGURATION, "The configured ComfyUI workflow has no prompt input to fill."
         )
