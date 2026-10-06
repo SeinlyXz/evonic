@@ -57,7 +57,7 @@ def test_skill_manifest_registers_disabled_lazy_generation_tool():
     assert variables["provider_api_key"]["type"] == "secret"
     assert variables["google_gemini_api_key"]["type"] == "secret"
     assert variables["google_gemini_model"]["choices"] == ["gemini-2.5-flash-image", "gemini-3.1-flash-image"]
-    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "google-gemini", "mock", "openrouter"]
+    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "comfyui", "google-gemini", "mock", "openrouter"]
 
 
 def test_registry_resolves_explicit_and_default_provider():

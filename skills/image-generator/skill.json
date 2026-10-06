@@ -124,6 +124,15 @@
       "provider": "comfyui"
     },
     {
+      "name": "comfyui_trusted_hosts",
+      "label": "ComfyUI Trusted Hosts",
+      "type": "string",
+      "default": "",
+      "description": "Comma-separated exact endpoint hostnames approved by an administrator. Required when enabling the local provider.",
+      "provider": "comfyui",
+      "advanced": true
+    },
+    {
       "name": "comfyui_workflow_template",
       "label": "ComfyUI Workflow Template",
       "type": "string",
@@ -133,10 +142,10 @@
     },
     {
       "name": "comfyui_timeout_seconds",
-      "label": "ComfyUI Timeout (seconds)",
+      "label": "ComfyUI Job Timeout (seconds)",
       "type": "number",
-      "default": 120,
-      "description": "Bounded request timeout for ComfyUI, from 1 through 300 seconds.",
+      "default": 600,
+      "description": "Maximum time to wait for a ComfyUI job to finish, from 1 through 1800 seconds.",
       "provider": "comfyui",
       "advanced": true
     },

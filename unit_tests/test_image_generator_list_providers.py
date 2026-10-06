@@ -118,13 +118,13 @@ def test_local_provider_requires_global_local_opt_in(list_tool, monkeypatch):
 
 
 def test_enabled_but_unregistered_provider_is_omitted(list_tool, monkeypatch):
-    # ``comfyui`` has an enable toggle in the manifest but no registered adapter,
-    # so it is unavailable and must not be advertised.
+    # A toggle for a provider that has no registered adapter cannot make it
+    # available, so it must never be advertised.
     _set_config(
         monkeypatch,
         {
             "default_provider": "",
-            "comfyui_enabled": True,
+            "unregistered_provider_enabled": True,
             "allow_local_providers": True,
         },
     )
@@ -133,6 +133,30 @@ def test_enabled_but_unregistered_provider_is_omitted(list_tool, monkeypatch):
 
     assert result["count"] == 0
     assert result["providers"] == []
+
+
+def test_registered_comfyui_provider_is_listed_when_enabled_and_local(list_tool, monkeypatch):
+    # ``comfyui`` is a registered local adapter: once an administrator enables it
+    # and allows local providers it must appear, even before its required endpoint
+    # or trusted hosts are filled in (``configured`` reports the missing fields).
+    _set_config(
+        monkeypatch,
+        {
+            "default_provider": "comfyui",
+            "comfyui_enabled": True,
+            "allow_local_providers": True,
+        },
+    )
+
+    result = list_tool.execute({"id": "agent"}, {})
+
+    assert [provider["id"] for provider in result["providers"]] == ["comfyui"]
+    comfyui = result["providers"][0]
+    assert comfyui["local"] is True
+    assert comfyui["is_default"] is True
+    assert comfyui["configured"] is False
+    assert "ComfyUI Endpoint" in comfyui["missing_config"]
+    assert comfyui["capabilities"]["supports_seed"] is True
 
 
 def test_missing_required_config_is_reported_without_secrets(list_tool, monkeypatch):
