@@ -242,6 +242,20 @@ function captureSettingsState() {
     });
 }
 
+// Combobox fields: the select either fills the text input or reveals it for a custom value.
+document.addEventListener('change', event => {
+    const select = event.target.closest && event.target.closest('select[data-combo-select]');
+    if (!select) return;
+    const input = select.closest('[data-combo]').querySelector('input[data-var]');
+    if (select.value === '__custom__') {
+        input.classList.remove('hidden');
+        input.focus();
+    } else {
+        input.classList.add('hidden');
+        input.value = select.value;
+    }
+});
+
 function valueFor(variable) {
     return settingsState[variable.name] !== undefined ? settingsState[variable.name] : (variable.default || '');
 }
@@ -276,6 +290,16 @@ function renderSettingField(v) {
     }
     if (v.type === 'textarea') {
         return `<div class="mb-4">${labelHtml}<textarea data-var="${esc(v.name)}" data-type="textarea" rows="8" placeholder="${esc(String(v.default || ''))}" class="${inputClass()}">${esc(String(val))}</textarea>${descHtml}</div>`;
+    }
+    if (v.allow_custom && Array.isArray(v.options) && v.options.length) {
+        // Combobox: pick a known value, or choose "Custom…" to type any value.
+        // The text input carries data-var so save/capture logic is unchanged.
+        const optValue = o => String((o && typeof o === 'object') ? o.value : o);
+        const optLabel = o => String((o && typeof o === 'object') ? (o.label || o.value) : o);
+        const known = v.options.some(o => optValue(o) === String(val));
+        const isCustom = String(val) !== '' && !known;
+        const comboOpts = v.options.map(o => `<option value="${esc(optValue(o))}" ${known && optValue(o) === String(val) ? 'selected' : ''}>${esc(optLabel(o))}</option>`).join('');
+        return `<div class="mb-4" data-combo>${labelHtml}<select data-combo-select aria-label="${esc(v.label || v.name)}" class="${inputClass()}"><option value="">${esc(v.empty_label || '— Default —')}</option>${comboOpts}<option value="__custom__" ${isCustom ? 'selected' : ''}>Custom…</option></select><input type="text" data-var="${esc(v.name)}" data-type="string" value="${esc(String(val))}" placeholder="${esc(String(v.default || ''))}" class="${inputClass()} mt-2 ${isCustom ? '' : 'hidden'}">${descHtml}</div>`;
     }
     const inputType = v.type === 'number' ? 'number' : (v.type === 'secret' || v.type === 'password' ? 'password' : 'text');
     return `<div class="mb-4">${labelHtml}<input type="${inputType}" data-var="${esc(v.name)}" data-type="${esc(v.type || 'string')}" value="${esc(String(val))}" placeholder="${esc(String(v.default || ''))}" class="${inputClass()}">${descHtml}</div>`;
