@@ -37,8 +37,9 @@ def test_skill_manifest_registers_disabled_lazy_generation_tool():
     assert manifest["default_enabled"] is False
     assert manifest["lazy_tools"] is True
     assert manifest["tools_file"] == "tools.json"
-    assert [tool["function"]["name"] for tool in tools] == ["generate_image"]
+    assert [tool["function"]["name"] for tool in tools] == ["generate_image", "list_providers"]
     assert tools[0]["function"]["parameters"]["required"] == ["prompt"]
+    assert tools[1]["function"]["parameters"]["properties"] == {}
 
     variables = {variable["name"]: variable for variable in manifest["variables"]}
     assert variables["default_provider"]["default"] == ""

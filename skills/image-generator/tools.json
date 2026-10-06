@@ -50,5 +50,16 @@
         "required": ["prompt"]
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_providers",
+      "description": "List the Image Generator providers that are currently available and enabled by an administrator, including each provider's supported sizes, models, and output formats. Disabled providers are omitted.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    }
   }
 ]
