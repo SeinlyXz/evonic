@@ -8391,7 +8391,8 @@ const _refreshSessionStateImpl = async function() {
         const mobileContent = document.getElementById('mobile-summary-content');
         const mobileMeta = document.getElementById('mobile-summary-meta');
         if (data.summary) {
-            const html = '<div class="st-stack">' + goalHtml + sectionsHtml + StateUI.summaryHtml(marked.parse(data.summary)) + '</div>';
+            const preview = data.summary.replace(/\s+/g, ' ').trim().slice(0, 180);
+            const html = '<div class="st-stack">' + goalHtml + sectionsHtml + `<div class="st-summary"><div class="st-sec-h"><span>Summary</span></div><p class="text-xs leading-5 text-gray-600 dark:text-gray-300">${esc(preview)}${data.summary.length > 180 ? '…' : ''}</p><button type="button" onclick="openSessionSummaryModal()" class="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400" aria-haspopup="dialog">Show more</button></div>` + '</div>';
             const metaText = `${data.message_count} messages summarized` + (data.updated_at ? ` \u00b7 ${data.updated_at}` : '');
             content.innerHTML = html;
             meta.textContent = metaText;
