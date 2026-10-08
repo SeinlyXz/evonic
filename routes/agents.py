@@ -2150,6 +2150,13 @@ def api_chat_agent_state(agent_id):
         except Exception:
             pass
         payload['background_processes'] = background_processes
+        # Monitors can also watch a log file or shell condition without a
+        # tracked background job, so surface the complete active list separately.
+        try:
+            from backend.agent_runtime import monitors
+            payload['monitors'] = monitors.list_for_session(agent_id, session_id)
+        except Exception:
+            payload['monitors'] = []
 
     # Context monitor: tokens consumed by the last LLM call vs the model's
     # context window (model.context_window, falling back to the global

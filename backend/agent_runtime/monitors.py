@@ -343,12 +343,20 @@ def list_for_session(agent_id: str, session_id: str) -> list:
         cfg = s.get("action_config") or {}
         if session_id and cfg.get("session_id") != session_id:
             continue
+        when = cfg.get("when") or {}
         out.append({
             "monitor_id": cfg.get("monitor_id") or f"mon-{s.get('id')}",
             "job_id": cfg.get("job_id") or None,
             "watching": cfg.get("command") or cfg.get("log_file") or "",
-            "condition": _describe(cfg.get("when") or {}),
+            "condition": _describe(when),
+            # Only expose the declarative condition, never the generated probe
+            # script or backend context that the scheduler executes internally.
+            "when": {
+                key: when[key] for key in _CONDITION_KEYS
+                if when.get(key) not in (None, False, "")
+            },
             "note": cfg.get("note") or "",
+            "interval_seconds": cfg.get("interval_seconds") or _DEFAULT_INTERVAL,
             "expires_in_seconds": max(0, int((cfg.get("deadline_ts") or now) - now)),
         })
     return out
