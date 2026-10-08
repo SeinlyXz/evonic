@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}?v=7">
 
 <div class="settings-console">
     <div class="settings-console-header">
@@ -43,9 +43,9 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/toast.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/toast.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='js/settings-core.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='js/settings-general.js') }}?v=2"></script>
-<script src="{{ url_for('static', filename='js/settings-tools.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/settings-tools.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='js/settings-models.js') }}?v=3"></script>
 {% endblock %}

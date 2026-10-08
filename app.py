@@ -168,6 +168,29 @@ from flask import g as _g
 # Skip rate limiting for these paths (login already has its own rate limiter)
 _RATELIMIT_SKIP_PREFIXES = ('/login', '/logout')
 
+
+def _is_direct_bash_send() -> bool:
+    """True for POST /api/agents/<id>/chat carrying a web "!" bash command for an agent with bash exec enabled."""
+    try:
+        if not request.path.rstrip('/').endswith('/chat') or not session.get('authenticated'):
+            return False
+        if request.content_type and request.content_type.startswith('multipart/form-data'):
+            if request.files:
+                return False
+            message = request.form.get('message') or ''
+        else:
+            message = (request.get_json(silent=True) or {}).get('message') or ''
+        if not isinstance(message, str) or not message.lstrip().startswith('!'):
+            return False
+        parts = request.path.strip('/').split('/')          # api / agents / <id> / chat
+        if len(parts) < 4:
+            return False
+        from models.db import db as _db
+        agent = _db.get_agent(parts[2])
+        return bool(agent and agent.get('bash_exec_enabled'))
+    except Exception:
+        return False
+
 @app.before_request
 def _api_rate_limit_before():
     """Check rate limit before processing the request."""
@@ -180,6 +203,10 @@ def _api_rate_limit_before():
     tier = classify_request(path, request.method)
     if tier is None:
         return None  # no rate limit for this path
+
+    # "!" bash-mode sends run a shell command directly (no LLM call), so they don't draw on the LLM-send budget.
+    if tier == 'chat' and _is_direct_bash_send():
+        return None
 
     # Build identifier: user ID if authenticated, else IP
     if session.get('authenticated'):

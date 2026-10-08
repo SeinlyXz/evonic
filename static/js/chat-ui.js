@@ -1080,7 +1080,7 @@ function _renderRunpyResult(r) {
     const hasError  = r.exit_code !== 0;
     const statusColor = hasError ? 'text-red-600' : 'text-green-600';
     const statusBg    = hasError ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
-    const statusIcon  = hasError ? '&#10060;' : '&#9989;';
+    const statusIcon  = hasError ? uiIcon('x-circle', 12) : uiIcon('check-circle', 12);
     const $wrap = $('<div>');
     const $badge = $(`<div class="flex items-center gap-2 mb-1.5 text-[10px] font-mono border rounded px-2 py-1">`).addClass(statusColor).addClass(statusBg);
     $badge.append(
@@ -1106,7 +1106,7 @@ function _renderBashResult(r) {
     const hasError  = r.exit_code !== 0;
     const statusColor = hasError ? 'text-red-600' : 'text-green-600';
     const statusBg    = hasError ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
-    const statusIcon  = hasError ? '&#10060;' : '&#9989;';
+    const statusIcon  = hasError ? uiIcon('x-circle', 12) : uiIcon('check-circle', 12);
     const $wrap = $('<div>');
     const $badge = $(`<div class="flex items-center gap-2 mb-1.5 text-[10px] font-mono border rounded px-2 py-1">`).addClass(statusColor).addClass(statusBg);
     $badge.append(
@@ -1409,30 +1409,52 @@ function _buildThinkingContent(content) {
     return $pre;
 }
 
+// ── Icons (inline SVG; replaces emoji in the timeline / status / approval UI) ──
+const _UI_ICONS = {
+    'brain': '<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/>',
+    'wrench': '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    'message': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    'retry': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+    'check': '<path d="M20 6 9 17l-5-5"/>',
+    'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    'check-circle': '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+    'x-circle': '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+    'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    'alert': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    'chevron-right': '<path d="m9 18 6-6-6-6"/>',
+    'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+};
+
+function uiIcon(name, size) {
+    const s = size || 14;
+    return '<svg class="ui-ic" width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (_UI_ICONS[name] || '') + '</svg>';
+}
+
 // ── Timeline entry builder ────────────────────────────────────────────────────
 
 function buildTimelineEntry(ev, isActive) {
     let borderClass, icon, label, labelClass, $summary, $detail, spinnerColor, extraAttrs = {};
 
     if (ev.type === 'thinking') {
-        borderClass = 'border-purple-300'; icon = '&#129504;'; label = 'Thinking'; labelClass = 'text-purple-500'; spinnerColor = '#a855f7';
+        borderClass = 'border-purple-300'; icon = uiIcon('brain', 14); label = 'Thinking'; labelClass = 'text-purple-500'; spinnerColor = '#a855f7';
         $summary = $('<span class="text-[11px] text-gray-400 truncate max-w-[780px]">').text(truncateLine(ev.content, 80));
         $detail = _buildThinkingContent(ev.content);
 
     } else if (ev.type === 'tool_call') {
-        borderClass = 'border-blue-300'; icon = '&#128295;'; label = 'Tool Call'; labelClass = 'text-blue-500'; spinnerColor = '#3b82f6';
+        borderClass = 'border-blue-300'; icon = uiIcon('wrench', 14); label = 'Tool Call'; labelClass = 'text-blue-500'; spinnerColor = '#3b82f6';
         extraAttrs['data-tool-type'] = 'tool_call';
         extraAttrs['data-tool-name'] = ev.tool;
         $summary = $('<span class="text-[11px] text-gray-400 truncate max-w-[780px]">').text(ev.tool + '(' + truncateLine(JSON.stringify(ev.args), 60) + ')');
         $detail = _buildToolCallDetail(ev.tool, ev.args || {}, ev.param_types || {});
 
     } else if (ev.type === 'response') {
-        borderClass = 'border-gray-300'; icon = '&#128172;'; label = 'Response'; labelClass = 'text-gray-500'; spinnerColor = '#6b7280';
+        borderClass = 'border-gray-300'; icon = uiIcon('message', 14); label = 'Response'; labelClass = 'text-gray-500'; spinnerColor = '#6b7280';
         $summary = $('<span class="text-[11px] text-gray-400 truncate max-w-[780px]">').text(truncateLine(ev.content, 80));
         $detail = $('<pre class="whitespace-pre-wrap dark:text-gray-200 break-words overflow-x-auto max-w-full text-[11px] text-gray-700">').text(ev.content);
 
     } else if (ev.type === 'retry') {
-        borderClass = 'border-yellow-300'; icon = '&#128260;'; label = 'Mencoba Ulang'; labelClass = 'text-yellow-600'; spinnerColor = '#f59e0b';
+        borderClass = 'border-yellow-300'; icon = uiIcon('retry', 14); label = 'Mencoba Ulang'; labelClass = 'text-yellow-600'; spinnerColor = '#f59e0b';
         $summary = $('<span class="text-[11px] text-gray-400 truncate max-w-[780px]">').text(ev.message || `Mencoba ulang... (${ev.retry_count}/${ev.max_retries})`);
         $detail = null;
 
@@ -1452,7 +1474,7 @@ function buildTimelineEntry(ev, isActive) {
     }
 
     const $headerRow = $('<div class="flex items-center gap-1 cursor-pointer select-none">');
-    const $chev = $('<span class="tl-chev tool-trace-chevron text-[9px] text-gray-300">').html('&#9656;');
+    const $chev = $('<span class="tl-chev tool-trace-chevron text-gray-300">').html(uiIcon('chevron-right', 11));
     const $iconSpan = $('<span class="text-[10px] font-semibold">').addClass(labelClass).html(icon);
     $headerRow.append($chev, $iconSpan);
 
@@ -1488,7 +1510,7 @@ function _buildSysBalloon(tag, content, tagColorClass, fullColorClass, truncateL
     const $tagSpan = $('<span class="text-xs font-semibold mr-1.5">').addClass(tagColorClass).text(tag);
     const $preview = $('<span class="sys-balloon-content block">').append($tagSpan, document.createTextNode(truncated));
     $header.append($preview);
-    if (needsCollapse) $header.append($('<span class="sys-chevron text-[10px] flex-shrink-0 mt-0.5 ml-auto">').addClass(fullColorClass).html('&#9660;'));
+    if (needsCollapse) $header.append($('<span class="sys-chevron text-[10px] flex-shrink-0 mt-0.5 ml-auto">').addClass(fullColorClass).html(uiIcon('chevron-down', 12)));
 
     const $full = $('<div class="sys-balloon-full whitespace-pre-wrap">').css('display','none').append(
         $('<span class="text-xs font-semibold mr-1.5">').addClass(tagColorClass).text(tag),
@@ -1798,7 +1820,9 @@ function buildMessageBubble(role, content, opts = {}, cfg = {}) {
 
     } else if (isError) {
         const $icon = $('<svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"/></svg>');
-        $bubble = $('<div class="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-2 text-sm flex items-start gap-2">').append($icon, $('<span>').text(content));
+        // min-width:0 + overflow-wrap:anywhere: a flex child cannot shrink below its longest unbroken token, so long
+        // error payloads (JSON without spaces) used to stretch the bubble and the whole message list sideways.
+        $bubble = $('<div class="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-2 text-sm flex items-start gap-2 min-w-0 max-w-full">').append($icon, $('<span style="min-width:0;overflow-wrap:anywhere">').text(content));
 
     } else if (isSystem) {
         const sysMatch = content.match(/^\[system[^\]]*\]\s*/i);
@@ -2304,7 +2328,7 @@ async function _renderViewerContent($body, url, filename, category) {
 // ── SSEAdapter ────────────────────────────────────────────────────────────────
 
 const SSE_EVENTS = [
-    'turn_begin', 'turn_split', 'thinking', 'tool_call_started', 'tool_executed',
+    'turn_begin', 'turn_split', 'thinking', 'thinking_delta', 'thinking_reset', 'tool_call_started', 'tool_executed',
     'state:changed', 'tasks:auto_transition', 'tasks:stale', 'response_chunk', 'done', 'approval_required', 'approval_resolved', 'retry',
     'message_injected', 'message_injection_applied', 'message_received', 'whatsapp_restriction_warning', 'session_clear',
     'state_changed', 'turn_queued', 'ready', 'heartbeat', 'auth_expired',
@@ -2726,12 +2750,12 @@ class Turn {
 
         const $inner = $('<div class="thinking-bubble flex items-center gap-2 rounded-lg px-3 py-2 text-xs border border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60 cursor-pointer">');
         $inner.append(
-            $('<span>').html('&#129504;'),
+            $('<span class="inline-flex">').html(uiIcon('brain', 16)),
             $('<span class="font-medium text-purple-700 dark:text-purple-200">').text('Thinking'),
             $('<span class="thinking-step-count text-purple-500 dark:text-purple-300 text-[10px] ml-0.5 hidden">'),
             $('<span class="thinking-spinner">').append($('<span class="tool-spinner">')),
             $('<span class="thinking-timer-inline text-purple-500 dark:text-purple-400 text-[10px]">').text('0.0 s'),
-            $('<span class="ml-1 text-purple-500 dark:text-purple-300 tool-trace-chevron text-sm">').html('&#9656;')
+            $('<span class="ml-1 text-purple-500 dark:text-purple-300 tool-trace-chevron">').html(uiIcon('chevron-right', 14))
         );
 
         if (avatarHtml) this.$bubble.append($(avatarHtml));
@@ -2821,7 +2845,7 @@ class Turn {
             $approvalColor
                 .removeClass('border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60')
                 .addClass('border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/60');
-            this.$bubble.find('span:first').html('&#128274;');
+            this.$bubble.find('span:first').html(uiIcon('lock', 16));
             this.$bubble.find('.font-medium')
                 .text('Menunggu Approval')
                 .removeClass('text-purple-700 dark:text-purple-200')
@@ -2830,7 +2854,7 @@ class Turn {
             $approvalColor
                 .addClass('border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60')
                 .removeClass('border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/60');
-            this.$bubble.find('span:first').html('&#129504;');
+            this.$bubble.find('span:first').html(uiIcon('brain', 16));
             this.$bubble.find('.font-medium')
                 .text('Thinking')
                 .addClass('text-purple-700 dark:text-purple-200')
@@ -2847,7 +2871,20 @@ class Turn {
     _handleEventRendering(evtName, data) {
         if (evtName === 'turn_begin') {
             // Already in thinking phase — bubble is ready
-            if (data.ts) this._startTime = data.ts;
+            // Keep the EARLIEST start: the eager bubble began at submit, while turn_begin carries the
+            // (later) moment the server started the turn after queueing/buffering. Re-basing to it made
+            // the timer jump back to 0.
+            if (data.ts) this._startTime = Math.min(this._startTime, data.ts);
+            return;
+        }
+
+        if (evtName === 'thinking_delta') {
+            this._appendLiveThinking(data.content || '');
+            return;
+        }
+
+        if (evtName === 'thinking_reset') {
+            this._clearLiveThinking();
             return;
         }
 
@@ -2910,7 +2947,17 @@ class Turn {
 
         if (evtName === 'done') {
             console.warn('[turn] done event turn=%s _finalized=%s _finalContent=%s', this.id, this._finalized, !!this._finalContent);
-            this._finalizeBubble(data.thinking_duration);
+            // The server's duration only covers the model loop (it excludes queueing, the message
+            // buffer and pre-passes such as CMP), so it can be SHORTER than what the timer already
+            // counted live — the label then visibly jumped backwards. Never show less than the
+            // wall time this turn was actually on screen. Replayed turns have ~0 elapsed, so they
+            // keep the stored value.
+            let shownDuration = data.thinking_duration;
+            if (shownDuration != null) {
+                const wall = Math.max(0, (Date.now() - this._startTime) / 1000);
+                shownDuration = Math.max(Number(shownDuration) || 0, wall);
+            }
+            this._finalizeBubble(shownDuration);
             // Fire final:response so page-level code can render the response bubble
             // synchronously from the durable stream.
             if (this._finalContent) {
@@ -2918,7 +2965,7 @@ class Turn {
                 this._onTrigger('final:response', {
                     turnId: this.id,
                     content: this._finalContent,
-                    thinking_duration: data.thinking_duration,
+                    thinking_duration: shownDuration,
                 });
             }
             return;
@@ -2948,8 +2995,9 @@ class Turn {
         if (total > 0 && total % 10 === 0) {
             console.warn('[turn] _addTimelineEntry count=%d type=%s turn=%s — possible duplicate replay?', total + 1, ev.type, this.id);
         }
-        // Remove "Thinking..." placeholder when a new event arrives
+        // Remove "Thinking..." placeholder (and the streamed preview) when a new event arrives
         this.$timeline.find('.tl-thinking-pending').remove();
+        this._clearLiveThinking();
 
         // Deactivate previous last entry
         const $prevLast = this.$timeline.find('.timeline-entry:last-child');
@@ -2992,8 +3040,8 @@ class Turn {
         const $status = $target.find('.tl-status');
         if ($status.length) {
             $status.html(data.error
-                ? '<span class="text-[14px] font-bold leading-none" style="color:#ef4444">&#10005;</span>'
-                : '<span class="text-[14px] font-bold leading-none" style="color:#22c55e">&#10003;</span>');
+                ? '<span class="inline-flex" style="color:#ef4444">' + uiIcon('x', 14) + '</span>'
+                : '<span class="inline-flex" style="color:#22c55e">' + uiIcon('check', 14) + '</span>');
         }
 
         const $detail = $target.find('.tl-detail');
@@ -3041,6 +3089,41 @@ class Turn {
         this._smartScroll();
     }
 
+    // ── Live thinking preview (streamed reasoning) ────────────────────────────
+    // Shown while the model is still thinking; replaced by the real timeline entry
+    // when the full `thinking` event arrives (or cleared on retry / next event).
+
+    _appendLiveThinking(text) {
+        if (this._finalized || !text) return;
+        let $live = this.$timeline.find('.tl-thinking-live');
+        if (!$live.length) {
+            this.$timeline.find('.tl-thinking-pending').remove();
+            const $prevLast = this.$timeline.find('.timeline-entry:last-child');
+            if ($prevLast.length) this._deactivateEntry($prevLast);
+            $live = $('<div class="tl-thinking-live pl-3 py-1 relative">').append(
+                $('<div class="tl-live-head">').append(
+                    $('<span class="inline-flex">').html(uiIcon('brain', 14)),
+                    $('<span class="tl-live-label">').text('Thinking'),
+                    $('<span class="tl-live-dots" aria-hidden="true">').append($('<i>'), $('<i>'), $('<i>'))
+                ),
+                $('<div class="tl-live-body">').append($('<div class="tl-live-text">'))
+            );
+            this.$timeline.append($live);
+            this.$timeline.removeClass('hidden');
+        }
+        const body = $live.find('.tl-live-body')[0];
+        const pre = $live.find('.tl-live-text')[0];
+        // Follow the tail unless the reader scrolled up inside the box.
+        const atTail = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
+        pre.appendChild(document.createTextNode(text));
+        if (atTail) body.scrollTop = body.scrollHeight;
+        this._smartScroll();
+    }
+
+    _clearLiveThinking() {
+        this.$timeline.find('.tl-thinking-live').remove();
+    }
+
     _showThinkingRow() {
         if (this._finalized) return; // don't add a pending row to a completed turn
         this.$timeline.find('.tl-thinking-pending').remove();
@@ -3082,6 +3165,7 @@ class Turn {
         }
 
         this.$timeline.find('.tl-thinking-pending').remove();
+        this._clearLiveThinking();
         this._deactivateEntry(this.$timeline.find('.timeline-entry:last-child'));
 
         // Auto-collapse the timeline when turn completes, keeping UI clean
@@ -3132,7 +3216,7 @@ class Turn {
         const $details = $('<div class="approval-details p-3">');
         $details.append(
             $('<div class="flex items-center gap-2 mb-2">').append(
-                $('<span class="text-sm font-semibold">').addClass(riskColorClass).html('&#9888; Approval Required'),
+                $('<span class="text-sm font-semibold inline-flex items-center gap-1.5">').addClass(riskColorClass).html(uiIcon('alert', 15) + ' Approval Required'),
                 $('<span class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-current">').addClass(riskColorClass).text(riskLevel)
             ),
             $('<div class="text-xs text-gray-700 dark:text-gray-200 mb-1">').append(
@@ -3217,9 +3301,9 @@ class Turn {
         if (timedOut) {
             statusText = 'Timed out — auto-rejected.'; statusClass = 'text-gray-500'; iconHtml = '&#x23F1; Timed out';
         } else if (decision === 'approve') {
-            statusText = 'Approved — executing...'; statusClass = 'text-green-600'; iconHtml = '&#10003; Approved';
+            statusText = 'Approved — executing...'; statusClass = 'text-green-600'; iconHtml = uiIcon('check', 14) + ' Approved';
         } else {
-            statusText = 'Rejected.'; statusClass = 'text-red-500'; iconHtml = '&#10007; Rejected';
+            statusText = 'Rejected.'; statusClass = 'text-red-500'; iconHtml = uiIcon('x', 14) + ' Rejected';
         }
         $card.find('.approval-status').text(statusText).removeClass('hidden').addClass(statusClass);
         $card.find('.approval-summary-icon').html(iconHtml);

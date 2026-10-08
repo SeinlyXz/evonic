@@ -639,6 +639,23 @@ def api_set_agent_variables(agent_id):
     return jsonify({'success': True})
 
 
+@agents_bp.route('/api/agents/<agent_id>/variables/<key>/reveal', methods=['POST'])
+def api_reveal_agent_variable(agent_id, key):
+    """Return the real value of ONE secret variable, on an explicit user action (the eye button).
+
+    GET /variables keeps masking secrets; this is a deliberate POST (never cached, never part of a list response) so a
+    value only leaves the server when someone asks to see that specific key.
+    """
+    if not db.get_agent(agent_id):
+        return jsonify({'error': 'Agent not found'}), 404
+    for v in db.get_agent_variables(agent_id):
+        if v.get('key') == key and v.get('is_secret'):
+            resp = jsonify({'key': key, 'value': v.get('value') or ''})
+            resp.headers['Cache-Control'] = 'no-store'
+            return resp
+    return jsonify({'error': 'Secret variable not found'}), 404
+
+
 @agents_bp.route('/api/agents/<agent_id>/variables/<key>', methods=['DELETE'])
 def api_delete_agent_variable(agent_id, key):
     if not db.get_agent(agent_id):
@@ -1169,15 +1186,17 @@ def api_get_avatar(agent_id):
         # 'private' because the avatar route is auth-gated.
         resp.headers['Cache-Control'] = 'private, max-age=300, must-revalidate'
         return resp
-    # Return the default avatar as an inline SVG served from a static string.
-    # This SVG is fully controlled server-side and contains no user content.
-    default_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
-  <rect width="40" height="40" rx="20" fill="#e0e7ff"/>
-  <path d="M20 8a5 5 0 100 10 5 5 0 000-10zm-8 18.5a8 8 0 0116 0" fill="#4f46e5"/>
-</svg>'''
+    # No uploaded avatar: serve a generated one. It is derived deterministically from the agent's
+    # name (same name -> same shapes, different name -> different shapes) and is built only from
+    # numbers and palette colours, so it contains no user content.
+    from backend.avatar_generator import generate_avatar_svg
     from flask import Response
-    return Response(default_svg, mimetype='image/svg+xml',
-                    headers={'Cache-Control': 'public, max-age=3600'})
+    import config as _cfg
+    svg = generate_avatar_svg(agent.get('name') or agent_id,
+                              variant=_cfg.AVATAR_STYLE, colors=_cfg.AVATAR_COLORS or None)
+    # Short freshness: the default style is configurable (AVATAR_STYLE), so don't pin an old look in caches.
+    return Response(svg, mimetype='image/svg+xml',
+                    headers={'Cache-Control': 'private, max-age=30, must-revalidate'})
 
 
 @agents_bp.route('/api/agents/<agent_id>/avatar', methods=['POST'])

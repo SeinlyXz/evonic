@@ -164,6 +164,12 @@ if not _SECRET_KEY_ENV:
 SECRET_KEY = _SECRET_KEY_ENV
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = _get_env_int("PORT", 8080, min_val=1, max_val=65535)
+
+# Default avatars for agents without an uploaded image (generated from the agent's name, Boring Avatars style).
+# AVATAR_STYLE: initials | marble | beam | pixel | sunset | ring | bauhaus.  AVATAR_COLORS: comma-separated #RRGGBB list
+# (empty = the built-in palette).
+AVATAR_STYLE = os.getenv("AVATAR_STYLE", "initials").strip().lower() or "initials"
+AVATAR_COLORS = [c.strip() for c in os.getenv("AVATAR_COLORS", "").split(",") if c.strip()]
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
 # External service manager. When unset, Evonic manages its own process.
@@ -229,6 +235,8 @@ CONNECTOR_PAIRING_CODE_TTL = _get_env_int("CONNECTOR_PAIRING_CODE_TTL", 300, min
 AGENT_MAX_TOOL_ITERATIONS = _get_env_int("AGENT_MAX_TOOL_ITERATIONS", 100, min_val=1, max_val=1000)
 EVAL_MAX_TOOL_ITERATIONS = _get_env_int("EVAL_MAX_TOOL_ITERATIONS", 30, min_val=1, max_val=500)
 AGENT_MAX_TOOL_RESULT_CHARS = _get_env_int("AGENT_MAX_TOOL_RESULT_CHARS", 8000, min_val=1, max_val=1_048_576)
+# Stream the model's reasoning to the browser live (OpenAI-compatible endpoints). Set AGENT_STREAM_THINKING=0 to fall back to one non-streaming call per step.
+AGENT_STREAM_THINKING = _get_env_bool("AGENT_STREAM_THINKING", True)
 # Maximum time the agent loop waits for each parallel tool, measured from
 # submission. Running Python threads cannot be terminated, so expired workers
 # are abandoned while pending work is cancelled during non-blocking cleanup.

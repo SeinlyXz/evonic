@@ -106,70 +106,462 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
     word-break: break-all;
     overflow-wrap: break-word;
 }
-</style>
-<div class="sessions-page flex flex-col h-[calc(100vh-3.5rem)]">
+/* ── Chat header controls: one consistent icon-button style, labelled Bot toggle, clear separators ── */
+.hdr-bot { display: inline-flex; align-items: center; gap: .5rem; padding: .25rem .5rem .25rem .625rem; border-radius: 8px; cursor: pointer; user-select: none; }
+.hdr-bot:hover { background: rgb(148 163 184 / .12); }
+.hdr-bot-label { font-size: .75rem; font-weight: 600; color: #6b7280; }
+html.dark .hdr-bot-label { color: #cbd5e1; }
+.hdr-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 8px;
+    background: transparent; color: #6b7280; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color .15s, color .15s; }
+.hdr-icon-btn.hidden { display: none; }
+.hdr-icon-btn svg { width: 1.125rem; height: 1.125rem; }
+.hdr-icon-btn:hover { background: rgb(148 163 184 / .16); color: #1f2937; }
+html.dark .hdr-icon-btn { color: #94a3b8; }
+html.dark .hdr-icon-btn:hover { color: #e2e8f0; }
+.hdr-sep { width: 1px; height: 1.125rem; margin: 0 .25rem; background: rgb(148 163 184 / .3); align-self: center; }
+/* state panel toggle reads as "on" while the side panel is open (desktop) */
+@media (min-width: 1024px) {
+    #chat-room:has(#side-panels-wrapper.lg\:flex) #mobile-summary-btn { background: rgb(99 102 241 / .14); color: #4f46e5; }
+    html.dark #chat-room:has(#side-panels-wrapper.lg\:flex) #mobile-summary-btn { background: rgb(129 140 248 / .18); color: #a5b4fc; }
+}
+/* Side panel header actions: icon buttons (+ labelled Recap) instead of a bare emoji and duplicated look-alike arrows */
+.state-btn { display: inline-flex; align-items: center; justify-content: center; gap: .375rem; min-width: 1.75rem; height: 1.75rem; padding: 0 .375rem; border: 0; border-radius: 8px;
+    background: transparent; color: #6b7280; font-size: .75rem; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color .15s, color .15s; }
+.state-btn svg { width: 1rem; height: 1rem; flex: none; }
+.state-btn:hover:not(:disabled) { background: rgb(148 163 184 / .16); color: #1f2937; }
+.state-btn:disabled { opacity: .7; cursor: default; }
+.state-btn-text { padding: 0 .5rem; }
+.state-btn-text:hover:not(:disabled) { background: rgb(99 102 241 / .14); color: #4f46e5; }
+html.dark .state-btn { color: #94a3b8; }
+html.dark .state-btn:hover:not(:disabled) { color: #e2e8f0; }
+html.dark .state-btn-text:hover:not(:disabled) { color: #c7d2fe; }
+.state-spin { animation: state-spin .8s linear infinite; }
+@keyframes state-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .state-spin { animation: none; } }
+/* ── Chat composer: card with borderless textarea + bottom action bar ── */
+.chat-composer { position: relative; background: rgb(255 255 255 / .78); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1); border: 1px solid #e5e7eb; border-radius: 1rem; padding: .375rem;
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: .5rem; align-items: center;
+    grid-template-areas: "tip tip tip" "files files files" "attach input send";
+    box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -12px rgb(15 23 42 / .14);
+    transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease, border-radius .26s cubic-bezier(.2,.8,.2,1); }
+.chat-composer.is-expanded { border-radius: 1rem; padding: .875rem .75rem .625rem 1.125rem; column-gap: 0;
+    grid-template-areas: "tip tip tip" "files files files" "input input input" "attach . send"; }
+#file-preview { grid-area: files; }
+#attach-btn { grid-area: attach; }
+#reply-btn { grid-area: send; }
+.chat-composer:focus-within { border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .14), 0 10px 28px -14px rgb(79 70 229 / .35); }
+html.dark .chat-composer { background: rgb(10 15 28 / .62); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
+html.dark .chat-composer:focus-within { border-color: #6366f1; box-shadow: 0 0 0 3px rgb(99 102 241 / .22), 0 10px 28px -14px rgb(79 70 229 / .5); }
+.chat-composer #reply-input { grid-area: input; display: block; box-sizing: border-box; width: 100%; min-height: 2.5rem; max-height: 150px; padding: .5rem .25rem; margin: 0; border: 0; border-radius: 0;
+    background: transparent; box-shadow: none; outline: none; resize: none; overflow-y: hidden; line-height: 1.5rem; color: #1f2937;
+    transition: height .14s ease; }
+.chat-composer.is-expanded #reply-input { min-height: 2.75rem; padding: 0; margin-bottom: .5rem; }
+.chat-composer #reply-input:focus { border: 0; box-shadow: none; outline: none; }
+.chat-composer #reply-input::placeholder { color: #9ca3af; }
+.chat-composer #reply-input:disabled { opacity: .5; cursor: not-allowed; }
+html.dark .chat-composer #reply-input { color: #e5e7eb; }
+html.dark .chat-composer #reply-input::placeholder { color: #6b7280; }
+.chat-composer-bar { display: contents; }
+.chat-icon-btn { flex: none; width: 2.5rem; height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; border-radius: .625rem;
+    border: 1px solid #e5e7eb; background: transparent; color: #6b7280; cursor: pointer;
+    transition: color .15s, border-color .15s, background-color .15s, transform .12s; }
+.chat-icon-btn svg { width: 18px; height: 18px; flex: none; }
+.chat-send-pill svg { width: 20px; height: 20px; flex: none; }
+.chat-icon-btn:hover { color: #4f46e5; border-color: #a5b4fc; background: #eef2ff; }
+.chat-icon-btn:active { transform: scale(.94); }
+html.dark .chat-icon-btn { border-color: #374151; color: #9ca3af; }
+html.dark .chat-icon-btn:hover { color: #c7d2fe; border-color: #6366f1; background: rgb(99 102 241 / .14); }
+.chat-send-pill { flex: none; height: 2.5rem; min-width: 4rem; padding: 0 1.25rem; display: inline-flex; align-items: center; justify-content: center; border-radius: .625rem;
+    border: 0; background: #4f46e5; color: #fff; cursor: pointer; box-shadow: 0 4px 12px -4px rgb(79 70 229 / .6);
+    transition: background-color .15s, transform .12s, box-shadow .15s, opacity .15s; }
+.chat-send-pill:hover { background: #4338ca; box-shadow: 0 6px 16px -4px rgb(79 70 229 / .7); }
+.chat-send-pill:active { transform: scale(.95); }
+.chat-send-pill:focus-visible, .chat-icon-btn:focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+html.dark .chat-send-pill { background: #6366f1; }
+html.dark .chat-send-pill:hover { background: #818cf8; }
+/* Global dark-mode rule forces every textarea to a solid bg with !important; the composer's textarea must stay transparent so the card (and its bash-mode tint) shows through */
+html.dark .chat-composer #reply-input { background-color: transparent !important; border-color: transparent !important; color: #e5e7eb !important; }
+/* Light mode: same contrast as the agent chat — a tinted card, visible borders, white action buttons */
+html:not(.dark) .chat-composer { background: #f3f5f9; border-color: #c9d0db; box-shadow: 0 1px 2px rgb(15 23 42 / .06), 0 10px 24px -14px rgb(15 23 42 / .28); }
+html:not(.dark) .chat-composer:focus-within { background: #fff; border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .16), 0 10px 28px -14px rgb(79 70 229 / .35); }
+html:not(.dark) .chat-icon-btn { background: #fff; border-color: #c9d0db; color: #4b5563; }
+html:not(.dark) .chat-icon-btn:hover { background: #eef2ff; border-color: #a5b4fc; color: #4f46e5; }
+html:not(.dark) .chat-composer #reply-input, html:not(.dark) .chat-composer #reply-input:focus { background-color: transparent !important; border-color: transparent !important; box-shadow: none !important; }
+html.dark .chat-composer #reply-input::placeholder { color: #6b7280 !important; }
+/* Progressive blur: stacked backdrop-filter layers with staggered masks -> blur fades smoothly to 0 (no hard edge).
+   .pblur-top: strongest at the top edge; .pblur-bottom: strongest at the bottom edge. */
+.pblur { position: absolute; left: 0; right: 0; z-index: -1; pointer-events: none; --dir: to bottom; }
+.pblur-bottom { --dir: to top; }
+.pblur > i { position: absolute; inset: 0; display: block; }
+.pblur > i:nth-child(1) { -webkit-backdrop-filter: blur(.6px); backdrop-filter: blur(.6px);
+    -webkit-mask-image: linear-gradient(var(--dir), #000 0%, #000 55%, transparent 100%); mask-image: linear-gradient(var(--dir), #000 0%, #000 55%, transparent 100%); }
+.pblur > i:nth-child(2) { -webkit-backdrop-filter: blur(1.2px); backdrop-filter: blur(1.2px);
+    -webkit-mask-image: linear-gradient(var(--dir), #000 0%, #000 35%, transparent 80%); mask-image: linear-gradient(var(--dir), #000 0%, #000 35%, transparent 80%); }
+.pblur > i:nth-child(3) { -webkit-backdrop-filter: blur(2.4px); backdrop-filter: blur(2.4px);
+    -webkit-mask-image: linear-gradient(var(--dir), #000 0%, #000 15%, transparent 60%); mask-image: linear-gradient(var(--dir), #000 0%, #000 15%, transparent 60%); }
+.pblur > i:nth-child(4) { -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+    -webkit-mask-image: linear-gradient(var(--dir), #000 0%, transparent 40%); mask-image: linear-gradient(var(--dir), #000 0%, transparent 40%); }
+/* Pure blur (no tint): only extent/position of each variant */
+.pblur-bottom { top: -1.75rem; bottom: 0; }
+/* Editor-mode tip: a strip fused to the top edge of the composer card (same width, shares its rounded top corners) */
+#editor-tip { grid-area: tip; display: flex; align-items: center; gap: .5rem; margin: -.875rem -.75rem .625rem -1.125rem; padding: .5rem .75rem .5rem 1.125rem;
+    border-radius: .875rem .875rem 0 0; background: rgb(99 102 241 / .10); border-bottom: 1px solid rgb(99 102 241 / .22);
+    font-size: .75rem; line-height: 1rem; color: #4338ca; }
+#editor-tip.hidden { display: none; }
+#editor-tip svg { width: 1rem; height: 1rem; flex: none; }
+#editor-tip > span { flex: 1 1 auto; min-width: 0; }
+#editor-tip button { cursor: pointer; }
+html.dark #editor-tip { background: rgb(129 140 248 / .14); border-bottom-color: rgb(129 140 248 / .28); color: #c7d2fe; }
+/* Soft entrance for things that pop in above/inside the composer (no abrupt jumps) */
+@keyframes chatPopIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.chat-anim-in:not(.hidden) { animation: chatPopIn .18s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+    .chat-composer, .chat-composer #reply-input, .chat-icon-btn, .chat-send-pill { transition: none; }
+    .chat-anim-in:not(.hidden) { animation: none; }
+}
 
-    <!-- Tab bar -->
-    <div class="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0">
-        <button id="tab-chat-btn" onclick="switchTab('chat')"
-                class="px-5 py-2.5 text-sm font-medium border-b-2 border-indigo-500 text-indigo-600 transition-colors">
-            Chat
-        </button>
-        <button id="tab-settings-btn" onclick="switchTab('settings')"
-                class="px-5 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors">
-            Settings
-        </button>
-    </div>
+/* ── Sessions-specific glue ── */
+.chat-icon-btn.hidden { display: none; }
+.chat-send-pill:disabled { opacity: .5; cursor: not-allowed; }
+/* Composer floats over the bottom of the messages column; messages keep scrolling (blurred) behind it */
+#reply-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; padding: 1rem; pointer-events: none; }
+#reply-bar > * { pointer-events: auto; }
+#reply-bar > .pblur { pointer-events: none; }
+#chat-drop-zone { --composer-h: 0px; }
+#chat-messages { padding-bottom: calc(var(--composer-h) + .5rem); }
+#chat-drop-zone .scroll-to-bottom-btn { bottom: calc(var(--composer-h) + .75rem); transition: bottom .15s ease, opacity .15s, transform .15s; }
+/* ══════════ Sessions page layout: same concept as the agent page ══════════
+   [session rail] [rounded chat panel with floating header + composer] [state cards] */
+.sess-rail { width: 20rem; flex: none; flex-direction: column; min-height: 0; }
+.sess-rail-title { padding: .25rem .75rem .75rem; }
+.sess-rail-title h2 { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text-heading, #1f2937); }
+#SidebarSearch { padding: 0 .25rem .75rem; }
+#session-list { padding: 0 .25rem; display: flex; flex-direction: column; gap: .25rem; }
+#session-list::-webkit-scrollbar { width: 4px; }
+#session-list::-webkit-scrollbar-thumb { background: rgb(148 163 184 / .3); border-radius: 4px; }
+.sess-item { position: relative; display: flex; gap: .75rem; padding: .75rem; border-radius: 12px; cursor: pointer; transition: background-color .15s ease; }
+.sess-item:hover { background: var(--bg-hover, rgb(148 163 184 / .12)); }
+.sess-item.active { background: rgba(99, 102, 241, 0.10); }
+html.dark .sess-item.active { background: rgba(129, 140, 248, 0.14); }
+.sess-avatar { width: 2.25rem; height: 2.25rem; border-radius: 9999px; object-fit: cover; flex: none; background: rgb(99 102 241 / .16); }
+.sess-avatar-fallback { width: 2.25rem; height: 2.25rem; border-radius: 9999px; flex: none; display: flex; align-items: center; justify-content: center; font-size: .8rem; font-weight: 700; color: #a5b4fc; background: rgb(99 102 241 / .16); }
+.sess-body { min-width: 0; flex: 1 1 auto; }
+.sess-top { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.sess-name { font-size: .875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sess-user { font-size: 10px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.sess-preview { font-size: .75rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: .25rem; }
+.sess-meta { font-size: 10px; color: #64748b; margin-top: .25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sess-item .session-delete-btn { position: absolute; top: .5rem; right: .5rem; border: 0; background: transparent; color: #94a3b8; padding: .25rem; border-radius: 8px; cursor: pointer; }
+.sess-item .session-delete-btn:hover { background: rgb(239 68 68 / .12); }
+.sess-rail-footer { flex: none; margin-top: .5rem; padding: .5rem .25rem 0; border-top: 1px solid var(--border-color, rgb(148 163 184 / .25)); }
+.sess-rail-settings { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent;
+    font-size: .875rem; font-weight: 500; color: var(--text-secondary, #6b7280); cursor: pointer; transition: background-color .15s, color .15s; }
+.sess-rail-settings svg { width: 16px; height: 16px; flex: none; opacity: .75; }
+.sess-rail-settings:hover { background: var(--bg-hover, rgb(148 163 184 / .12)); color: var(--text-heading, #1f2937); }
+.sess-rail-settings.active { background: rgba(99, 102, 241, 0.10); color: #4f46e5; }
+html.dark .sess-rail-settings.active { background: rgba(129, 140, 248, 0.14); color: #a5b4fc; }
+
+/* Chat panel: rounded box, same radius/colour as the agent chat panel */
+.sess-panel { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 1.5rem; --sess-hdr-h: 3.25rem; }
+html.dark .sess-panel { background: var(--bg-card); border-color: var(--color-gray-700, #364153); }
+.sess-panel > .pblur-top { top: 0; bottom: auto; height: calc(var(--sess-hdr-h) + 2.5rem); z-index: 19; }
+.sess-panel:has(#chat-header.hidden) > .pblur-top { display: none; }
+.sess-hdr { position: absolute; top: 1rem; left: 1rem; right: 1rem; z-index: 20; display: flex; }
+.sess-hdr.hidden { display: none; }
+.sess-hdr .chat-header-pill { flex: 1 1 auto; min-width: 0; height: 3.25rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 0 1.25rem; border-radius: 1.25rem;
+    box-sizing: border-box; border: 1px solid #e5e7eb; background: rgb(255 255 255 / .78); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1);
+    box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -12px rgb(15 23 42 / .14); }
+html.dark .sess-hdr .chat-header-pill { background: rgb(10 15 28 / .62); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px -14px rgb(0 0 0 / .6); }
+.sess-hdr-avatar { width: 1.75rem; height: 1.75rem; border-radius: 9999px; object-fit: cover; flex: none; background: rgb(99 102 241 / .16); }
+.sess-panel #chat-messages { padding-top: calc(var(--sess-hdr-h) + 1.75rem); }
+.sess-panel:has(#chat-header.hidden) #chat-messages { padding-top: 1rem; }
+/* Desktop: same compact full-width header bar as the agent chat — transparent, blurred, no border, not a floating bubble */
+@media (min-width: 1024px) {
+    .sess-hdr { top: 0; left: 0; right: 0; }
+    .sess-hdr .chat-header-pill, html.dark .sess-hdr .chat-header-pill { height: 3.25rem; border: 0; border-radius: 0; padding: 0 1.75rem; box-shadow: none;
+        background: rgb(255 255 255 / .42); -webkit-backdrop-filter: blur(16px) saturate(1.3); backdrop-filter: blur(16px) saturate(1.3); }
+    html.dark .sess-hdr .chat-header-pill { background: rgb(10 15 28 / .38); }
+    .sess-panel { --sess-hdr-h: 3.25rem; }
+    .sess-panel #chat-messages { padding-top: calc(var(--sess-hdr-h) + 1rem); }
+    .sess-panel > .pblur-top { display: none; }   /* the bar blurs on its own */
+}
+
+/* State cards: same look as the agent page's Agent State / Session State cards */
+#agent-state-panel, #summary-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 1.25rem; overflow: hidden; }
+html.dark #agent-state-panel, html.dark #summary-panel { background: var(--color-gray-800, #1e2939); border-color: var(--color-gray-600, #4a5565); }
+#AgentState, #SessionRecap { padding: 1rem 1.25rem; border-bottom: 0; }
+#AgentState h4, #SessionRecap h4 { font-size: 1rem; font-weight: 700; text-transform: none; letter-spacing: 0; }
+#agent-state-content, #SessionStateContent { padding-left: 1.25rem; padding-right: 1.25rem; }
+#summary-meta { padding-left: 1.25rem; padding-right: 1.25rem; }
+#chat-room > #side-panels-wrapper { align-self: stretch; }
+#summary-panel { flex: 1 1 0; min-height: 0; }
+
+/* Settings tab cards */
+#tab-settings .rounded-xl { border-radius: 1rem; padding: 1.25rem 1.375rem; }
+/* Settings: breathing room at the screen edges, readable descriptions, pill actions */
+.set-page { padding-left: .75rem; padding-right: .75rem; padding-bottom: 1.5rem; box-sizing: border-box; }
+#tab-settings .set-row h3 { font-size: .9375rem; line-height: 1.35rem; }
+#tab-settings .set-row p.text-xs { margin-top: .25rem; font-size: .8125rem; line-height: 1.5; color: #64748b; }
+html.dark #tab-settings .set-row p.text-xs { color: #94a3b8; }
+#tab-settings .set-row > div:first-child { min-width: 0; flex: 1 1 auto; }
+.set-danger { flex: none; display: inline-flex; align-items: center; justify-content: center; height: 2.25rem; padding: 0 1.125rem; border-radius: 9999px; cursor: pointer;
+  font-size: .8125rem; font-weight: 600; color: #dc2626; background: rgb(239 68 68 / .1); border: 1px solid rgb(239 68 68 / .35); transition: background-color .15s, color .15s, border-color .15s, transform .12s; }
+.set-danger:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+.set-danger:active { transform: scale(.97); }
+html.dark .set-danger { color: #fca5a5; background: rgb(239 68 68 / .14); border-color: rgb(248 113 113 / .4); }
+html.dark .set-danger:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+#tab-settings .hdr-icon-btn { width: 2.5rem; height: 2.5rem; border-radius: 50%; background: rgb(100 116 139 / .1); transition: background-color .15s, transform .12s; }
+#tab-settings .hdr-icon-btn:hover { background: rgb(100 116 139 / .2); }
+#tab-settings .hdr-icon-btn:active { transform: scale(.94); }
+html.dark #tab-settings .hdr-icon-btn { background: rgb(148 163 184 / .1); }
+html.dark #tab-settings .hdr-icon-btn:hover { background: rgb(148 163 184 / .2); }
+@media (max-width: 767.98px) {
+  .set-page { padding-left: .75rem; padding-right: .75rem; }
+  #tab-settings .rounded-xl { border-radius: 1.375rem; padding: 1.125rem 1.125rem; }
+  /* destructive rows: description first, full-width pill below */
+  .set-row-danger { flex-direction: column; align-items: stretch; gap: .875rem; }
+  .set-row-danger .set-danger { width: 100%; }
+}
+#tab-chat.chat-fullscreen { padding: 1rem; gap: 1rem; }
+
+@media (max-width: 767.98px) {
+    .sessions-page { padding: 0; }
+    .sess-panel { border-radius: 0; border-width: 0; }
+}
+
+/* ══════════ Agent State / Session State revamp ══════════
+   One palette with meaning: neutral surfaces; green = ok/active, indigo = plan/context, amber = attention. */
+.st-sec + .st-sec { margin-top: 1.25rem; }
+/* The state sections live in separate containers, so spacing between them comes from a flex gap on the scroll area */
+#SessionStateContent, #mobile-SessionStateContent { display: flex; flex-direction: column; gap: 1.25rem; }
+#SessionStateContent, #agent-state-content { padding-top: .25rem; }
+.st-sec-h { display: flex; align-items: center; gap: .5rem; min-height: 1.5rem; margin-bottom: .5rem; font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #64748b; }
+.st-sec-h svg { width: 14px; height: 14px; flex: none; }
+.st-sec-h .st-chip { padding: .125rem .5rem; font-size: .6875rem; letter-spacing: 0; text-transform: none; }
+.st-sec-h .st-sec-r { margin-left: auto; letter-spacing: 0; text-transform: none; font-weight: 500; font-variant-numeric: tabular-nums; }
+html.dark .st-sec-h { color: #94a3b8; }
+/* Agent State rows: [icon] label ............ value */
+.st-kv { display: flex; align-items: center; gap: .625rem; min-height: 2rem; font-size: .8125rem; }
+.st-kv + .st-kv { border-top: 1px solid rgb(148 163 184 / .16); }
+.st-kv > svg { width: 15px; height: 15px; flex: none; color: #94a3b8; }
+.st-kv-l { color: #64748b; flex: none; }
+html.dark .st-kv-l { color: #94a3b8; }
+.st-kv-v { margin-left: auto; min-width: 0; display: inline-flex; align-items: center; gap: .375rem; font-weight: 500; color: #1f2937; text-align: right; }
+html.dark .st-kv-v { color: #e2e8f0; }
+.st-kv-v > span:not(.st-dot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-kv-v button, button.st-kv-v { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: .125rem .375rem; margin-right: -.375rem; border-radius: 6px; }
+.st-kv-v button:hover, button.st-kv-v:hover { background: rgb(148 163 184 / .16); }
+.st-dot { width: .5rem; height: .5rem; border-radius: 9999px; flex: none; background: #94a3b8; }
+.st-dot.green { background: #22c55e; box-shadow: 0 0 0 3px rgb(34 197 94 / .18); }
+.st-dot.amber { background: #f59e0b; box-shadow: 0 0 0 3px rgb(245 158 11 / .18); }
+.st-dot.indigo { background: #6366f1; box-shadow: 0 0 0 3px rgb(99 102 241 / .18); }
+/* chips (skills, mode) */
+.st-chip { display: inline-flex; align-items: center; gap: .375rem; max-width: 100%; padding: .25rem .625rem; border-radius: 8px; border: 1px solid rgb(148 163 184 / .25);
+    background: rgb(148 163 184 / .10); color: #334155; font-size: .75rem; font-weight: 500; line-height: 1rem; }
+html.dark .st-chip { color: #cbd5e1; }
+.st-chip.green { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.st-chip.amber { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+html.dark .st-chip.green { background: rgb(16 185 129 / .14); color: #6ee7b7; border-color: rgb(16 185 129 / .30); }
+html.dark .st-chip.amber { background: rgb(245 158 11 / .16); color: #fcd34d; border-color: rgb(245 158 11 / .32); }
+.st-chip button { border: 0; background: transparent; color: inherit; opacity: .55; cursor: pointer; padding: 0 .125rem; font-size: .875rem; line-height: 1; }
+.st-chip button:hover { opacity: 1; color: #ef4444; }
+.st-chips { display: flex; flex-wrap: wrap; gap: .375rem; }
+/* context meter */
+.st-meter { height: .375rem; border-radius: 9999px; background: rgb(148 163 184 / .25); overflow: hidden; }
+.st-meter > div { height: 100%; border-radius: 9999px; transition: width .3s ease; }
+/* plan file */
+.st-plan { display: flex; align-items: flex-start; gap: .5rem; width: 100%; margin-top: .5rem; padding: .5rem .625rem; border: 1px solid rgb(99 102 241 / .28); border-radius: 10px;
+    background: rgb(99 102 241 / .08); color: #4338ca; font-size: .75rem; text-align: left; cursor: pointer; transition: background-color .15s; }
+.st-plan:hover { background: rgb(99 102 241 / .16); }
+html.dark .st-plan { color: #c7d2fe; border-color: rgb(129 140 248 / .32); background: rgb(129 140 248 / .10); }
+.st-plan svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.st-plan-dir { opacity: .6; flex: none; line-height: 1.25rem; }
+.st-plan-name { min-width: 0; overflow-wrap: anywhere; font-weight: 500; line-height: 1.25rem; }
+/* tasks */
+.st-tasks-progress { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.st-tasks-progress .st-meter { flex: 1; height: .25rem; }
+.st-task { display: flex; align-items: flex-start; gap: .5rem; padding: .25rem 0; font-size: .75rem; line-height: 1.25rem; color: #334155; }
+html.dark .st-task { color: #e2e8f0; }
+.st-task > svg { width: 14px; height: 14px; flex: none; margin-top: .3125rem; }
+.st-task.pending > svg { color: #94a3b8; }
+.st-task.doing > svg { color: #f59e0b; }
+.st-task.done { color: #94a3b8; }
+.st-task.done > svg { color: #22c55e; }
+html.dark .st-task.done { color: #64748b; }
+.st-done-toggle { display: flex; align-items: center; gap: .375rem; margin-top: .25rem; padding: .25rem 0; font-size: .75rem; color: #64748b; cursor: pointer; list-style: none; user-select: none; }
+.st-done-toggle::-webkit-details-marker { display: none; }
+.st-done-toggle svg { width: 14px; height: 14px; transition: transform .15s; }
+details[open] > .st-done-toggle svg { transform: rotate(90deg); }
+.st-done-toggle:hover { color: #334155; }
+html.dark .st-done-toggle:hover { color: #e2e8f0; }
+/* summary block */
+#SessionSummary:has(.recap-prose) { padding-top: 1rem; border-top: 1px solid rgb(148 163 184 / .2); }
+#SessionContext:empty, #SessionPlan:empty, #SessionSkills:empty { display: none; }
+/* Fullscreen chat hides the mobile search bar via a class (inline show()/hide() overrode md:hidden on desktop) */
+#tab-chat.chat-fullscreen > #mobile-search-bar { display: none; }
+/* Mobile search row + header pill that never wraps outside its box */
+/* Mobile = a chat app: first the list of sessions (the rail), then, after picking one, the conversation with a back arrow.
+   #tab-chat.m-chat marks the conversation view. The old search bar + dropdown stay in the DOM but are never shown on mobile. */
+.sess-back { display: none; }
+@media (max-width: 767.98px) {
+  #mobile-search-bar { display: none !important; }
+  #tab-chat:not(.m-chat) #chat-room { display: none; }
+  #tab-chat.m-chat #sidebar { display: none !important; }
+  #tab-chat:not(.m-chat) #sidebar { display: flex !important; width: 100%; flex: 1 1 auto; padding: .25rem .75rem 0; box-sizing: border-box; }
+  #tab-chat:not(.m-chat) .sess-item { padding: .875rem .75rem; }
+  .sess-back { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; margin-left: -.25rem; padding: 0; border: 0; border-radius: 50%;
+    background: rgb(100 116 139 / .12); color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color .15s, transform .12s; }
+  .sess-back:hover { background: rgb(100 116 139 / .22); }
+  .sess-back:active { transform: scale(.94); }
+  .sess-back svg { width: 18px; height: 18px; }
+  html.dark .sess-back { background: rgb(148 163 184 / .14); color: #e2e8f0; }
+}
+/* z-index 30: the open results must cover the chat's floating header pill and composer (both z-index 20), but stay under the navbar (50) */
+#mobile-search-bar { position: relative; z-index: 30; padding: .5rem .25rem .625rem; }
+.msb-row { display: flex; align-items: center; gap: .5rem; }
+/* Search field: pill with a leading icon (mobile bar + desktop rail) */
+.msb-field { position: relative; display: block; flex: 1 1 auto; min-width: 0; }
+.msb-ico { position: absolute; left: .9375rem; top: 50%; width: 1rem; height: 1rem; transform: translateY(-50%); color: #94a3b8; pointer-events: none; transition: color .15s; }
+.msb-field:focus-within .msb-ico { color: #6366f1; }
+.msb-field input, html.dark .msb-field input { display: block; width: 100%; box-sizing: border-box; height: 2.5rem; padding: 0 1rem 0 2.5rem; margin: 0; border-radius: 9999px;
+  border: 1px solid #e5e7eb !important; background: rgb(255 255 255 / .85) !important; color: #111827 !important; font-size: .875rem; outline: none;
+  transition: border-color .15s, box-shadow .15s; }
+html.dark .msb-field input { border-color: #374151 !important; background: rgb(15 23 42 / .6) !important; color: #e5e7eb !important; }
+.msb-field input::placeholder { color: #94a3b8; opacity: 1; }
+.msb-field input:focus, html.dark .msb-field input:focus { border-color: #818cf8 !important; box-shadow: 0 0 0 3px rgb(99 102 241 / .16); }
+.msb-field input::-webkit-search-cancel-button { cursor: pointer; }
+/* gear: round tinted button, same as the navbar circles */
+.msb-row .hdr-icon-btn { flex: none; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: rgb(100 116 139 / .1); color: #64748b; transition: background-color .15s, color .15s, transform .12s; }
+.msb-row .hdr-icon-btn:hover { background: rgb(100 116 139 / .2); color: #1f2937; }
+.msb-row .hdr-icon-btn:active { transform: scale(.94); }
+.msb-row .hdr-icon-btn svg { width: 18px; height: 18px; }
+html.dark .msb-row .hdr-icon-btn { background: rgb(148 163 184 / .1); color: #cbd5e1; }
+html.dark .msb-row .hdr-icon-btn:hover { background: rgb(148 163 184 / .2); color: #f1f5f9; }
+/* autocomplete results: the search field and its results are ONE glass surface. The surface (#mobile-dropdown) is drawn from the
+   top of the input down, the input sits on top of it with a transparent background, and the rows scroll in .msd-list below. */
+#mobile-dropdown { position: absolute; z-index: 5; top: 0; left: 0; right: 0; margin: 0; padding: 2.5rem .375rem .375rem; box-sizing: border-box;
+  border-radius: .875rem; border: 1px solid #e5e7eb; background: rgb(255 255 255 / .86);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 24px 48px -16px rgb(15 23 42 / .4); }
+html.dark #mobile-dropdown { background: rgb(15 23 42 / .82); border-color: #374151; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 24px 48px -16px rgb(0 0 0 / .7); }
+.msb-field:focus-within #mobile-dropdown, html.dark .msb-field:focus-within #mobile-dropdown { border-color: #818cf8; box-shadow: 0 0 0 3px rgb(99 102 241 / .16), 0 24px 48px -16px rgb(0 0 0 / .6); }
+#mobile-dropdown::before { content: ""; position: absolute; left: .875rem; right: .875rem; top: 2.5rem; border-top: 1px solid rgb(148 163 184 / .22); }
+.msd-list { max-height: min(55vh, 24rem); overflow-y: auto; scrollbar-width: none; padding-top: .25rem; }
+.msd-list::-webkit-scrollbar { display: none; }
+/* while open, the field itself gives up its own border/background/ring: the surface behind it carries them */
+.msb-field input { position: relative; z-index: 6; }
+.msb-ico { z-index: 7; }
+.msb-field:has(#mobile-dropdown:not(.hidden)) input, html.dark .msb-field:has(#mobile-dropdown:not(.hidden)) input {
+  border-color: transparent !important; background: transparent !important; box-shadow: none; }
+.msd-row { display: flex; align-items: center; gap: .75rem; width: 100%; padding: .5625rem .75rem; border: 0; border-radius: .875rem; background: transparent; text-align: left; cursor: pointer; color: inherit; transition: background-color .15s; }
+.msd-row:hover { background: rgb(99 102 241 / .1); }
+.msd-row.is-active { background: rgb(99 102 241 / .14); }
+html.dark .msd-row:hover { background: rgb(99 102 241 / .18); }
+html.dark .msd-row.is-active { background: rgb(99 102 241 / .22); }
+.msd-ic { flex: none; width: 2.25rem; height: 2.25rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #6366f1; background: rgb(99 102 241 / .12); }
+html.dark .msd-ic { color: #a5b4fc; background: rgb(99 102 241 / .2); }
+.msd-ic svg { width: 17px; height: 17px; }
+.msd-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.msd-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9375rem; font-weight: 600; line-height: 1.25rem; color: #1f2937; }
+html.dark .msd-name { color: #f1f5f9; }
+.msd-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; line-height: 1rem; color: #64748b; }
+html.dark .msd-sub { color: #94a3b8; }
+.msd-name.user-id-human { color: #15803d; }
+html.dark .msd-name.user-id-human { color: #4ade80; }
+.msd-row > span[class*="px-1.5"] { flex: none; border-radius: 9999px !important; padding: .125rem .5rem !important; }
+.sess-hdr-name { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+#hdr-agent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#hdr-channel-badge { flex: none; }
+.sess-hdr-user { margin-top: 1px; font-size: .6875rem; line-height: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 767.98px) {
+    .sess-hdr { top: .75rem; left: .75rem; right: .75rem; }
+    .sess-hdr .chat-header-pill { padding: 0 .75rem; gap: .5rem; }
+    /* the toggle stays; its text label, the divider and fullscreen (the chat is already full-bleed) go */
+    .sess-hdr .hdr-bot { padding-left: .25rem; }
+    .sess-hdr .hdr-bot-label, .sess-hdr .hdr-sep, #session-chat-fullscreen-btn { display: none; }
+}
+/* ── One surface: chat panel + Agent State + Session State share a single rounded section ──
+   #chat-room owns background / border / radius; the panel and the two state blocks are plain regions inside it,
+   separated by hairlines. */
+#chat-room { gap: 0; overflow: hidden; border: 1px solid #e5e7eb; border-radius: 1.5rem; background: #fff; }
+html.dark #chat-room { border-color: var(--color-gray-700, #364153); background: var(--bg-card); }
+#chat-room > .sess-panel, html.dark #chat-room > .sess-panel { background: transparent; border: 0; border-radius: 0; }
+#chat-room > #side-panels-wrapper { gap: 0; border-left: 1px solid rgb(148 163 184 / .2); }
+#chat-room #agent-state-panel, #chat-room #summary-panel { background: transparent; border: 0; border-radius: 0; }
+#chat-room #agent-state-panel + #summary-panel { border-top: 1px solid rgb(148 163 184 / .2); }
+@media (max-width: 767.98px) { #chat-room { border-radius: 0; border-width: 0; } }
+</style>
+<div class="sessions-page flex flex-col h-[calc(100vh-3.5rem)] px-2 py-1 md:py-4">
 
     <!-- ==================== Chat Tab ==================== -->
     <div id="tab-chat" class="flex-1 flex flex-col overflow-hidden">
 
     <!-- Mobile: autocomplete search bar -->
-    <div class="md:hidden p-3 bg-white border-b border-gray-200 relative dark:bg-gray-800">
-        <input type="search" id="mobile-search" name="mobile_search_filter" placeholder="Search session (agent or user ID)..."
-               class="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-               oninput="onMobileSearch(this.value)" onfocus="this.removeAttribute('readonly');showMobileDropdown()" autocomplete="off" readonly>
-        <div id="mobile-dropdown" class="hidden absolute left-3 right-3 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-y-auto z-50"></div>
+    <div id="mobile-search-bar" class="md:hidden relative">
+        <div class="msb-row">
+            <label class="msb-field"><svg class="msb-ico" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="search" id="mobile-search" name="mobile_search_filter" placeholder="Search session (agent or user ID)..." aria-label="Search sessions"
+                   
+                   oninput="onMobileSearch(this.value)" onfocus="this.removeAttribute('readonly');showMobileDropdown()" autocomplete="off" readonly>
+            <div id="mobile-dropdown" class="hidden"></div>
+        </label>
+            <button type="button" onclick="switchTab('settings')" class="hdr-icon-btn" title="Sessions settings" aria-label="Sessions settings">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        </div>
     </div>
 
-    <div class="flex flex-1 overflow-hidden">
-        <!-- Desktop: session sidebar -->
-        <div id="sidebar" class="hidden md:flex flex-col w-[320px] border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0">
-            <div id="SidebarSearch" class="p-3 border-b border-gray-100 dark:border-gray-600">
-                <input type="search" id="sidebar-search" name="sidebar_search_filter" placeholder="Search agent or user ID..."
-                       class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                       oninput="debouncedLoadSessions(this.value)" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')">
+    <div class="flex flex-1 min-h-0 gap-4 overflow-hidden">
+        <!-- Desktop: session rail — the "menu list" of this page is the sessions of every agent -->
+        <div id="sidebar" class="sess-rail hidden md:flex">
+            <div class="sess-rail-title"><h2>Sessions</h2></div>
+            <div id="SidebarSearch">
+                <label class="msb-field"><svg class="msb-ico" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="search" id="sidebar-search" name="sidebar_search_filter" placeholder="Search agent or user ID..."
+                       aria-label="Search sessions"
+                       oninput="debouncedLoadSessions(this.value)" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"></label>
             </div>
             <div id="session-list" class="flex-1 overflow-y-auto"></div>
+            <div class="sess-rail-footer">
+                <button type="button" id="tab-settings-btn" class="sess-rail-settings" onclick="switchTab(document.getElementById('tab-settings').classList.contains('hidden') ? 'settings' : 'chat')">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span>Settings</span>
+                </button>
+            </div>
         </div>
 
         <!-- Chat room -->
-        <div id="chat-room" class="flex-1 flex flex-col bg-gray-50 dark:bg-gray-800 min-w-0">
-            <!-- Chat header -->
-            <div id="chat-header" class="hidden p-3 bg-white dark:bg-gray-800 border-b border-gray-200 flex-shrink-0 dark:border-gray-600">
-                <div class="flex items-center justify-between gap-2 flex-wrap">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-2 flex-wrap">
+        <div id="chat-room" class="flex-1 flex flex-row gap-4 min-w-0 min-h-0">
+            <!-- Chat panel: rounded box holding the floating header, messages and the floating composer -->
+            <div id="sess-panel" class="sess-panel">
+                <div class="pblur pblur-top" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div id="chat-header" class="hidden sess-hdr">
+                <div class="chat-header-pill">
+                    <button id="sess-back-btn" type="button" class="sess-back" onclick="setMobileView('list')" title="Back to sessions" aria-label="Back to sessions list">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+                    <img id="hdr-avatar" class="sess-hdr-avatar" alt="" onerror="this.style.visibility='hidden'">
+                    <div class="min-w-0 flex-1">
+                        <div class="sess-hdr-name">
                             <span id="hdr-agent" class="font-semibold text-gray-800 dark:text-gray-400 text-sm truncate"></span>
                             <span id="hdr-channel-badge" class="text-xs px-2 py-0.5 rounded font-medium"></span>
                         </div>
-                        <div class="text-xs text-gray-400 mt-0.5">
+                        <div class="sess-hdr-user text-xs text-gray-400">
                             User: <span id="hdr-user" class="text-gray-600 dark:text-gray-400"></span>
                         </div>
                     </div>
-                    <div class="flex items-center gap-3 flex-shrink-0">
-                        <label class="flex items-center gap-2 cursor-pointer select-none">
-                            <span class="text-xs text-gray-500">B</span>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <label class="hdr-bot" title="Bot auto-reply — on: the agent answers this session's incoming messages automatically. Off: the agent stays silent so you can reply manually.">
+                            <span class="hdr-bot-label">Bot</span>
                             {{ toggle_widget(id='bot-toggle', onchange='toggleBot(this.checked)') }}
                         </label>
                         <button id="stop-agent-btn" onclick="stopAgent()" class="hidden text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded border border-red-200 bg-red-50 hover:bg-red-100 transition-colors" title="Stop agent">
                             Stop
                         </button>
-                        <button id="mobile-summary-btn" onclick="toggleSummary()" class="text-indigo-500 hover:text-indigo-700 hidden" title="View summary">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <button id="mobile-summary-btn" onclick="toggleSummary()" class="hdr-icon-btn hidden" title="Show / hide Agent &amp; Session State" aria-label="Show or hide agent and session state">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
                         </button>
-                        <span class="w-px h-4 bg-gray-200 self-center"></span>
-                        <button onclick="toggleSessionChatFullscreen()" id="session-chat-fullscreen-btn" title="Fullscreen" class="ml-auto text-gray-400 hover:text-gray-600 flex items-center">
+                        <span class="hdr-sep"></span>
+                        <button onclick="toggleSessionChatFullscreen()" id="session-chat-fullscreen-btn" title="Fullscreen" aria-label="Toggle fullscreen" class="hdr-icon-btn">
                             <svg id="session-fs-expand-icon" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                             </svg>
@@ -180,9 +572,6 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                     </div>
                 </div>
             </div>
-
-            <!-- Messages + Summary side by side -->
-            <div class="flex flex-1 overflow-hidden">
                 <!-- Messages -->
                 <div id="chat-drop-zone" class="relative flex-1 min-w-0 flex flex-col overflow-hidden">
                 <!-- Drop overlay -->
@@ -203,17 +592,47 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                         <path fill-rule="evenodd" d="M10 3a.75.75 0 0 1 .75.75v10.638l3.96-4.158a.75.75 0 1 1 1.08 1.04l-5.25 5.5a.75.75 0 0 1-1.08 0l-5.25-5.5a.75.75 0 1 1 1.08-1.04l3.96 4.158V3.75A.75.75 0 0 1 10 3Z" clip-rule="evenodd"/>
                     </svg>
                 </button>
+                <!-- Reply input: floating glass composer (same component as the agent chat) -->
+                <div id="reply-bar" class="hidden">
+                    <div class="pblur pblur-bottom" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                    <div id="chat-composer" class="chat-composer" onclick="if(!event.target.closest('button,a,textarea,[role=button]')) document.getElementById('reply-input').focus()">
+                        <!-- Editor-mode tip (shown on Shift+Enter) -->
+                <div id="editor-tip" class="hidden chat-anim-in">
+                    <svg class="w-4 h-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
+                    <span class="flex-1">Writing something long? <button type="button" onclick="openChatEditorModal()" class="font-medium underline hover:text-indigo-600">Open in editor mode</button></span>
+                    <button type="button" onclick="hideEditorTip()" class="text-indigo-400 hover:text-indigo-600 flex-shrink-0" title="Dismiss">
+                        <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd"/></svg>
+                    </button>
+                </div>
+                        <div id="file-preview" class="hidden chat-anim-in flex items-center gap-2 px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
+                    <img id="file-preview-img" class="hidden w-12 h-12 object-cover rounded" alt="">
+                    <svg id="file-preview-icon" class="hidden w-6 h-6 text-gray-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zm-3 9h4v2h-4v-2zm0 3h4v2h-4v-2zm-2-3h1v2H8v-2zm0 3h1v2H8v-2z"/></svg>
+                    <span id="file-preview-name" class="text-xs text-gray-600 dark:text-gray-300 truncate flex-1"></span>
+                    <span id="file-preview-size" class="text-[10px] text-gray-400 flex-shrink-0"></span>
+                    <button type="button" onclick="clearFileInput()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex-shrink-0" title="Remove file">
+                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd"/></svg>
+                    </button>
+                </div>
+                        <textarea id="reply-input" placeholder="Type a reply as the bot..." rows="1"
+                                  onkeydown="chatInputKeydown(event)" oninput="replyInputChanged(this)"></textarea>
+                        <div class="chat-composer-bar">
+                            <input type="file" id="file-input" class="hidden" accept="image/*,.pdf,.txt,.md,.log,.json,.yaml,.yml,.xml,.csv,.tsv,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.html,.css,.sql,.sh,.toml,.ini,.zip,.docx,.xlsx,.pptx,.odt,.ods,.odp,.rtf,.epub" onchange="onFileSelected(this)">
+                            <button type="button" id="attach-btn" onclick="document.getElementById('file-input').click()" class="hidden chat-icon-btn" title="Attach file" aria-label="Attach file"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+                            <button type="button" id="reply-btn" onclick="doSendReply()" title="Send" aria-label="Send" class="chat-send-pill"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button>
+                        </div>
+                    </div>
+                </div>
                 </div>
 
+            </div><!-- /sess-panel -->
+
                 <!-- Side panels wrapper (Agent State + Session State stacked vertically) -->
-                <div id="side-panels-wrapper" class="hidden lg:flex flex-col border-l dark:border-gray-600 border-gray-200 bg-white dark:bg-gray-800 flex-shrink-0 min-h-0 min-w-0 overflow-hidden" style="width: 300px;">
+                <div id="side-panels-wrapper" class="hidden lg:flex flex-col gap-4 flex-shrink-0 min-h-0 min-w-0" style="width: 20rem;">
                     <!-- Agent State Panel -->
                     <div id="agent-state-panel" class="flex-shrink-0">
                         <div id="AgentState" class="flex justify-between items-center px-4 py-3 border-b border-gray-100 dark:border-gray-600">
                             <h4 class="text-xs font-semibold text-gray-600 dark:text-gray-100 uppercase tracking-wide">Agent State</h4>
-                            <button onclick="loadAgentState()" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" title="Refresh">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm-10.625-2.85a5.5 5.5 0 0 1 9.201-2.465l.312.31H11.767a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V3.535a.75.75 0 0 0-1.5 0v2.033l-.312-.31A7 7 0 0 0 2.627 8.396a.75.75 0 0 0 1.449.39l.611.789Z" clip-rule="evenodd"/></svg>
-                            </button>
+                            <button onclick="loadAgentState()" class="state-btn" title="Refresh agent state" aria-label="Refresh agent state"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
                         </div>
                         <div id="agent-state-content" class="overflow-y-auto overflow-x-hidden p-4 break-words" style="max-height:200px;">
                             <p class="text-xs text-gray-400 dark:text-gray-500 italic">No state yet.</p>
@@ -224,11 +643,9 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                     <div id="summary-panel" class="flex flex-col flex-1 min-h-0">
                         <div id="SessionRecap" class="flex justify-between items-center px-4 py-3 border-b border-gray-100 dark:border-gray-600 flex-shrink-0">
                             <h4 class="text-xs font-semibold text-gray-600 dark:text-gray-100 uppercase tracking-wide">Session State</h4>
-                            <div class="flex items-center gap-4">
-                                <button onclick="forceRecap(this)" class="text-xs text-gray-400 hover:text-indigo-500 p-1" title="Recap Now">✨</button>
-                                <button onclick="loadSessionSummary()" class="text-xs text-gray-400 hover:text-gray-600" title="Refresh">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm-10.625-2.85a5.5 5.5 0 0 1 9.201-2.465l.312.31H11.767a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V3.535a.75.75 0 0 0-1.5 0v2.033l-.312-.31A7 7 0 0 0 2.627 8.396a.75.75 0 0 0 1.449.39l.611.789Z" clip-rule="evenodd"/></svg>
-                                </button>
+                            <div class="flex items-center gap-1">
+                                <button onclick="forceRecap(this)" class="state-btn state-btn-text" title="Regenerate the session summary now" aria-label="Recap now"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg><span>Recap</span></button>
+                                <button onclick="loadSessionSummary()" class="state-btn" title="Reload session state" aria-label="Reload session state"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
                             </div>
                         </div>
                         <div id="SessionStateContent" class="flex-1 overflow-y-auto overflow-x-hidden p-4 break-words">
@@ -240,44 +657,6 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
                         <div id="summary-meta" class="hidden px-4 py-2 border-t border-gray-100 dark:border-gray-600 text-[10px] text-gray-400 flex-shrink-0"></div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Reply input -->
-            <div id="reply-bar" class="hidden p-3 bg-white border-t border-gray-200 flex-shrink-0 dark:bg-gray-800 dark:border-gray-600">
-                <!-- File preview strip -->
-                <div id="file-preview" class="hidden mb-2 flex items-center gap-2 px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <img id="file-preview-img" class="hidden w-12 h-12 object-cover rounded" alt="">
-                    <svg id="file-preview-icon" class="hidden w-6 h-6 text-gray-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zm-3 9h4v2h-4v-2zm0 3h4v2h-4v-2zm-2-3h1v2H8v-2zm0 3h1v2H8v-2z"/></svg>
-                    <span id="file-preview-name" class="text-xs text-gray-600 dark:text-gray-300 truncate flex-1"></span>
-                    <span id="file-preview-size" class="text-[10px] text-gray-400 flex-shrink-0"></span>
-                    <button type="button" onclick="clearFileInput()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex-shrink-0" title="Remove file">
-                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd"/></svg>
-                    </button>
-                </div>
-                <!-- Editor-mode tip (shown on Shift+Enter) -->
-                <div id="editor-tip" class="hidden mb-2 flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs text-indigo-700 dark:text-indigo-300">
-                    <svg class="w-4 h-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
-                    <span class="flex-1">Writing something long? <button type="button" onclick="openChatEditorModal()" class="font-medium underline hover:text-indigo-600">Open in editor mode</button></span>
-                    <button type="button" onclick="hideEditorTip()" class="text-indigo-400 hover:text-indigo-600 flex-shrink-0" title="Dismiss">
-                        <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd"/></svg>
-                    </button>
-                </div>
-                <div class="flex gap-2">
-                    <input type="file" id="file-input" class="hidden"
-                           accept="image/*,.pdf,.txt,.md,.log,.json,.yaml,.yml,.xml,.csv,.tsv,.py,.js,.ts,.tsx,.jsx,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.html,.css,.sql,.sh,.toml,.ini,.zip,.docx,.xlsx,.pptx,.odt,.ods,.odp,.rtf,.epub"
-                           onchange="onFileSelected(this)">
-                    <button type="button" id="attach-btn" onclick="document.getElementById('file-input').click()"
-                            class="hidden p-2.5 text-gray-400 hover:text-indigo-500 transition-colors flex-shrink-0" title="Attach file">
-                        <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                    </button>
-                    <textarea id="reply-input" placeholder="Type a reply as the bot..." rows="1"
-                           class="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 resize-none overflow-hidden"
-                           style="max-height: 150px;"
-                           onkeydown="chatInputKeydown(event)"
-                           oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,150)+'px';this.style.overflowY=this.scrollHeight>150?'auto':'hidden'"></textarea>
-                    <button type="button" id="reply-btn" onclick="doSendReply()" title="Send" class="p-2.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors flex-shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -338,16 +717,22 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
 
     <!-- ==================== Settings Tab ==================== -->
     <div id="tab-settings" class="flex-1 overflow-y-auto hidden">
-        <div class="max-w-2xl mx-auto p-6 space-y-8">
+        <div class="set-page max-w-3xl mx-auto py-2 space-y-4">
+            <div class="flex items-center gap-2 px-1 pb-1">
+                <button type="button" class="hdr-icon-btn" onclick="switchTab('chat')" title="Back to sessions" aria-label="Back to sessions">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">Sessions Settings</h2>
+            </div>
 
             <!-- Clear All Sessions -->
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <div class="flex items-start justify-between gap-4">
+                <div class="set-row set-row-danger flex items-start justify-between gap-4">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Clear All Sessions</h3>
                         <p class="text-xs text-gray-500 mt-1">Permanently delete all chat sessions, messages, summaries, and their attachments across all agents. This action cannot be undone.</p>
                     </div>
-                    <button onclick="clearAllSessions()" class="flex-shrink-0 px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors">
+                    <button onclick="clearAllSessions()" class="set-danger">
                         Clear All
                     </button>
                 </div>
@@ -355,12 +740,12 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
 
             <!-- Clear All Attachments -->
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <div class="flex items-start justify-between gap-4">
+                <div class="set-row set-row-danger flex items-start justify-between gap-4">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Clear All Attachments</h3>
                         <p class="text-xs text-gray-500 mt-1">Permanently delete every stored attachment (files and database rows) across all agents and sessions, without removing the conversations themselves. This action cannot be undone.</p>
                     </div>
-                    <button onclick="clearAllAttachments()" class="flex-shrink-0 px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors">
+                    <button onclick="clearAllAttachments()" class="set-danger">
                         Clear All
                     </button>
                 </div>
@@ -368,7 +753,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
 
             <!-- Chat Perspective Toggle -->
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <div class="flex items-start justify-between gap-4">
+                <div class="set-row flex items-start justify-between gap-4">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Chat Perspective</h3>
                         <p class="text-xs text-gray-500 mt-1">When set to <strong>B</strong> (left side), your messages appear on the left. When set to <strong>A</strong> (right side), your messages appear on the right. Works for both agent↔user and agent↔agent sessions.</p>
@@ -387,7 +772,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
 
             <!-- Events Dispatch Toggle -->
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <div class="flex items-start justify-between gap-4">
+                <div class="set-row flex items-start justify-between gap-4">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Events Dispatch</h3>
                         <p class="text-xs text-gray-500 mt-1">When enabled, events (turn_complete, message_received, summary_updated, etc.) are dispatched to third-party plugins. Disable to stop all plugin event processing.</p>
@@ -413,11 +798,9 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
     <div class="absolute bottom-0 left-0 right-0 max-h-[70vh] bg-white dark:bg-gray-800 flex flex-col shadow-xl rounded-t-2xl transform transition-transform duration-200">
         <div class="flex justify-between items-center px-4 py-3 border-b border-gray-200 dark:border-gray-600">
             <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Session State</h4>
-            <div class="flex items-center gap-4">
-                <button onclick="forceRecap(this)" class="text-sm text-gray-400 hover:text-indigo-500 p-1" title="Recap Now">✨</button>
-                <button onclick="loadSessionSummary()" class="text-xs text-gray-400 hover:text-gray-600" title="Refresh">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm-10.625-2.85a5.5 5.5 0 0 1 9.201-2.465l.312.31H11.767a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V3.535a.75.75 0 0 0-1.5 0v2.033l-.312-.31A7 7 0 0 0 2.627 8.396a.75.75 0 0 0 1.449.39l.611.789Z" clip-rule="evenodd"/></svg>
-                </button>
+            <div class="flex items-center gap-1">
+                <button onclick="forceRecap(this)" class="state-btn state-btn-text" title="Regenerate the session summary now" aria-label="Recap now"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg><span>Recap</span></button>
+                <button onclick="loadSessionSummary()" class="state-btn" title="Reload session state" aria-label="Reload session state"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
             </div>
         </div>
         <div id="mobile-SessionStateContent" class="flex-1 overflow-y-auto overflow-x-hidden p-4 break-words">
@@ -431,9 +814,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
         <div class="border-t border-gray-200 dark:border-gray-600">
             <div id="MobileAgentState" class="flex justify-between items-center px-4 py-2 border-b border-gray-100 dark:border-gray-600">
                 <h5 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Agent State</h5>
-                <button onclick="loadAgentState()" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" title="Refresh">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm-10.625-2.85a5.5 5.5 0 0 1 9.201-2.465l.312.31H11.767a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V3.535a.75.75 0 0 0-1.5 0v2.033l-.312-.31A7 7 0 0 0 2.627 8.396a.75.75 0 0 0 1.449.39l.611.789Z" clip-rule="evenodd"/></svg>
-                </button>
+                <button onclick="loadAgentState()" class="state-btn" title="Refresh agent state" aria-label="Refresh agent state"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
             </div>
             <div id="mobile-agent-state-content" class="p-4 overflow-x-hidden break-words">
                 <p class="text-xs text-gray-400 dark:text-gray-500 italic">No state yet.</p>
@@ -442,7 +823,7 @@ html.dark #plan-modal .recap-prose pre { background: #1e293b; }
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=64"></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=69"></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=7"></script>
 <script>
 let allSessions = [];
@@ -808,24 +1189,30 @@ function renderSessionList() {
         return;
     }
     list.innerHTML = allSessions.map(s => {
-        const selected = s.id === currentSessionId ? 'bg-indigo-50 dark:bg-indigo-900/40 border-l-2 border-l-indigo-500' : 'border-l-2 border-l-transparent dark:border-l-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700';
+        const selected = s.id === currentSessionId ? ' active' : '';
         const activeClass = (s.is_active && s.id !== currentSessionId) ? ' session-active' : '';
         const preview = s.last_message ? truncate(s.last_message, 50) : 'No messages';
         const prefixIcon = s.last_message_role === 'assistant' ? '<span class="text-indigo-400 mr-1">Bot:</span>' : '';
         const chBadge = channelBadge(s.channel_type);
-        const botDot = s.bot_enabled ? '' : '<span class="inline-block w-1.5 h-1.5 rounded-full bg-red-400 ml-1" title="Bot disabled"></span>';
+        const botDot = s.bot_enabled ? '' : '<span class="inline-block w-1.5 h-1.5 rounded-full bg-red-400" title="Bot disabled"></span>';
         const displayName = explorerDisplayName(s);
+        const initial = esc(((s.agent_name || s.agent_id || '?') + '').trim().charAt(0).toUpperCase());
+        const avatar = s.agent_id
+            ? `<img class="sess-avatar" src="/api/agents/${encodeURIComponent(s.agent_id)}/avatar" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'sess-avatar-fallback\\'>${initial}</div>'">`
+            : `<div class="sess-avatar-fallback">${initial}</div>`;
         return `
-        <div class="session-item relative p-3 cursor-pointer ${selected}${activeClass} transition-colors border-b border-gray-200 dark:border-gray-700 last:border-b-0" onclick="selectSession('${s.id}')">
-            <div class="flex items-center gap-2 mb-1">
-                <span class="text-sm font-medium truncate ${userIdColorClass(s.external_user_id)}">${displayName}</span>
-                ${chBadge}${botDot}
+        <div class="session-item sess-item${selected}${activeClass}" onclick="selectSession('${s.id}')">
+            ${avatar}
+            <div class="sess-body">
+                <div class="sess-top">
+                    <span class="sess-name ${userIdColorClass(s.external_user_id)}">${displayName}</span>
+                    ${chBadge}${botDot}
+                </div>
+                <div class="sess-user">${esc((s.external_user_id || '').split('__')[1] || s.external_user_id || '')}</div>
+                <div class="sess-preview">${prefixIcon}${esc(preview)}</div>
+                <div class="sess-meta">${timeAgo(s.updated_at)} &middot; <span class="font-mono">${esc(s.id)}</span></div>
             </div>
-            <div class="text-[10px] text-gray-500 truncate">${esc(s.external_user_id.split('__')[1])}</div>
-            <div class="text-xs text-gray-400 mt-1 truncate">${prefixIcon}${esc(preview)}</div>
-            <div class="text-[10px] text-gray-300 mt-1">${timeAgo(s.updated_at)} &middot; <span class="font-mono">${esc(s.id)}</span></div>
-            <button onclick="event.stopPropagation(); deleteSession('${s.id}')" title="Delete session"
-                class="session-delete-btn absolute top-2 right-2 text-gray-300 hover:text-red-500">
+            <button onclick="event.stopPropagation(); deleteSession('${s.id}')" title="Delete session" aria-label="Delete session" class="session-delete-btn">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
             </button>
         </div>`;
@@ -851,18 +1238,20 @@ function renderMobileDropdown() {
     const dd = document.getElementById('mobile-dropdown');
     if (!allSessions.length) { dd.classList.add('hidden'); return; }
     dd.classList.remove('hidden');
-    dd.innerHTML = allSessions.slice(0, 20).map(s => {
+    dd.innerHTML = '<div class="msd-list">' + allSessions.slice(0, 20).map(s => {
         const chBadge = channelBadge(s.channel_type);
         const displayName = explorerDisplayName(s);
+        const active = s.id === currentSessionId ? ' is-active' : '';
         return `
-        <div class="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-50 dark:border-gray-600 last:border-0" onclick="selectSession('${s.id}'); document.getElementById('mobile-dropdown').classList.add('hidden');">
-            <div class="flex items-center gap-2">
-                <span class="text-sm font-medium truncate ${userIdColorClass(s.external_user_id)}">${displayName}</span>
-                ${chBadge}
-            </div>
-            <div class="text-xs text-gray-400">${esc(s.external_user_id)} &middot; ${timeAgo(s.updated_at)}</div>
-        </div>`;
-    }).join('');
+        <button type="button" class="msd-row${active}" onclick="selectSession('${s.id}'); document.getElementById('mobile-dropdown').classList.add('hidden');">
+            <span class="msd-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+            <span class="msd-main">
+                <span class="msd-name ${userIdColorClass(s.external_user_id)}">${displayName}</span>
+                <span class="msd-sub">${esc(s.external_user_id)} &middot; ${timeAgo(s.updated_at)}</span>
+            </span>
+            ${chBadge}
+        </button>`;
+    }).join('') + '</div>';
 }
 
 document.addEventListener('click', e => {
@@ -873,7 +1262,18 @@ document.addEventListener('click', e => {
 
 // ==================== Chat Room ====================
 
-async function selectSession(sessionId) {
+// Mobile: 'list' shows the sessions, 'chat' the conversation (no effect on the desktop layout)
+function isMobileLayout() { return window.matchMedia('(max-width: 767.98px)').matches; }
+function setMobileView(view) {
+    const tab = document.getElementById('tab-chat');
+    if (tab) tab.classList.toggle('m-chat', view === 'chat');
+}
+
+async function selectSession(sessionId, opts = {}) {
+    if (!opts.keepView) setMobileView('chat');   // a background resync must not yank the user out of the list
+    // Picking a session from the rail while Settings is open returns to the chat view
+    const _st = document.getElementById('tab-settings');
+    if (_st && !_st.classList.contains('hidden')) switchTab('chat');
     const gen = ++_selectGeneration;  // capture this call's generation; stale callbacks check against it
     disconnectSessionStream();
     // Dispose all remaining active Turns and clear the container
@@ -919,6 +1319,8 @@ async function selectSession(sessionId) {
     document.getElementById('empty-state')?.classList.add('hidden');
 
     document.getElementById('hdr-agent').textContent = explorerDisplayName(s);
+    const hdrAv = document.getElementById('hdr-avatar');
+    if (hdrAv) { hdrAv.style.visibility = ''; hdrAv.src = s.agent_id ? `/api/agents/${encodeURIComponent(s.agent_id)}/avatar` : ''; }
     document.getElementById('hdr-user').textContent = s.external_user_id;
 
     const badge = document.getElementById('hdr-channel-badge');
@@ -1084,7 +1486,7 @@ function connectSessionStream(sessionId, afterSeq = 0) {
         _sessionHistoryResyncing = true;
         es.close();
         _sessionEs = null;
-        selectSession(sessionId).finally(() => { _sessionHistoryResyncing = false; });
+        selectSession(sessionId, {keepView: true}).finally(() => { _sessionHistoryResyncing = false; });
     });
 
     es.addEventListener('auth_expired', () => {
@@ -1207,7 +1609,7 @@ let _pendingSlashResponse = null; // fallback content dedup for slash responses
 function onFileSelected(input) {
     const file = input.files[0];
     const preview = document.getElementById('file-preview');
-    if (!file) { preview.classList.add('hidden'); return; }
+    if (!file) { preview.classList.add('hidden'); updateComposerLayout(document.getElementById('reply-input')); return; }
 
     const previewImg = document.getElementById('file-preview-img');
     const previewIcon = document.getElementById('file-preview-icon');
@@ -1228,6 +1630,7 @@ function onFileSelected(input) {
         previewIcon.classList.remove('hidden');
     }
     preview.classList.remove('hidden');
+    updateComposerLayout(document.getElementById('reply-input'));
 }
 
 function clearFileInput() {
@@ -1237,6 +1640,7 @@ function clearFileInput() {
     preview.classList.add('hidden');
     const previewImg = document.getElementById('file-preview-img');
     if (previewImg.src) { URL.revokeObjectURL(previewImg.src); previewImg.src = ''; }
+    updateComposerLayout(document.getElementById('reply-input'));
 }
 
 // ==================== Image Paste ====================
@@ -1399,6 +1803,133 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+// ==================== Composer layout (compact row <-> expanded card) ====================
+// Same component/behaviour as the agent chat composer. Compact: [attach] [text…] [send] on one line;
+// expanded (wrapped/multi-line text, an attachment, or the editor tip): text on top, buttons on a bottom row.
+
+function replyInputChanged(input) {
+    const toggled = updateComposerLayout(input);
+    if (!toggled) resizeChatInput(input);
+}
+
+// Animated autosize: measure synchronously, then transition from the previous pixel height.
+function resizeChatInput(input, animate = true) {
+    if (!input) return;
+    const max = parseFloat(getComputedStyle(input).maxHeight) || 150;
+    const prev = input.offsetHeight;
+    input.style.transition = 'none';
+    input.style.height = 'auto';
+    const next = Math.min(input.scrollHeight, max);
+    input.style.overflowY = input.scrollHeight > max ? 'auto' : 'hidden';
+    if (!animate || !prev || Math.abs(prev - next) < 1) {
+        input.style.height = next + 'px';
+        input.style.transition = '';
+        return;
+    }
+    input.style.height = prev + 'px';
+    void input.offsetHeight;
+    input.style.transition = '';
+    input.style.height = next + 'px';
+}
+
+let _composerMirror = null;
+function chatInputWouldWrapInCompact(input, card) {
+    if (!input.value) return false;
+    if (!_composerMirror) {
+        _composerMirror = document.createElement('textarea');
+        _composerMirror.setAttribute('aria-hidden', 'true');
+        _composerMirror.tabIndex = -1;
+        _composerMirror.rows = 1;
+        document.body.appendChild(_composerMirror);
+    }
+    const cs = getComputedStyle(input);
+    const attach = document.getElementById('attach-btn');
+    const send = document.getElementById('reply-btn');
+    const fs = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const compactPad = .375 * fs * 2, gap = .5 * fs;
+    const btns = (attach && attach.offsetWidth ? attach.offsetWidth + gap : 0) + (send ? send.offsetWidth + gap : 0);
+    const width = card.clientWidth - compactPad - btns;
+    const m = _composerMirror;
+    m.style.cssText = `position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;height:0;min-height:0;overflow:hidden;border:0;resize:none;box-sizing:border-box;` +
+        `width:${Math.max(width, 40)}px;padding:.5rem .25rem;font:${cs.font};letter-spacing:${cs.letterSpacing};line-height:${cs.lineHeight};white-space:pre-wrap;word-wrap:break-word;`;
+    m.value = input.value;
+    const line = parseFloat(cs.lineHeight) || 24;
+    return m.scrollHeight > line + .5 * fs * 2 + 1;
+}
+
+function updateComposerLayout(input) {
+    const card = document.getElementById('chat-composer');
+    if (!card || !input) return false;
+    const tip = document.getElementById('editor-tip');
+    const tipOn = !!tip && !tip.classList.contains('hidden');
+    const fileInput = document.getElementById('file-input');
+    const hasFile = !!(fileInput && fileInput.files && fileInput.files.length);
+    const expand = tipOn || hasFile || input.value.includes('\n') || chatInputWouldWrapInCompact(input, card);
+    return setComposerExpanded(expand);
+}
+
+// FLIP: record positions, switch layout, animate each moved element (and the card height) from old to new.
+function setComposerExpanded(expanded) {
+    const card = document.getElementById('chat-composer');
+    const input = document.getElementById('reply-input');
+    if (!card || card.classList.contains('is-expanded') === expanded) return false;
+    const moving = ['attach-btn', 'reply-btn', 'reply-input'].map(id => document.getElementById(id)).filter(Boolean);
+    const visible = card.offsetParent !== null && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const first = visible ? new Map(moving.map(el => [el, el.getBoundingClientRect()])) : null;
+    const h0 = visible ? card.getBoundingClientRect().height : 0;
+    if (visible) [card, ...moving].forEach(el => el.getAnimations().forEach(a => a.cancel()));
+
+    card.classList.toggle('is-expanded', expanded);
+    resizeChatInput(input, false);
+    if (!visible) return true;
+
+    const h1 = card.getBoundingClientRect().height;
+    const opts = { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' };
+    card.animate([{ height: h0 + 'px' }, { height: h1 + 'px' }], opts);
+    moving.forEach(el => {
+        const a = first.get(el), b = el.getBoundingClientRect();
+        const dx = a.left - b.left, dy = a.top - b.top;
+        if (Math.abs(dx) < .5 && Math.abs(dy) < .5) return;
+        el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], opts);
+    });
+    return true;
+}
+
+// Re-evaluate when the available width changes (window resize / side panel toggle)
+(function initComposerResponsive() {
+    const card = document.getElementById('chat-composer');
+    if (!card || typeof ResizeObserver === 'undefined') return;
+    let lastW = card.clientWidth, raf = 0;
+    new ResizeObserver(() => {
+        if (card.clientWidth === lastW) return;
+        lastW = card.clientWidth;
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+            const input = document.getElementById('reply-input');
+            if (!updateComposerLayout(input)) resizeChatInput(input, false);
+        });
+    }).observe(card);
+})();
+
+// The composer floats over the messages: expose its height so the list reserves matching space,
+// and keep the conversation pinned to the bottom while the composer grows or shrinks.
+(function initComposerStickToBottom() {
+    const bar = document.getElementById('reply-bar');
+    const msgs = document.getElementById('chat-messages');
+    const zone = document.getElementById('chat-drop-zone');
+    if (!bar || !msgs || !zone || typeof ResizeObserver === 'undefined') return;
+    let atBottom = true;
+    msgs.addEventListener('scroll', () => {
+        atBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 48;
+    }, { passive: true });
+    new ResizeObserver(() => {
+        zone.style.setProperty('--composer-h', bar.offsetHeight + 'px');
+        if (atBottom) msgs.scrollTop = msgs.scrollHeight;
+    }).observe(bar);
+    const hdr = document.getElementById('chat-header'), panel = document.getElementById('sess-panel');
+    if (hdr && panel) new ResizeObserver(() => { if (hdr.offsetHeight) panel.style.setProperty('--sess-hdr-h', hdr.offsetHeight + 'px'); }).observe(hdr);
+})();
+
 // ==================== Send Reply ====================
 
 // Chat-input keydown handler: Enter submits on desktop, inserts newline on mobile.
@@ -1426,10 +1957,12 @@ function chatInputKeydown(event) {
 function showEditorTip() {
     const tip = document.getElementById('editor-tip');
     if (tip) tip.classList.remove('hidden');
+    updateComposerLayout(document.getElementById('reply-input'));
 }
 function hideEditorTip() {
     const tip = document.getElementById('editor-tip');
     if (tip) tip.classList.add('hidden');
+    updateComposerLayout(document.getElementById('reply-input'));
 }
 
 // Open the editor-mode modal, pre-filled with the current chat input text.
@@ -1506,15 +2039,10 @@ async function doSendReply() {
     $input.val('');
     // Reset textarea height — jQuery val('') doesn't fire the oninput handler
     var textarea = $input[0];
-    textarea.style.height = 'auto';
-    textarea.style.overflowY = 'hidden';
-    // Re-apply after reflow so a stale scrollHeight from the oninput handler
-    // (which fires async) doesn't lock the height again.
+    replyInputChanged(textarea);
+    // Re-apply after reflow so a stale scrollHeight doesn't lock the height again.
     requestAnimationFrame(function() {
-        if (textarea.value === '') {
-            textarea.style.height = 'auto';
-            textarea.style.overflowY = 'hidden';
-        }
+        if (textarea.value === '') resizeChatInput(textarea);
     });
     if (file) clearFileInput();
     requestAnimationFrame(function () { chatUI.scrollToBottom(); });
@@ -1646,6 +2174,7 @@ async function deleteSession(sessionId) {
     if (sessionId === currentSessionId) {
         disconnectSessionStream();
         currentSessionId = null;
+        setMobileView('list');
         document.getElementById('chat-header').classList.add('hidden');
         document.getElementById('reply-bar').classList.add('hidden');
         document.getElementById('chat-messages').innerHTML = '<div id="empty-state" class="flex items-center justify-center h-full text-gray-400 text-sm">Select a session to view conversation</div>';
@@ -1680,7 +2209,7 @@ function buildBgProcessesHtml(procs) {
         _bgProcessesData[p.job_id] = p;
     }
     const liveDot = '<span class="relative flex h-2 w-2 flex-shrink-0"><span class="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60 animate-ping"></span><span class="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span></span>';
-    let html = '<div class="mt-2"><div class="text-gray-500 dark:text-gray-400 font-medium mb-1 text-xs uppercase tracking-wide">Background Processes</div><ul class="space-y-1">';
+    let html = '<div class="st-sec"><div class="st-sec-h">' + ST_ICON.term + '<span>Background</span></div><ul class="space-y-1">';
     for (const p of running) {
         const secs = Math.max(0, Math.floor(Date.now() / 1000 - p.started_at));
         const elapsed = secs < 60 ? `${secs}s` : (secs < 3600 ? `${Math.floor(secs / 60)}m` : `${Math.floor(secs / 3600)}h${Math.floor((secs % 3600) / 60)}m`);
@@ -1696,16 +2225,16 @@ function buildBgProcessesHtml(procs) {
 function buildContextUsageHtml(cu) {
     if (!cu || !cu.used) return '';
     const fmt = n => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
-    let label, barHtml = '';
+    let label, bar = '';
     if (cu.max) {
         const pct = Math.min(100, cu.percent || 0);
-        const color = pct > 85 ? 'bg-red-500' : (pct >= 60 ? 'bg-amber-500' : 'bg-indigo-500');
-        label = `${fmt(cu.used)} / ${fmt(cu.max)} (${pct}%)`;
-        barHtml = `<div class="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full mt-1 overflow-hidden"><div class="h-1.5 ${color} rounded-full transition-all" style="width:${pct}%"></div></div>`;
+        const color = pct > 85 ? '#ef4444' : (pct >= 60 ? '#f59e0b' : '#6366f1');
+        label = `${fmt(cu.used)} / ${fmt(cu.max)} · ${pct}%`;
+        bar = `<div class="st-meter" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%;background:${color}"></div></div>`;
     } else {
         label = `~${fmt(cu.used)} tokens`;
     }
-    return `<div class="mb-3 pb-3 border-b border-gray-100 dark:border-gray-600"><div class="flex justify-between items-center"><span class="text-gray-500 dark:text-gray-400 font-medium text-xs uppercase tracking-wide">Context</span><span class="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">${label}</span></div>${barHtml}</div>`;
+    return `<div class="st-sec"><div class="st-sec-h">${ST_ICON.gauge}<span>Context</span><span class="st-sec-r">${label}</span></div>${bar}</div>`;
 }
 
 // ==================== Background Process Modal ====================
@@ -1850,55 +2379,142 @@ function _stopBgLogPolling() {
     if (_bgLogPollTimer) { clearTimeout(_bgLogPollTimer); _bgLogPollTimer = null; }
 }
 
+
+// ---- stroke icons (lucide-style) used by the state panels ----
+const _stI = (d) => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+const ST_ICON = {
+    model:  _stI('<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/>'),
+    focus:  _stI('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'),
+    cmp:    _stI('<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>'),
+    plug:   _stI('<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>'),
+    gauge:  _stI('<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>'),
+    plan:   _stI('<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>'),
+    file:   _stI('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>'),
+    tasks:  _stI('<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>'),
+    skills: _stI('<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>'),
+    term:   _stI('<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'),
+    text:   _stI('<path d="M21 6H3"/><path d="M15 12H3"/><path d="M17 18H3"/>'),
+    check:  _stI('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
+    circle: _stI('<circle cx="12" cy="12" r="10"/>'),
+    spin:   _stI('<path d="M21 12a9 9 0 1 1-6.219-8.56"/>').replace('<svg ', '<svg class="state-spin" '),
+    chev:   _stI('<path d="m9 18 6-6-6-6"/>'),
+    undo:   _stI('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'),
+};
+
+// ---- Agent State card: icon rows instead of floating coloured badges ----
+function _sessKv(icon, label, valueHtml) {
+    return `<div class="st-kv">${icon}<span class="st-kv-l">${label}</span>${valueHtml}</div>`;
+}
+
+function renderSessionAgentState(agentId, userId, containerIds, sessionId, data) {
+    if (!agentId) return;
+    _stateAgentId = agentId;                 // used by _resetActiveModel / _unloadSkill (agent-state.js)
+    _stateSessionId = sessionId || null;
+    data = data || {};
+    let rows = '';
+    if (data.active_model) {
+        const am = data.active_model;
+        rows += am.is_fallback
+            ? _sessKv(ST_ICON.model, 'Model', `<span class="st-kv-v" title="Using the fallback model because the primary failed"><span class="st-dot amber"></span><span>${esc(am.name)}</span><button type="button" onclick="_resetActiveModel()" title="Reset to the primary model" aria-label="Reset to the primary model" style="display:inline-flex">${ST_ICON.undo.replace('<svg ', '<svg width="14" height="14" ')}</button></span>`)
+            : _sessKv(ST_ICON.model, 'Model', `<span class="st-kv-v"><span class="st-dot green"></span><span>${esc(am.name)}</span></span>`);
+    }
+    if (data.focus) {
+        rows += _sessKv(ST_ICON.focus, 'Focus', `<span class="st-kv-v" title="${esc(data.focus_reason || '')}"><span>${esc(data.focus_reason || 'on')}</span></span>`);
+    }
+    if (data.cmp_error) {
+        rows += _sessKv(ST_ICON.cmp, 'CMP', `<span class="st-kv-v" title="${esc(data.cmp_error)}"><span class="st-dot amber"></span><span>unavailable</span></span>`);
+    }
+    if (data.cmp && data.cmp.paths && data.cmp.paths.length > 0) {
+        _cmpMapData = data.cmp;
+        const active = data.cmp.paths.find(p => p.id === data.cmp.active_id);
+        rows += _sessKv(ST_ICON.cmp, 'CMP', `<button type="button" class="st-kv-v" onclick="_openCmpMap()" title="${esc(active ? active.title : '')} — open the session path map"><span>${data.cmp.paths.length} card${data.cmp.paths.length === 1 ? '' : 's'}</span><span style="display:inline-flex;opacity:.55">${ST_ICON.chev.replace('<svg ', '<svg width="14" height="14" ')}</span></button>`);
+    }
+    if (data.states && Object.keys(data.states).length > 0) {
+        for (const [ns, slot] of Object.entries(data.states)) {
+            const dataStr = slot && slot.data ? JSON.stringify(slot.data) : '';
+            rows += _sessKv(ST_ICON.plug, esc(ns), `<span class="st-kv-v" title="${esc(dataStr)}"><span>${esc((slot && slot.state) || 'unknown')}</span></span>`);
+        }
+    }
+    const html = rows || '<p class="text-sm text-gray-400 dark:text-gray-500 italic">No state yet.</p>';
+    (Array.isArray(containerIds) ? containerIds : [containerIds]).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    });
+}
+
 let lastSummaryText = null;
 let _sessionStateData = {};
 let _summaryRefreshTimer = null;
 
+let _stTasksDoneOpen = false;
 function _renderSessionStateSnapshot(stateData) {
     let planHtml = '';
-    if (stateData.mode) {
-        const modeColor = stateData.mode === 'execute' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700';
-        planHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${modeColor}">${esc(stateData.mode)}</span> `;
+    // --- Plan: mode + plan file ---
+    if (stateData.mode || stateData.plan_file) {
+        planHtml += `<div class="st-sec"><div class="st-sec-h">${ST_ICON.plan}<span>Plan</span>`;
+        if (stateData.mode) {
+            const cls = stateData.mode === 'execute' ? 'green' : 'amber';
+            planHtml += `<span class="st-sec-r"><span class="st-chip ${cls}"><span class="st-dot ${cls}"></span>${esc(stateData.mode)}</span></span>`;
+        }
+        planHtml += '</div>';
+        if (stateData.plan_file) {
+            const pf = String(stateData.plan_file);
+            const cut = pf.lastIndexOf('/');
+            const dir = cut >= 0 ? pf.slice(0, cut + 1) : '';
+            const name = cut >= 0 ? pf.slice(cut + 1) : pf;
+            planHtml += `<button type="button" class="st-plan" onclick="openPlanModal('${esc(pf)}')" title="${esc(pf)} — click to view plan">${ST_ICON.file}<span class="st-plan-dir">${esc(dir)}</span><span class="st-plan-name">${esc(name)}</span></button>`;
+        }
+        planHtml += '</div>';
     }
-    if (stateData.plan_file) {
-        planHtml += `<button class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 ml-1 cursor-pointer hover:underline hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors border-0" onclick="openPlanModal('${esc(stateData.plan_file)}')" title="Click to view plan">📋 ${esc(stateData.plan_file)}</button> `;
-    }
+    // --- Tasks: progress, open items first, finished ones folded ---
     if (stateData.tasks && stateData.tasks.length > 0) {
-        const icons = {pending: '\u2610', in_progress: '\u27f3', done: '\u2713'};
-        const iconColors = {pending: 'text-gray-400', in_progress: 'text-amber-500', done: 'text-green-500'};
+        const tasks = stateData.tasks;
         const staleTaskIds = new Set(Array.isArray(stateData.stale_task_ids) ? stateData.stale_task_ids : []);
         const staleBefore = Date.now() - 180000;
-        planHtml += '<div class="mt-2"><div class="text-gray-500 dark:text-gray-400 font-medium mb-1 text-xs uppercase tracking-wide">Tasks</div><ul class="space-y-0.5">';
-        for (const t of stateData.tasks) {
+        const done = tasks.filter(t => t.status === 'done');
+        const open = tasks.filter(t => t.status !== 'done');
+        const pct = Math.round(done.length / tasks.length * 100);
+        const row = (t) => {
             const active = t.status === 'in_progress';
             const startedAt = Number(t.in_progress_since);
             const stale = active && (staleTaskIds.has(t.id) || (startedAt > 0 && startedAt * 1000 <= staleBefore));
-            const spinnerSvg = '<svg class="task-active-icon animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-opacity="0.2"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="40 60"/></svg>';
-            const icon = active ? spinnerSvg : (icons[t.status] || '\u2610');
-            const color = iconColors[t.status] || 'text-gray-400';
-            const textClass = t.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-200';
-            const iconCls = `${color} inline-flex items-center justify-center w-4 h-4 text-xs flex-shrink-0`;
-            const textCls = active ? 'task-active-text text-xs' : `${textClass} text-xs`;
-            const staleBadge = stale ? '<span class="text-[10px] font-medium text-amber-700 dark:text-amber-300" title="This task has been in progress for a while">stale</span>' : '';
-            planHtml += `<li class="flex items-start gap-1.5"><span class="${iconCls}">${icon}</span><span class="${textCls}">${esc(t.text)}</span>${staleBadge}</li>`;
+            const kind = t.status === 'done' ? 'done' : (active ? 'doing' : 'pending');
+            const icon = kind === 'done' ? ST_ICON.check : (active ? ST_ICON.spin : ST_ICON.circle);
+            const staleBadge = stale ? '<span class="st-chip amber" style="padding:0 .375rem;font-size:.625rem" title="This task has been in progress for a while">stale</span>' : '';
+            return `<li class="st-task ${kind}">${icon}<span class="${active ? 'task-active-text' : ''}" style="min-width:0;flex:1">${esc(t.text)}</span>${staleBadge}</li>`;
+        };
+        planHtml += `<div class="st-sec"><div class="st-sec-h">${ST_ICON.tasks}<span>Tasks</span><span class="st-sec-r">${done.length}/${tasks.length}</span></div>`;
+        planHtml += `<div class="st-tasks-progress"><div class="st-meter"><div style="width:${pct}%;background:#22c55e"></div></div></div>`;
+        if (open.length) planHtml += `<ul>${open.map(row).join('')}</ul>`;
+        if (done.length) {
+            planHtml += `<details class="st-done" ${(_stTasksDoneOpen || !open.length) ? 'open' : ''} ontoggle="_stTasksDoneOpen = this.open">`
+                     + `<summary class="st-done-toggle">${ST_ICON.chev}<span>Completed (${done.length})</span></summary><ul>${done.map(row).join('')}</ul></details>`;
         }
-        planHtml += '</ul></div>';
+        planHtml += '</div>';
     }
     planHtml += buildBgProcessesHtml(stateData.background_processes);
 
+    // --- Skills ---
     const skills = Array.isArray(stateData.loaded_skills)
-        ? stateData.loaded_skills.map(skill => typeof skill === 'string'
-            ? {skill_id: skill, name: skill}
-            : skill)
+        ? stateData.loaded_skills.map(skill => typeof skill === 'string' ? {skill_id: skill, name: skill} : skill)
         : [];
-    const badges = _buildSkillBadges(skills);
+    let skillsHtml = '';
+    if (skills.length) {
+        skillsHtml = `<div class="st-sec"><div class="st-sec-h">${ST_ICON.skills}<span>Skills</span><span class="st-sec-r">${skills.length}</span></div><div class="st-chips">`
+            + skills.map(sk => {
+                const err = sk.name === sk.skill_id;
+                const tip = err ? 'Skill error: failed to load metadata' : (sk.tool_count ? sk.tool_count + ' tools' : '');
+                return `<span class="st-chip ${err ? 'amber' : ''}" title="${esc(tip)}">${esc(sk.name)}<button type="button" title="Unload skill" aria-label="Unload ${esc(sk.name)}" onclick="event.stopPropagation();_unloadSkill('${esc(sk.skill_id)}')">&times;</button></span>`;
+            }).join('')
+            + '</div></div>';
+    }
     ['', 'mobile-'].forEach(prefix => {
         const ctxEl = document.getElementById(prefix + 'SessionContext');
         const planEl = document.getElementById(prefix + 'SessionPlan');
         const skillsEl = document.getElementById(prefix + 'SessionSkills');
         if (ctxEl) ctxEl.innerHTML = buildContextUsageHtml(stateData.context_usage);
-        if (planEl) planEl.innerHTML = planHtml ? `<div class="mb-3 pb-3 border-b border-gray-100 dark:border-gray-600">${planHtml}</div>` : '';
-        if (skillsEl) skillsEl.innerHTML = badges.hasBadges ? '<div class="pt-2 border-t border-gray-100 dark:border-gray-600"><div class="text-gray-500 dark:text-gray-400 font-medium mb-1 text-xs uppercase tracking-wide">📜 ' + badges.count + ' Skills:</div><div class="flex flex-wrap gap-1 mb-3 pb-3 border-b border-gray-100 dark:border-gray-600">' + badges.html + '</div></div>' : '';
+        if (planEl) planEl.innerHTML = planHtml;
+        if (skillsEl) skillsEl.innerHTML = skillsHtml;
     });
 }
 
@@ -1910,7 +2526,7 @@ function _renderSessionSummary(data) {
         const summaryEl = document.getElementById(prefix + 'SessionSummary');
         const meta = document.getElementById(prefix + 'summary-meta');
         if (summaryEl && data.summary) {
-            summaryEl.innerHTML = '<div class="recap-prose">' + marked.parse(data.summary) + '</div>';
+            summaryEl.innerHTML = '<div class="st-sec-h">' + ST_ICON.text + '<span>Summary</span></div><div class="recap-prose">' + marked.parse(data.summary) + '</div>';
             ui.addCopyButtons(summaryEl);
             if (meta) {
                 meta.textContent = metaText || '';
@@ -1942,8 +2558,8 @@ function scheduleSessionSummaryRefresh() {
 
 async function forceRecap(btn) {
     if (!currentSessionId) return;
-    const original = btn.textContent;
-    btn.textContent = '⏳';
+    const original = btn.innerHTML;
+    btn.innerHTML = '<svg class="state-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>Recapping…</span>';
     btn.disabled = true;
     try {
         await fetch(`/api/sessions/${currentSessionId}/summarize`, { method: 'POST' });
@@ -1955,7 +2571,7 @@ async function forceRecap(btn) {
             if (lastSummaryText !== before) break;
         }
     } catch(e) { /* ignore */ } finally {
-        btn.textContent = original;
+        btn.innerHTML = original;
         btn.disabled = false;
     }
 }
@@ -2006,7 +2622,7 @@ async function loadAgentState() {
         if (myReq !== _agentStateReq) return;
         _sessionStateData = data;
         _renderSessionStateSnapshot(_sessionStateData);
-        renderAgentState(
+        renderSessionAgentState(
             currentAgentId,
             userId,
             ['agent-state-content', 'mobile-agent-state-content'],
@@ -2061,7 +2677,7 @@ document.addEventListener('evonic:agent-state-changed', function(event) {
             if (Object.prototype.hasOwnProperty.call(detail, key)) _sessionStateData[key] = detail[key];
         }
         _renderSessionStateSnapshot(_sessionStateData);
-        renderAgentState(
+        renderSessionAgentState(
             currentAgentId,
             null,
             ['agent-state-content', 'mobile-agent-state-content'],
@@ -2198,24 +2814,12 @@ function formatTime(ts) {
 function switchTab(tab) {
     const chatTab = document.getElementById('tab-chat');
     const settingsTab = document.getElementById('tab-settings');
-    const chatBtn = document.getElementById('tab-chat-btn');
     const settingsBtn = document.getElementById('tab-settings-btn');
-
-    const activeClass = 'border-indigo-500 text-indigo-600';
-    const inactiveClass = 'border-transparent text-gray-500 hover:text-gray-700';
-
-    if (tab === 'settings') {
-        chatTab.classList.add('hidden');
-        settingsTab.classList.remove('hidden');
-        chatBtn.className = chatBtn.className.replace(activeClass, inactiveClass);
-        settingsBtn.className = settingsBtn.className.replace(inactiveClass, activeClass);
-        loadSettingsState();
-    } else {
-        settingsTab.classList.add('hidden');
-        chatTab.classList.remove('hidden');
-        settingsBtn.className = settingsBtn.className.replace(activeClass, inactiveClass);
-        chatBtn.className = chatBtn.className.replace(inactiveClass, activeClass);
-    }
+    const settings = tab === 'settings';
+    chatTab.classList.toggle('hidden', settings);
+    settingsTab.classList.toggle('hidden', !settings);
+    if (settingsBtn) settingsBtn.classList.toggle('active', settings);
+    if (settings) loadSettingsState();
 }
 
 // ==================== Settings ====================
@@ -2278,6 +2882,7 @@ async function clearAllSessions() {
         // Reset chat view
         disconnectSessionStream();
         currentSessionId = null;
+        setMobileView('list');
         allSessions = [];
         renderSessionList();
         document.getElementById('chat-header').classList.add('hidden');
@@ -2325,38 +2930,21 @@ async function toggleEventsDispatch(enabled) {
     }
 }
 
-function showToast(message, isError) {
-    const existing = document.getElementById('settings-toast');
-    if (existing) existing.remove();
-    const toast = document.createElement('div');
-    toast.id = 'settings-toast';
-    toast.className = `fixed bottom-6 right-6 px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg z-50 transition-opacity ${isError ? 'bg-red-500 text-white' : 'bg-gray-800 text-white'}`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2500);
-}
-
 // ==================== Fullscreen ====================
 
 let _sessionChatFullscreen = false;
 
 function toggleSessionChatFullscreen() {
     const $tab = $('#tab-chat');
-    // The sessions tab bar is the flex-shrink-0 sibling above #tab-chat
-    const $tabBar = $tab.siblings('.flex-shrink-0');
     _sessionChatFullscreen = !_sessionChatFullscreen;
 
     if (_sessionChatFullscreen) {
         $tab.addClass('chat-fullscreen');
-        $tabBar.hide();
-        $('#mobile-search').closest('.md\\:hidden').hide();
         $('body').css('overflow', 'hidden');
         $('#session-fs-expand-icon').addClass('hidden');
         $('#session-fs-collapse-icon').removeClass('hidden');
     } else {
         $tab.removeClass('chat-fullscreen');
-        $tabBar.show();
-        $('#mobile-search').closest('.md\\:hidden').show();
         $('body').css('overflow', '');
         $('#session-fs-expand-icon').removeClass('hidden');
         $('#session-fs-collapse-icon').addClass('hidden');
@@ -2389,7 +2977,8 @@ startSidebarPolling();
 (async () => {
     try {
         const lastSession = sessionStorage.getItem(_LAST_SESSION_KEY);
-        if (lastSession) {
+        // On mobile the page opens on the list of sessions (like a chat app); the desktop keeps auto-opening the last one.
+        if (lastSession && !isMobileLayout()) {
             // Wait a brief moment for session list to load
             await new Promise(r => setTimeout(r, 300));
             selectSession(lastSession);

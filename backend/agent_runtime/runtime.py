@@ -652,6 +652,19 @@ class AgentRuntime:
         except Exception:
             _logger.exception("Failed to stop detached background jobs")
 
+        # Messaging channels own child processes (the WhatsApp bridge). Without this they outlive the app, keep the
+        # WhatsApp session connected but unmanaged, and block the next start ("auth directory is already owned").
+        _logger.info("Stopping channels...")
+        try:
+            from backend.channels.registry import channel_manager
+            t = threading.Thread(target=channel_manager.stop_all, name="shutdown-stop-channels", daemon=True)
+            t.start()
+            t.join(timeout=10)
+            if t.is_alive():
+                _logger.warning("Channels did not stop within 10s; continuing shutdown")
+        except Exception:
+            _logger.exception("Failed to stop channels")
+
         _logger.info("Shutting down background executor...")
         cls._bg_executor.shutdown(wait=False, cancel_futures=True)
 

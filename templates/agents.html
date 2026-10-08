@@ -1,113 +1,107 @@
 {% extends "base.html" %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ag-ui.css') }}?v=3">
 <div class="p-4 md:p-6">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+    <div class="ag-head flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
         <div class="flex-1 w-full sm:w-auto">
             <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Agents</h2>
-            <p class="text-sm text-gray-500 mt-1">Manage AI agents with custom prompts, tools, and channels</p>
+            <p class="ag-sub text-sm text-gray-500 mt-1">Manage AI agents with custom prompts, tools, and channels</p>
         </div>
     </div>
 
     <!-- Tab Navigation -->
-    <div id="tabNav" class="flex border-b border-gray-200 dark:border-gray-700 mb-5">
-        <button id="tabBtnAgents" class="px-5 py-2.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px transition-colors" onclick="switchTab('agents')">
-            Agents
-        </button>
-        <button id="tabBtnWorkplaces" class="px-5 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-700 dark:hover:text-gray-300 transition-colors" onclick="switchTab('workplaces')">
-            Workplaces
-        </button>
-        <button id="tabBtnTemplates" class="px-5 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-700 dark:hover:text-gray-300 transition-colors" onclick="switchTab('templates')">
-            Templates
-        </button>
+    <div id="tabNav" class="ag-tabs" role="tablist">
+        <button id="tabBtnAgents" data-shortcut="1" data-shortcut-hint="off" data-shortcut-label="Go to agents" class="ag-tab is-active" role="tab" onclick="switchTab('agents')"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>Agents</button>
+        <button id="tabBtnWorkplaces" data-shortcut="2" data-shortcut-hint="off" data-shortcut-label="Go to workplaces" class="ag-tab" role="tab" onclick="switchTab('workplaces')"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>Workplaces</button>
+        <button id="tabBtnTemplates" data-shortcut="3" data-shortcut-hint="off" data-shortcut-label="Go to templates" class="ag-tab" role="tab" onclick="switchTab('templates')"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="7" x="3" y="3" rx="1"/><rect width="9" height="7" x="3" y="14" rx="1"/><rect width="5" height="7" x="16" y="14" rx="1"/></svg>Templates</button>
     </div>
 
     <!-- ========== AGENTS TAB ========== -->
     <div id="tab-agents">
-        <div class="flex flex-col sm:flex-row gap-3 mb-6">
-            <div class="relative">
-                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                <input type="search" id="agent-search" name="agent_search_filter" placeholder="Search agents..." oninput="filterAgents()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
-                       class="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
+        <div class="ag-toolbar flex flex-col sm:flex-row gap-3 mb-6">
+            <div class="ag-search-wrap relative">
+                <svg class="ag-search-ico" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input type="search" id="agent-search" data-shortcut="/,mod+k" data-shortcut-label="Search agents" name="agent_search_filter" placeholder="Search agents..." oninput="filterAgents()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
+                       class="ag-search">
             </div>
             <button onclick="showCreateAgentModal()"
-                    class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                    class="ag-btn ag-btn-primary" title="New Agent" aria-label="New Agent" data-shortcut="n" data-shortcut-label="New agent">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                New Agent
+                <span class="ag-btn-label">New Agent</span>
             </button>
             <button onclick="showImportAgentModal()"
-                    class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                    class="ag-btn ag-btn-ghost" title="Import Agent" aria-label="Import Agent" data-shortcut="i" data-shortcut-label="Import agent">
                 <i data-lucide="upload" class="w-4 h-4"></i>
-                Import Agent
+                <span class="ag-btn-label">Import Agent</span>
             </button>
         </div>
 
         <!-- Agents Grid -->
-        <div id="agents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div id="agents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Populated by JS -->
         </div>
 
-        <div id="agents-empty" class="hidden text-center py-16 text-gray-400">
-            <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-            <p class="text-lg font-medium">No agents yet</p>
-            <p class="text-sm mt-1">Create your first agent to get started.</p>
+        <div id="agents-empty" class="hidden ag-empty">
+            <span class="ag-empty-ic"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg></span>
+            <p class="ag-empty-t">No agents yet</p>
+            <p class="ag-empty-s">Create your first agent to get started.</p>
+            <button type="button" onclick="showCreateAgentModal()" class="ag-btn ag-btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>New Agent</span></button>
         </div>
 
         <!-- Disabled Agents (collapsible, collapsed by default) -->
         <div id="disabled-agents-section" class="hidden mt-8">
-            <button onclick="toggleDisabledAgents()" class="flex items-center gap-2 w-full text-left px-4 py-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors">
-                <svg id="disabled-chevron" class="w-4 h-4 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                </svg>
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Disabled Agents</span>
-                <span id="disabled-count" class="text-xs text-gray-400 dark:text-gray-500 ml-1"></span>
+            <button onclick="toggleDisabledAgents()" class="ag-disabled-bar" aria-controls="disabled-agents-grid">
+                <svg id="disabled-chevron" class="ag-disabled-chev" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                <span class="ag-disabled-label">Disabled Agents</span>
+                <span id="disabled-count" class="ag-disabled-count"></span>
             </button>
-            <div id="disabled-agents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-3 hidden"></div>
+            <div id="disabled-agents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 hidden"></div>
         </div>
     </div>
 
     <!-- ========== WORKPLACES TAB ========== -->
     <div id="tab-workplaces" class="hidden">
-        <div class="flex flex-col sm:flex-row gap-3 mb-6">
-            <div class="relative">
-                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                <input type="search" id="workplace-search" name="workplace_search_filter" placeholder="Search workplaces..." oninput="filterWorkplaces()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
-                       class="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
+        <div class="ag-toolbar flex flex-col sm:flex-row gap-3 mb-6">
+            <div class="ag-search-wrap relative">
+                <svg class="ag-search-ico" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input type="search" id="workplace-search" data-shortcut="/,mod+k" data-shortcut-label="Search workplaces" name="workplace_search_filter" placeholder="Search workplaces..." oninput="filterWorkplaces()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
+                       class="ag-search">
             </div>
             <button onclick="showCreateWorkplaceModal()"
-                    class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    class="ag-btn ag-btn-primary" title="New Workplace" aria-label="New Workplace" data-shortcut="n" data-shortcut-label="New workplace">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                New Workplace
+                <span class="ag-btn-label">New Workplace</span>
             </button>
         </div>
 
         <!-- Workplaces Grid -->
         <div id="workplaces-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-        <div id="workplaces-empty" class="hidden text-center py-16 text-gray-400">
-            <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-            <p class="text-lg font-medium">No workplaces yet</p>
-            <p class="text-sm mt-1">Create a workplace to assign execution environments to your agents.</p>
+        <div id="workplaces-empty" class="hidden ag-empty">
+            <span class="ag-empty-ic"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg></span>
+            <p class="ag-empty-t">No workplaces yet</p>
+            <p class="ag-empty-s">Create a workplace to assign execution environments to your agents.</p>
+            <button type="button" onclick="showCreateWorkplaceModal()" class="ag-btn ag-btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>New Workplace</span></button>
         </div>
     </div>
 
     <!-- ========== TEMPLATES TAB ========== -->
     <div id="tab-templates" class="hidden">
-        <div class="flex flex-col sm:flex-row gap-3 mb-6">
-            <div class="relative">
-                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                <input type="search" id="template-search" name="template_search_filter" placeholder="Search templates..." oninput="filterTemplates()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
-                       class="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
+        <div class="ag-toolbar flex flex-col sm:flex-row gap-3 mb-6">
+            <div class="ag-search-wrap relative">
+                <svg class="ag-search-ico" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input type="search" id="template-search" data-shortcut="/,mod+k" data-shortcut-label="Search templates" name="template_search_filter" placeholder="Search templates..." oninput="filterTemplates()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
+                       class="ag-search">
             </div>
-            <button onclick="loadTemplates(true)"
-                    class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                Refresh
+            
+            <button type="button" onclick="loadTemplates(true)" class="ag-btn ag-btn-ghost" title="Refresh" aria-label="Refresh" data-shortcut="r" data-shortcut-label="Refresh templates">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                <span class="ag-btn-label">Refresh</span>
             </button>
-            <a href="/template/new" id="template-new-btn"
-               class="sm:ml-auto px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                New template
+            <a href="/template/new" id="template-new-btn" class="ag-btn ag-btn-primary" title="New template" aria-label="New template" data-shortcut="n" data-shortcut-label="New template">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                <span class="ag-btn-label">New template</span>
             </a>
         </div>
 
@@ -115,10 +109,11 @@
 
         <div id="templates-loading" class="hidden text-center py-12 text-gray-400 text-sm">Loading templates&hellip;</div>
         <div id="templates-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-        <div id="templates-empty" class="hidden text-center py-16 text-gray-400">
-            <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-            <p class="text-lg font-medium">No templates available</p>
-            <p class="text-sm mt-1">Templates let you create pre-configured agents in a few clicks.</p>
+        <div id="templates-empty" class="hidden ag-empty">
+            <span class="ag-empty-ic"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg></span>
+            <p class="ag-empty-t">No templates available</p>
+            <p class="ag-empty-s">Templates let you create pre-configured agents in a few clicks.</p>
+            <a href="/template/new" class="ag-btn ag-btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>New template</span></a>
         </div>
     </div>
 </div>
@@ -126,26 +121,27 @@
 <!-- Create Agent Modal -->
 <div id="create-agent-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-black/50" onclick="closeCreateAgentModal()"></div>
-    <div class="relative bg-white dark:bg-gray-800 rounded-xl w-[90%] max-w-[450px] shadow-xl">
+    <div class="relative ev-modal w-[90%] max-w-[450px] shadow-xl">
         <div class="p-6">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">New Agent</h3>
+            <h3 class="ev-modal-t">New Agent</h3>
+            <p class="ev-modal-s">Fill in the basics to create a blank agent. Prefer a ready-made setup? Use the Templates tab.</p>
             <div class="mb-4">
-                <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium">Agent ID *</label>
+                <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium" for="new-agent-id">Agent ID <span class="ev-req" aria-hidden="true">*</span></label>
                 <input type="text" id="new-agent-id" placeholder="e.g., customer_service" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
                 <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Alphanumeric and underscores only</p>
             </div>
             <div class="mb-4">
-                <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium">Name *</label>
+                <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium" for="new-agent-name">Name <span class="ev-req" aria-hidden="true">*</span></label>
                 <input type="text" id="new-agent-name" placeholder="e.g., Customer Service" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10">
             </div>
             <div class="mb-4">
-                <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium">Description</label>
+                <label class="block mb-1 text-gray-700 dark:text-gray-300 text-sm font-medium" for="new-agent-desc">Description</label>
                 <textarea id="new-agent-desc" rows="2" placeholder="Short description" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"></textarea>
             </div>
         </div>
-        <div class="flex gap-3 justify-end px-6 pb-5">
-            <button onclick="closeCreateAgentModal()" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancel</button>
-            <button onclick="createAgent()" class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium transition-colors">Create</button>
+        <div class="ev-modal-btns px-6 pb-6">
+            <button onclick="closeCreateAgentModal()" class="ev-btn">Cancel</button>
+            <button onclick="createAgent()" class="ev-btn ev-btn-primary">Create</button>
         </div>
     </div>
 </div>
@@ -153,23 +149,24 @@
 <!-- Import Agent Modal -->
 <div id="import-agent-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-black/50" onclick="closeImportAgentModal()"></div>
-    <div class="relative bg-white dark:bg-gray-800 rounded-xl w-[92%] max-w-xl shadow-xl">
+    <div class="relative ev-modal w-[92%] max-w-xl shadow-xl">
         <div class="p-6">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Import Agent</h3>
-                <button onclick="closeImportAgentModal()" title="Close" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"><i data-lucide="x" class="w-5 h-5"></i></button>
+            <div class="flex items-start justify-between mb-4">
+                <div><h3 class="ev-modal-t">Import Agent</h3><p class="ev-modal-s" style="margin-bottom:0">Bring in an agent exported from another Evonic.</p></div>
+                <button onclick="closeImportAgentModal()" title="Close" aria-label="Close" class="ev-x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
             </div>
-            <div class="flex border-b border-gray-200 dark:border-gray-700 mb-4" role="tablist">
-                <button id="import-file-tab" onclick="setImportMode('file')" class="px-4 py-2 text-sm font-medium text-indigo-600 border-b-2 border-indigo-600">File</button>
-                <button id="import-paste-tab" onclick="setImportMode('paste')" class="px-4 py-2 text-sm font-medium text-gray-500 border-b-2 border-transparent">Paste JSON</button>
+            <div class="ev-seg mb-4" role="tablist">
+                <button id="import-file-tab" onclick="setImportMode('file')" class="ev-seg-btn is-active" role="tab">File</button>
+                <button id="import-paste-tab" onclick="setImportMode('paste')" class="ev-seg-btn" role="tab">Paste JSON</button>
             </div>
             <div id="import-file-panel">
                 <input id="import-agent-file" type="file" accept="application/json,.json" class="hidden" onchange="selectImportFile(this.files[0])">
                 <button id="import-drop-zone" type="button" onclick="document.getElementById('import-agent-file').click()"
                         ondragover="handleImportDrag(event)" ondragleave="handleImportDrag(event)" ondrop="handleImportDrop(event)"
-                        class="w-full min-h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center gap-2 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 transition-colors">
-                    <i data-lucide="file-json" class="w-7 h-7"></i>
-                    <span id="import-file-label" class="text-sm font-medium">Choose or drop a JSON file</span>
+                        class="sk-drop" style="width:100%">
+                    <span class="ag-empty-ic" style="width:2.75rem;height:2.75rem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/><path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"/></svg></span>
+                    <span id="import-file-label" class="sk-drop-t">Choose or drop a JSON file</span>
+                    <span class="sk-drop-f">Exported agent .json</span>
                 </button>
             </div>
             <div id="import-paste-panel" class="hidden">
@@ -193,8 +190,8 @@
             <div id="import-agent-warning" class="hidden mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"></div>
         </div>
         <div class="flex gap-3 justify-end px-6 pb-5">
-            <button onclick="closeImportAgentModal()" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
-            <button id="import-agent-submit" onclick="importAgent()" class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-md text-sm font-medium">Import</button>
+            <button onclick="closeImportAgentModal()" class="ev-btn">Cancel</button>
+            <button id="import-agent-submit" onclick="importAgent()" class="ev-btn ev-btn-primary">Import</button>
         </div>
     </div>
 </div>
@@ -202,15 +199,15 @@
 <!-- Template Preview Modal -->
 <div id="template-preview-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-black/50" onclick="closeTemplatePreview()"></div>
-    <div class="relative bg-white dark:bg-gray-800 rounded-xl w-[92%] max-w-2xl shadow-xl max-h-[88vh] flex flex-col">
+    <div class="relative ev-modal w-[92%] max-w-2xl shadow-xl max-h-[88vh] flex flex-col">
         <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
             <h3 id="tpl-preview-title" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Template</h3>
             <button onclick="closeTemplatePreview()" title="Close" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
         <div id="tpl-preview-body" class="p-5 overflow-y-auto text-sm text-gray-700 dark:text-gray-300"></div>
         <div class="flex gap-3 justify-end px-5 py-4 border-t border-gray-200 dark:border-gray-700">
-            <a id="tpl-preview-edit" href="#" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Edit template</a>
-            <button onclick="createFromPreviewedTemplate()" class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium transition-colors">Create Agent from this</button>
+            <a id="tpl-preview-edit" href="#" class="ev-btn">Edit template</a>
+            <button onclick="createFromPreviewedTemplate()" class="ev-btn ev-btn-primary">Create Agent from this</button>
         </div>
     </div>
 </div>
@@ -218,7 +215,7 @@
 <!-- Create Agent from Template Modal -->
 <div id="template-create-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-black/50" onclick="closeTemplateCreate()"></div>
-    <div class="relative bg-white dark:bg-gray-800 rounded-xl w-[94%] max-w-3xl shadow-xl max-h-[90vh] flex flex-col">
+    <div class="relative ev-modal w-[94%] max-w-3xl shadow-xl max-h-[90vh] flex flex-col">
         <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Create Agent from <span id="tpl-create-name"></span></h3>
             <button onclick="closeTemplateCreate()" title="Close" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -255,8 +252,8 @@
             </div>
         </div>
         <div class="flex gap-3 justify-end px-5 py-4 border-t border-gray-200 dark:border-gray-700">
-            <button onclick="closeTemplateCreate()" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancel</button>
-            <button id="tpl-create-submit" onclick="submitTemplateCreate()" class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-md text-sm font-medium transition-colors">Create Agent</button>
+            <button onclick="closeTemplateCreate()" class="ev-btn">Cancel</button>
+            <button id="tpl-create-submit" onclick="submitTemplateCreate()" class="ev-btn ev-btn-primary">Create Agent</button>
         </div>
     </div>
 </div>
@@ -264,8 +261,9 @@
 <!-- Create Workplace Modal -->
 <div id="create-workplace-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-black/50" onclick="closeCreateWorkplaceModal()"></div>
-    <div class="relative bg-white dark:bg-gray-800 rounded-xl w-[90%] max-w-md shadow-xl p-6">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">New Workplace</h3>
+    <div class="relative ev-modal w-[90%] max-w-md shadow-xl p-6">
+        <h3 class="ev-modal-t">New Workplace</h3>
+        <p class="ev-modal-s">An execution environment your agents can run in.</p>
         <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name *</label>
             <input id="new-workplace-name" type="text" placeholder="e.g., My Server"
@@ -345,21 +343,20 @@
         </div>
 
         <div class="flex gap-3 justify-end mt-4">
-            <button onclick="closeCreateWorkplaceModal()" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancel</button>
-            <button onclick="createWorkplace()" class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium transition-colors">Create</button>
+            <button onclick="closeCreateWorkplaceModal()" class="ev-btn">Cancel</button>
+            <button onclick="createWorkplace()" class="ev-btn ev-btn-primary">Create</button>
         </div>
     </div>
 </div>
 
-<div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
 
 <script>
 // ===================== TAB SWITCHING =====================
 
 let currentTab = 'agents';
 
-const TAB_BTN_ACTIVE = 'px-5 py-2.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px transition-colors';
-const TAB_BTN_IDLE = 'px-5 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-700 dark:hover:text-gray-300 transition-colors';
+const TAB_BTN_ACTIVE = 'ag-tab is-active';
+const TAB_BTN_IDLE = 'ag-tab';
 
 function switchTab(tab) {
     currentTab = tab;
@@ -459,10 +456,11 @@ function renderAgents() {
         const toggleSwitch = a.is_super
             ? ''
             : mkToggle({ checked: enabled, onChange: `toggleAgent('${a.id}', this.checked)`, extraClass: 'flex-shrink-0' });
+        // "Off" pill with a proper power icon (the old path was malformed and rendered as a clipped, off-centre arc)
         const statusBadge = enabled
             ? ''
-            : `<span class="inline-flex items-center gap-1 text-xs font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700/50 px-2 py-1 rounded-full">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l-2 2m7-7a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            : `<span class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/60 px-2.5 py-1 rounded-full">
+                    <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>
                     Off
                </span>`;
         const busyBadge = busyAgents[a.id]
@@ -477,36 +475,26 @@ function renderAgents() {
               (waInfo.status === 'qr_pending' ? 'QR Pending' : 'WA Disconnected') +
               '</span>'
             : '';
-        const settingsBtn = `<a href="/agents/${a.id}#general" class="text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded transition-colors" title="Settings">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                </a>`;
-        const avatarUrl = `/api/agents/${a.id}/avatar?size=small`;
-        const initial = (a.name || a.id || '?').charAt(0).toUpperCase();
-        const hasCustomAvatar = a.avatar_path && a.avatar_path.trim() !== '';
-        const avatarHtml = hasCustomAvatar
-            ? `<img src="${avatarUrl}" alt="${esc(a.name || a.id)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-indigo-50 dark:bg-indigo-900/20">`
-            : `<div class="w-8 h-8 rounded-full flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-sm font-bold text-indigo-600 dark:text-indigo-300">${initial}</div>`;
+        // The avatar route returns the uploaded image, or a name-based generated one
+        const avatarHtml = `<img src="/api/agents/${encodeURIComponent(a.id)}/avatar?size=small" alt="" loading="lazy" class="ag-avatar">`;
+        const openAgent = `window.location.href='/agents/${encodeURIComponent(a.id)}'`;
         return `
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow overflow-hidden" data-agent-id="${esc(a.id)}">
-            <div class="p-3">
-                <div class="flex items-start gap-2">
-                    ${avatarHtml}
-                    <div class="flex-1 min-w-0 cursor-pointer" onclick="window.location.href='/agents/${a.id}'">
-                        <div class="flex items-center gap-2 flex-wrap" data-badges="${esc(a.id)}">
-                            <h3 class="font-semibold text-sm ${a.is_super ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'} truncate">${esc(a.name || a.id)}${superBadge}</h3>
-                            ${statusBadge}
-                            ${busyBadge}
-                            ${waBadge}
-                        </div>
-                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">ID: ${esc(a.id)}</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">${esc(a.description || 'No description')}</p>
-                    </div>
-                    <div class="flex items-center gap-1 flex-shrink-0 mt-1">
-                        ${settingsBtn}
-                        ${toggleSwitch}
-                    </div>
+        <div class="ag-card ${enabled ? '' : 'is-off'} ${a.is_super ? 'is-super' : ''}" data-agent-id="${esc(a.id)}" role="link" tabindex="0" aria-label="Open ${esc(a.name || a.id)}"
+             onclick="if(!event.target.closest('.ag-actions')) ${openAgent}"
+             onkeydown="if((event.key==='Enter'||event.key===' ') && !event.target.closest('.ag-actions')){event.preventDefault();${openAgent}}">
+            <div class="ag-card-top">
+                ${avatarHtml}
+                <div class="ag-title">
+                    <div class="ag-name-row"><h3 class="ag-name">${esc(a.name || a.id)}</h3>${a.is_super ? '<svg class="ag-star" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-label="Super agent"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>' : ''}</div>
+                    <div class="ag-id" title="Agent ID"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></svg>${esc(a.id)}</div>
+                </div>
+                <div class="ag-actions">
+                    <a href="/agents/${encodeURIComponent(a.id)}#general" class="ag-icon-btn" title="Settings" aria-label="Settings"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
+                    ${toggleSwitch}
                 </div>
             </div>
+            <div class="ag-badges" data-badges="${esc(a.id)}">${statusBadge}${busyBadge}${waBadge}</div>
+            <p class="ag-desc">${esc(a.description || 'No description')}</p>
         </div>`;
     };
 
@@ -517,7 +505,7 @@ function renderAgents() {
         disabledSection.classList.add('hidden');
     } else {
         disabledSection.classList.remove('hidden');
-        disabledCount.textContent = `(${disabledAgents.length})`;
+        disabledCount.textContent = String(disabledAgents.length);
         disabledGrid.innerHTML = disabledAgents.map(a => renderCard(a)).join('');
     }
 }
@@ -618,8 +606,8 @@ function setImportMode(mode) {
     const fileMode = mode === 'file';
     document.getElementById('import-file-panel').classList.toggle('hidden', !fileMode);
     document.getElementById('import-paste-panel').classList.toggle('hidden', fileMode);
-    document.getElementById('import-file-tab').className = `px-4 py-2 text-sm font-medium border-b-2 ${fileMode ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent'}`;
-    document.getElementById('import-paste-tab').className = `px-4 py-2 text-sm font-medium border-b-2 ${fileMode ? 'text-gray-500 border-transparent' : 'text-indigo-600 border-indigo-600'}`;
+    document.getElementById('import-file-tab').classList.toggle('is-active', fileMode);
+    document.getElementById('import-paste-tab').classList.toggle('is-active', !fileMode);
     setImportError('');
     if (!fileMode) document.getElementById('import-agent-json').focus();
 }
@@ -632,8 +620,7 @@ function setImportError(message) {
 
 function handleImportDrag(event) {
     event.preventDefault();
-    event.currentTarget.classList.toggle('border-indigo-500', event.type === 'dragover');
-    event.currentTarget.classList.toggle('bg-indigo-50', event.type === 'dragover');
+    event.currentTarget.classList.toggle('is-over', event.type === 'dragover');
 }
 
 function handleImportDrop(event) {
@@ -755,16 +742,6 @@ async function deleteAgent(agentId, name) {
 
 let workplacesLoaded = false;
 
-function showToast(message, type = 'success') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-    const toast = document.createElement('div');
-    toast.className = 'px-4 py-3 rounded-lg shadow-lg text-white font-medium transition-opacity duration-500 ' +
-        (type === 'success' ? 'bg-green-600' : type === 'info' ? 'bg-blue-600' : 'bg-red-600');
-    toast.textContent = message;
-    container.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 3000);
-}
 
 const TYPE_LABELS = { local: 'Local', remote: 'Remote SSH', tunnel: 'Tunnel', bwrap: 'Bwrap' };
 const TYPE_COLORS = {
@@ -985,33 +962,27 @@ function renderTemplates() {
 
 function templateCard(t) {
     const icon = t.icon || 'layout-template';
-    const category = t.category
-        ? `<span class="text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">${esc(t.category)}</span>`
-        : '';
+    const category = t.category ? `<span class="ag-chip">${esc(t.category)}</span>` : '';
     const stats = [
         (t.parameter_count || 0) + ' parameter' + (t.parameter_count === 1 ? '' : 's'),
         (t.tool_count || 0) + ' tool' + (t.tool_count === 1 ? '' : 's'),
         (t.skill_count || 0) + ' skill' + (t.skill_count === 1 ? '' : 's'),
-    ].join(' &middot; ');
+    ];
     return `
-    <div class="flex flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:shadow-md transition-shadow">
-        <div class="flex items-start gap-3 mb-2">
-            <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                <i data-lucide="${esc(icon)}" class="w-5 h-5"></i>
+    <div class="ag-card tp-card">
+        <div class="ag-card-top">
+            <span class="tp-ic"><i data-lucide="${esc(icon)}"></i></span>
+            <div class="ag-title">
+                <div class="ag-name-row"><h3 class="ag-name">${esc(t.name || t.id)}</h3></div>
+                <span class="ag-id">${esc(t.id)}</span>
             </div>
-            <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">${esc(t.name || t.id)}</h3>
-                    ${category}
-                </div>
-                <p class="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">${esc(t.id)}</p>
-            </div>
+            ${category}
         </div>
-        <p class="text-sm text-gray-500 dark:text-gray-400 flex-1 mb-3 line-clamp-3">${esc(t.description || 'No description')}</p>
-        <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">${stats}</p>
-        <div class="flex gap-2">
-            <button onclick="openTemplatePreview('${esc(t.id)}')" class="flex-1 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Preview</button>
-            <button onclick="openTemplateCreate('${esc(t.id)}')" class="flex-1 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-xs font-medium transition-colors">Create Agent</button>
+        <p class="ag-desc">${esc(t.description || 'No description')}</p>
+        <div class="tp-stats">${stats.map(x => `<span>${x}</span>`).join('')}</div>
+        <div class="tp-actions">
+            <button type="button" onclick="openTemplatePreview('${esc(t.id)}')" class="ag-btn ag-btn-ghost">Preview</button>
+            <button type="button" onclick="openTemplateCreate('${esc(t.id)}')" class="ag-btn ag-btn-primary">Create Agent</button>
         </div>
     </div>`;
 }

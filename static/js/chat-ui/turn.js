@@ -22,6 +22,7 @@
 
 import { log, assert } from './debug.js';
 import { buildSavedArtifactsBlock } from './artifacts.js';
+import { uiIcon } from './icons.js';
 
 const TERMINAL_PHASES = new Set(['final', 'done', 'aborted']);
 
@@ -147,12 +148,12 @@ export class Turn {
 
         const $inner = $('<div class="thinking-bubble flex items-center gap-2 rounded-lg px-3 py-2 text-xs border border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60 cursor-pointer">');
         $inner.append(
-            $('<span>').html('&#129504;'),
+            $('<span class="inline-flex">').html(uiIcon('brain', 16)),
             $('<span class="font-medium text-purple-700 dark:text-purple-200">').text('Thinking'),
             $('<span class="thinking-step-count text-purple-500 dark:text-purple-300 text-[10px] ml-0.5 hidden">'),
             $('<span class="thinking-spinner">').append($('<span class="tool-spinner">')),
             $('<span class="thinking-timer-inline text-purple-500 dark:text-purple-400 text-[10px]">').text('0.0 s'),
-            $('<span class="ml-1 text-purple-500 dark:text-purple-300 tool-trace-chevron text-sm">').html('&#9656;')
+            $('<span class="ml-1 text-purple-500 dark:text-purple-300 tool-trace-chevron">').html(uiIcon('chevron-right', 14))
         );
 
         if (avatarHtml) this.$bubble.append($(avatarHtml));
@@ -245,7 +246,7 @@ export class Turn {
             $approvalColor
                 .removeClass('border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60')
                 .addClass('border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/60');
-            this.$bubble.find('span:first').html('&#128274;');
+            this.$bubble.find('span:first').html(uiIcon('lock', 16));
             this.$bubble.find('.font-medium')
                 .text('Menunggu Approval')
                 .removeClass('text-purple-700 dark:text-purple-200')
@@ -254,7 +255,7 @@ export class Turn {
             $approvalColor
                 .addClass('border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/60')
                 .removeClass('border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/60');
-            this.$bubble.find('span:first').html('&#129504;');
+            this.$bubble.find('span:first').html(uiIcon('brain', 16));
             this.$bubble.find('.font-medium')
                 .text('Thinking')
                 .addClass('text-purple-700 dark:text-purple-200')
@@ -271,7 +272,20 @@ export class Turn {
     _handleEventRendering(evtName, data) {
         if (evtName === 'turn_begin') {
             // Already in thinking phase — bubble is ready
-            if (data.ts) this._startTime = data.ts;
+            // Keep the EARLIEST start: the eager bubble began at submit, while turn_begin carries the
+            // (later) moment the server started the turn after queueing/buffering. Re-basing to it made
+            // the timer jump back to 0.
+            if (data.ts) this._startTime = Math.min(this._startTime, data.ts);
+            return;
+        }
+
+        if (evtName === 'thinking_delta') {
+            this._appendLiveThinking(data.content || '');
+            return;
+        }
+
+        if (evtName === 'thinking_reset') {
+            this._clearLiveThinking();
             return;
         }
 
@@ -334,7 +348,17 @@ export class Turn {
 
         if (evtName === 'done') {
             console.warn('[turn] done event turn=%s _finalized=%s _finalContent=%s', this.id, this._finalized, !!this._finalContent);
-            this._finalizeBubble(data.thinking_duration);
+            // The server's duration only covers the model loop (it excludes queueing, the message
+            // buffer and pre-passes such as CMP), so it can be SHORTER than what the timer already
+            // counted live — the label then visibly jumped backwards. Never show less than the
+            // wall time this turn was actually on screen. Replayed turns have ~0 elapsed, so they
+            // keep the stored value.
+            let shownDuration = data.thinking_duration;
+            if (shownDuration != null) {
+                const wall = Math.max(0, (Date.now() - this._startTime) / 1000);
+                shownDuration = Math.max(Number(shownDuration) || 0, wall);
+            }
+            this._finalizeBubble(shownDuration);
             // Fire final:response so page-level code can render the response bubble
             // synchronously from the durable stream.
             if (this._finalContent) {
@@ -342,7 +366,7 @@ export class Turn {
                 this._onTrigger('final:response', {
                     turnId: this.id,
                     content: this._finalContent,
-                    thinking_duration: data.thinking_duration,
+                    thinking_duration: shownDuration,
                 });
             }
             return;
@@ -372,8 +396,9 @@ export class Turn {
         if (total > 0 && total % 10 === 0) {
             console.warn('[turn] _addTimelineEntry count=%d type=%s turn=%s — possible duplicate replay?', total + 1, ev.type, this.id);
         }
-        // Remove "Thinking..." placeholder when a new event arrives
+        // Remove "Thinking..." placeholder (and the streamed preview) when a new event arrives
         this.$timeline.find('.tl-thinking-pending').remove();
+        this._clearLiveThinking();
 
         // Deactivate previous last entry
         const $prevLast = this.$timeline.find('.timeline-entry:last-child');
@@ -416,8 +441,8 @@ export class Turn {
         const $status = $target.find('.tl-status');
         if ($status.length) {
             $status.html(data.error
-                ? '<span class="text-[14px] font-bold leading-none" style="color:#ef4444">&#10005;</span>'
-                : '<span class="text-[14px] font-bold leading-none" style="color:#22c55e">&#10003;</span>');
+                ? '<span class="inline-flex" style="color:#ef4444">' + uiIcon('x', 14) + '</span>'
+                : '<span class="inline-flex" style="color:#22c55e">' + uiIcon('check', 14) + '</span>');
         }
 
         const $detail = $target.find('.tl-detail');
@@ -465,6 +490,41 @@ export class Turn {
         this._smartScroll();
     }
 
+    // ── Live thinking preview (streamed reasoning) ────────────────────────────
+    // Shown while the model is still thinking; replaced by the real timeline entry
+    // when the full `thinking` event arrives (or cleared on retry / next event).
+
+    _appendLiveThinking(text) {
+        if (this._finalized || !text) return;
+        let $live = this.$timeline.find('.tl-thinking-live');
+        if (!$live.length) {
+            this.$timeline.find('.tl-thinking-pending').remove();
+            const $prevLast = this.$timeline.find('.timeline-entry:last-child');
+            if ($prevLast.length) this._deactivateEntry($prevLast);
+            $live = $('<div class="tl-thinking-live pl-3 py-1 relative">').append(
+                $('<div class="tl-live-head">').append(
+                    $('<span class="inline-flex">').html(uiIcon('brain', 14)),
+                    $('<span class="tl-live-label">').text('Thinking'),
+                    $('<span class="tl-live-dots" aria-hidden="true">').append($('<i>'), $('<i>'), $('<i>'))
+                ),
+                $('<div class="tl-live-body">').append($('<div class="tl-live-text">'))
+            );
+            this.$timeline.append($live);
+            this.$timeline.removeClass('hidden');
+        }
+        const body = $live.find('.tl-live-body')[0];
+        const pre = $live.find('.tl-live-text')[0];
+        // Follow the tail unless the reader scrolled up inside the box.
+        const atTail = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
+        pre.appendChild(document.createTextNode(text));
+        if (atTail) body.scrollTop = body.scrollHeight;
+        this._smartScroll();
+    }
+
+    _clearLiveThinking() {
+        this.$timeline.find('.tl-thinking-live').remove();
+    }
+
     _showThinkingRow() {
         if (this._finalized) return; // don't add a pending row to a completed turn
         this.$timeline.find('.tl-thinking-pending').remove();
@@ -506,6 +566,7 @@ export class Turn {
         }
 
         this.$timeline.find('.tl-thinking-pending').remove();
+        this._clearLiveThinking();
         this._deactivateEntry(this.$timeline.find('.timeline-entry:last-child'));
 
         // Auto-collapse the timeline when turn completes, keeping UI clean
@@ -556,7 +617,7 @@ export class Turn {
         const $details = $('<div class="approval-details p-3">');
         $details.append(
             $('<div class="flex items-center gap-2 mb-2">').append(
-                $('<span class="text-sm font-semibold">').addClass(riskColorClass).html('&#9888; Approval Required'),
+                $('<span class="text-sm font-semibold inline-flex items-center gap-1.5">').addClass(riskColorClass).html(uiIcon('alert', 15) + ' Approval Required'),
                 $('<span class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-current">').addClass(riskColorClass).text(riskLevel)
             ),
             $('<div class="text-xs text-gray-700 dark:text-gray-200 mb-1">').append(
@@ -634,9 +695,9 @@ export class Turn {
         if (timedOut) {
             statusText = 'Timed out — auto-rejected.'; statusClass = 'text-gray-500'; iconHtml = '&#x23F1; Timed out';
         } else if (decision === 'approve') {
-            statusText = 'Approved — executing...'; statusClass = 'text-green-600'; iconHtml = '&#10003; Approved';
+            statusText = 'Approved — executing...'; statusClass = 'text-green-600'; iconHtml = uiIcon('check', 14) + ' Approved';
         } else {
-            statusText = 'Rejected.'; statusClass = 'text-red-500'; iconHtml = '&#10007; Rejected';
+            statusText = 'Rejected.'; statusClass = 'text-red-500'; iconHtml = uiIcon('x', 14) + ' Rejected';
         }
         $card.find('.approval-status').text(statusText).removeClass('hidden').addClass(statusClass);
         $card.find('.approval-summary-icon').html(iconHtml);

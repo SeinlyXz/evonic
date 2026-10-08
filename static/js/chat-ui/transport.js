@@ -11,7 +11,7 @@ import { log } from './debug.js';
 // ── SSEAdapter ────────────────────────────────────────────────────────────────
 
 const SSE_EVENTS = [
-    'turn_begin', 'turn_split', 'thinking', 'tool_call_started', 'tool_executed',
+    'turn_begin', 'turn_split', 'thinking', 'thinking_delta', 'thinking_reset', 'tool_call_started', 'tool_executed',
     'state:changed', 'tasks:auto_transition', 'tasks:stale', 'response_chunk', 'done', 'approval_required', 'approval_resolved', 'retry',
     'message_injected', 'message_injection_applied', 'message_received', 'whatsapp_restriction_warning', 'session_clear',
     'state_changed', 'turn_queued', 'ready', 'heartbeat', 'auth_expired',

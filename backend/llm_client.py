@@ -9,7 +9,7 @@ including standard XML thinking tags, Gemma 4, and Qwen formats.
 import json
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
 
@@ -277,6 +277,147 @@ def _convert_multimodal_to_claude(messages: List[Dict[str, Any]]) -> List[Dict[s
             else:
                 new_parts.append(part)
         result.append({**msg, "content": new_parts})
+    return result
+
+
+def _iter_sse_lines(response: Any):
+    """Yield raw lines from a streamed response as soon as they arrive.
+
+    ``response.iter_lines()`` reads 512-byte blocks, so on servers that do not use
+    chunked transfer encoding every small SSE event is held back until the block
+    fills (or the stream ends) and the "live" text arrives all at once.  This reads
+    whatever bytes are available (``read1``) and splits lines itself.  Test doubles
+    without a real ``raw`` fall back to ``iter_lines()``.
+    """
+    raw = getattr(response, "raw", None)
+    read1 = getattr(raw, "read1", None)
+    if read1 is None:
+        yield from response.iter_lines()
+        return
+    try:
+        raw.decode_content = True
+    except Exception:
+        pass
+    buf = b""
+    while True:
+        chunk = read1(8192)
+        if not chunk:
+            break
+        buf += chunk
+        while True:
+            nl = buf.find(b"\n")
+            if nl < 0:
+                break
+            line, buf = buf[:nl], buf[nl + 1:]
+            yield line.rstrip(b"\r")
+    if buf:
+        yield buf.rstrip(b"\r")
+
+
+def _consume_openai_stream(
+    response: Any,
+    on_delta: Optional[Callable[[str, str], None]] = None,
+) -> Dict[str, Any]:
+    """Consume an OpenAI-compatible SSE chat-completion stream.
+
+    Reassembles the deltas into ONE response dict shaped exactly like a
+    non-streaming ``chat.completion`` (``choices[0].message`` with ``content``,
+    ``reasoning_content`` and ``tool_calls``, ``finish_reason``, ``usage``), so
+    everything downstream is unaware the request was streamed.
+
+    ``on_delta(kind, text)`` is called as text arrives; ``kind`` is
+    ``"thinking"`` for reasoning deltas (``reasoning_content`` / ``reasoning``).
+
+    A frame carrying an ``error`` object returns ``{"error": ...}`` (handled by
+    the caller like a non-streaming error body).  A stream that ends without a
+    ``finish_reason`` and without ``[DONE]`` is a dropped connection and raises
+    ``requests.exceptions.ConnectionError`` so the caller's retry path applies.
+    """
+    content_parts: List[str] = []
+    reasoning_parts: List[str] = []
+    tool_calls: Dict[int, Dict[str, Any]] = {}
+    finish_reason = None
+    usage = None
+    model = None
+    resp_id = None
+    done = False
+
+    for raw in _iter_sse_lines(response):
+        if not raw:
+            continue
+        line = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        if line.startswith(":"):          # SSE comment / keep-alive
+            continue
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            done = True
+            break
+        try:
+            frame = json.loads(data)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(frame, dict):
+            continue
+        if frame.get("error"):
+            return {"error": frame["error"]}
+        model = frame.get("model") or model
+        resp_id = frame.get("id") or resp_id
+        if frame.get("usage"):
+            usage = frame["usage"]
+        choices = frame.get("choices") or []
+        if not choices:
+            continue
+        choice = choices[0] or {}
+        if choice.get("finish_reason"):
+            finish_reason = choice["finish_reason"]
+        delta = choice.get("delta") or {}
+
+        reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+        if reasoning:
+            reasoning_parts.append(reasoning)
+            if on_delta:
+                try:
+                    on_delta("thinking", reasoning)
+                except Exception:
+                    pass
+        text = delta.get("content")
+        if text:
+            content_parts.append(text)
+        for tc in delta.get("tool_calls") or []:
+            idx = tc.get("index")
+            if idx is None:
+                idx = len(tool_calls) if tc.get("id") else (max(tool_calls) if tool_calls else 0)
+            slot = tool_calls.setdefault(idx, {
+                "id": "", "type": "function", "function": {"name": "", "arguments": ""},
+            })
+            if tc.get("id"):
+                slot["id"] = tc["id"]
+            fn = tc.get("function") or {}
+            if fn.get("name"):
+                slot["function"]["name"] += fn["name"]
+            if fn.get("arguments"):
+                slot["function"]["arguments"] += fn["arguments"]
+
+    if not done and finish_reason is None:
+        raise requests.exceptions.ConnectionError("LLM stream ended unexpectedly")
+
+    message: Dict[str, Any] = {
+        "role": "assistant",
+        "content": "".join(content_parts),
+    }
+    if reasoning_parts:
+        message["reasoning_content"] = "".join(reasoning_parts)
+    if tool_calls:
+        message["tool_calls"] = [tool_calls[i] for i in sorted(tool_calls)]
+    result: Dict[str, Any] = {
+        "id": resp_id,
+        "model": model,
+        "choices": [{"index": 0, "message": message, "finish_reason": finish_reason or "stop"}],
+    }
+    if usage:
+        result["usage"] = usage
     return result
 
 
@@ -597,6 +738,7 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         log_file: Optional[str] = None,
         tool_choice: Optional[str] = None,
+        stream_callback: Optional[Callable[[str, str], None]] = None,
     ) -> Dict[str, Any]:
         """Send a chat completion, retrying once on the fallback model.
 
@@ -619,6 +761,7 @@ class LLMClient:
             max_tokens=max_tokens,
             log_file=log_file,
             tool_choice=tool_choice,
+            stream_callback=stream_callback,
         )
         if result.get("success") or not self._allow_fallback:
             return result
@@ -635,6 +778,7 @@ class LLMClient:
             max_tokens=max_tokens,
             log_file=log_file,
             tool_choice=tool_choice,
+            stream_callback=stream_callback,
         )
         if not fallback_result.get("success"):
             return result
@@ -686,6 +830,7 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         log_file: Optional[str] = None,
         tool_choice: Optional[str] = None,
+        stream_callback: Optional[Callable[[str, str], None]] = None,
     ) -> Dict[str, Any]:
         """Send chat completion request to OpenAI-compatible endpoint.
 
@@ -704,6 +849,10 @@ class LLMClient:
                 uses self.max_tokens (doubled when thinking is active).
             log_file: Optional path for API call logging.
             tool_choice: Optional function name that the provider must call.
+            stream_callback: Optional ``callback(kind, text)`` for live deltas
+                (``kind`` is ``"thinking"``, or ``"reset"`` when a retry starts
+                over).  Only the OpenAI-compatible path streams; other providers
+                ignore it and return the usual single response.
 
         Returns:
             Dict with response, duration_ms, token counts, success flag,
@@ -828,6 +977,7 @@ class LLMClient:
         if is_claude:
             processed_messages = _convert_multimodal_to_claude(processed_messages)
 
+        use_stream = False
         if is_ollama_fmt:
             payload = {
                 "model": self.model,
@@ -884,6 +1034,10 @@ class LLMClient:
                 "max_tokens": max_tokens,
                 "stream": False,
             }
+            if stream_callback is not None:
+                payload["stream"] = True
+                payload["stream_options"] = {"include_usage": True}
+                use_stream = True
             if effective_temperature is not None:
                 payload["temperature"] = effective_temperature
             if tools:
@@ -915,9 +1069,24 @@ class LLMClient:
         for attempt in range(1 + max_retries):
             try:
                 start_time = time.time()
+                if use_stream and attempt > 0:
+                    try:
+                        stream_callback("reset", "")   # new attempt: drop the partial live text
+                    except Exception:
+                        pass
                 response = requests.post(
-                    url, json=payload, headers=headers, timeout=(10, self.timeout)
+                    url, json=payload, headers=headers, timeout=(10, self.timeout),
+                    stream=use_stream,
                 )
+                if use_stream and response.status_code in (400, 422):
+                    # Provider rejects stream / stream_options: redo non-streaming.
+                    response.close()
+                    use_stream = False
+                    payload["stream"] = False
+                    payload.pop("stream_options", None)
+                    response = requests.post(
+                        url, json=payload, headers=headers, timeout=(10, self.timeout)
+                    )
                 duration_ms = int((time.time() - start_time) * 1000)
 
                 if response.status_code >= 500:
@@ -979,7 +1148,11 @@ class LLMClient:
                         "error_detail": error_msg,
                     }
 
-                result = response.json()
+                if use_stream and "text/event-stream" in (response.headers.get("Content-Type") or "").lower():
+                    result = _consume_openai_stream(response, stream_callback)
+                    duration_ms = int((time.time() - start_time) * 1000)
+                else:
+                    result = response.json()
 
                 # Transform Ollama native response to OpenAI-compatible format
                 if is_ollama_fmt:
@@ -1256,7 +1429,7 @@ class LLMClient:
                     continue
                 return last_error_result
 
-            except requests.exceptions.ConnectionError as e:
+            except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError) as e:
                 log_api_call(
                     messages,
                     None,
