@@ -36,6 +36,21 @@ def _base_messages():
     ]
 
 
+def test_per_model_capacity_threshold_overrides_fixed_fallback():
+    from backend.agent_runtime.active_context import resolve_soft_token_threshold
+
+    assert resolve_soft_token_threshold(12000, 128000, 85) == 108800
+    assert resolve_soft_token_threshold(12000, "32000", "90") == 28800
+
+
+def test_unknown_or_invalid_model_capacity_uses_fixed_fallback():
+    from backend.agent_runtime.active_context import resolve_soft_token_threshold
+
+    assert resolve_soft_token_threshold(12000, None, 85) == 12000
+    assert resolve_soft_token_threshold(12000, 32000, 0) == 12000
+    assert resolve_soft_token_threshold(12000, "invalid", 85) == 12000
+
+
 def test_projection_is_deterministic_and_does_not_mutate_canonical_messages():
     messages = _base_messages()
     messages += _group(["old"], ["read_file"], "x" * 2000)

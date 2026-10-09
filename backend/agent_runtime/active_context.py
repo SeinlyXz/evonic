@@ -110,6 +110,29 @@ def normalize_mode(mode: Any) -> str:
     return value if value in _VALID_MODES else "off"
 
 
+def resolve_soft_token_threshold(
+    fallback_tokens: Any,
+    context_window: Any = None,
+    capacity_percent: Any = 85,
+) -> int:
+    """Choose the active-context trigger from the selected model's capacity.
+
+    A model context window is an input capacity, so it is the appropriate basis
+    for deciding when to shrink the request before a provider rejects it.  The
+    established fixed threshold remains the safe fallback for models that do not
+    declare a usable context window.
+    """
+    try:
+        fallback = max(0, int(fallback_tokens))
+        window = int(context_window or 0)
+        percent = int(capacity_percent)
+    except (TypeError, ValueError):
+        return max(0, int(fallback_tokens or 0))
+    if window <= 0 or not 1 <= percent <= 100:
+        return fallback
+    return max(1, window * percent // 100)
+
+
 def validate_tool_pairs(
     messages: Sequence[Dict[str, Any]], *, allow_unresolved: bool = False,
 ) -> None:

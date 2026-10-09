@@ -378,6 +378,7 @@ from config import (AGENT_MAX_TOOL_ITERATIONS as MAX_TOOL_ITERATIONS,
                     AGENT_TIMEOUT_RETRIES as MAX_TIMEOUT_RETRIES,
                     ACTIVE_CONTEXT_MODE,
                     ACTIVE_CONTEXT_SOFT_TOKENS,
+                    ACTIVE_CONTEXT_CAPACITY_PERCENT,
                     ACTIVE_CONTEXT_RECENT_GROUPS,
                     ACTIVE_CONTEXT_RECEIPT_MAX_CHARS)
 
@@ -799,6 +800,7 @@ def run_tool_loop(agent: Dict[str, Any],
             'thinking': bool(_model.get('thinking', False)),
             'thinking_budget': int(_model.get('thinking_budget', 0) or 0),
             'max_tokens': _model.get('max_tokens', 32768),
+            'context_window': _model.get('context_window'),
             'temperature': _model.get('temperature'),
             'vision_supported': bool(_model.get('vision_supported', False)),
             'api_format': _model.get('api_format', 'openai'),
@@ -892,7 +894,7 @@ def run_tool_loop(agent: Dict[str, Any],
         except Exception as e:
             _logger.warning("Failed to resolve model for agent %s: %s", agent_id, e)
 
-    # Create LLMClient with resolved model config
+    # Create LLMClient with resolved model config.
     llm = LLMClient(model_config=agent_model_config) if agent_model_config else llm_client
 
     # ATG: give the compile_task_graph builtin access to the resolved LLM.
@@ -1221,9 +1223,14 @@ def run_tool_loop(agent: Dict[str, Any],
         # Select tools once, then project and validate the messages against that
         # exact schema set. Every provider path below derives from this snapshot.
         from backend.agent_runtime.active_context import (
-            ActiveContextProjection, project_active_context)
+            ActiveContextProjection, project_active_context, resolve_soft_token_threshold)
         from backend.llm_usage_events import estimate_context_tokens
         _effective_tools = _prune_tools(tools, _iteration) if tools else None
+        _active_context_threshold = resolve_soft_token_threshold(
+            ACTIVE_CONTEXT_SOFT_TOKENS,
+            (agent_model_config or {}).get('context_window'),
+            ACTIVE_CONTEXT_CAPACITY_PERCENT,
+        )
         try:
             _active_projection = project_active_context(
                 messages,
@@ -1231,7 +1238,7 @@ def run_tool_loop(agent: Dict[str, Any],
                 mode=ACTIVE_CONTEXT_MODE,
                 recent_completed_groups=ACTIVE_CONTEXT_RECENT_GROUPS,
                 receipt_max_chars=ACTIVE_CONTEXT_RECEIPT_MAX_CHARS,
-                soft_token_threshold=ACTIVE_CONTEXT_SOFT_TOKENS,
+                soft_token_threshold=_active_context_threshold,
             )
         except Exception as _active_exc:
             _active_projection = ActiveContextProjection(

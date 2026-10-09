@@ -2158,8 +2158,8 @@ def api_chat_agent_state(agent_id):
         except Exception:
             payload['monitors'] = []
 
-    # Context monitor: tokens consumed by the last LLM call vs the model's
-    # context window (model.context_window, falling back to the global
+    # Context monitor: prompt tokens in the last LLM request vs the model's
+    # input context window (model.context_window, falling back to the global
     # llm_context_length setting; unknown window → max/percent are null).
     # After session clear, context_usage is gone from session state — fall back
     # to the compiled context token count (system prompt + tool definitions).
@@ -2167,8 +2167,7 @@ def api_chat_agent_state(agent_id):
         _cu = merged.get('context_usage') if isinstance(merged, dict) else None
         _used = None
         if _cu and (_cu.get('prompt_tokens') or 0) > 0:
-            _used = _cu.get('total_tokens') or (
-                (_cu.get('prompt_tokens') or 0) + (_cu.get('completion_tokens') or 0))
+            _used = _cu.get('prompt_tokens')
         if _used is None:
             # Fallback: compute compiled context token count
             try:

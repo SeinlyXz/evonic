@@ -255,6 +255,10 @@ if ACTIVE_CONTEXT_MODE not in ("off", "shadow", "enforced"):
     ACTIVE_CONTEXT_MODE = "off"
 ACTIVE_CONTEXT_SOFT_TOKENS = _get_env_int(
     "ACTIVE_CONTEXT_SOFT_TOKENS", 12000, min_val=0, max_val=10_000_000)
+# When the active model declares a context window, start projecting completed
+# tool-call groups before the request consumes this share of that capacity.
+ACTIVE_CONTEXT_CAPACITY_PERCENT = _get_env_int(
+    "ACTIVE_CONTEXT_CAPACITY_PERCENT", 85, min_val=1, max_val=100)
 ACTIVE_CONTEXT_RECENT_GROUPS = _get_env_int(
     "ACTIVE_CONTEXT_RECENT_GROUPS", 2, min_val=0, max_val=100)
 ACTIVE_CONTEXT_RECEIPT_MAX_CHARS = _get_env_int(

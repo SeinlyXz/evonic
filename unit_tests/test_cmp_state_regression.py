@@ -96,6 +96,30 @@ def test_chat_state_api_no_cmp_key_when_absent():
         assert 'cmp' not in res.get_json()
 
 
+def test_chat_state_api_context_usage_compares_prompt_tokens_to_window():
+    from app import app
+    from models.db import db
+
+    agent_id, session_id = 'context_usage_agent', 'context_usage_session'
+    db.create_agent({'id': agent_id, 'name': 'Context', 'system_prompt': ''})
+    db.upsert_session_state(session_id, json.dumps({
+        'context_usage': {
+            'prompt_tokens': 80,
+            'completion_tokens': 40,
+            'total_tokens': 120,
+        },
+    }), agent_id=agent_id)
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['authenticated'] = True
+        res = client.get(f'/api/agents/{agent_id}/chat/state?session_id={session_id}')
+
+    assert res.status_code == 200
+    usage = res.get_json()['context_usage']
+    assert usage['used'] == 80
+
+
 def test_chat_state_api_preserves_session_only_fields_when_cmp_rendering_fails(monkeypatch):
     from app import app
     from models.db import db
