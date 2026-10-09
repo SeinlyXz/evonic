@@ -98,6 +98,7 @@ from routes.health import health_bp
 from routes.workplaces import workplaces_bp
 from routes.logs import logs_bp
 from routes.safety_rules import safety_rules_bp
+from routes.decim_safety import decim_safety_bp
 from routes.update import update_bp
 from routes.rtk import rtk_bp
 from routes.realtime import realtime_bp
@@ -274,6 +275,7 @@ app.register_blueprint(health_bp)
 app.register_blueprint(workplaces_bp)
 app.register_blueprint(logs_bp)
 app.register_blueprint(safety_rules_bp)
+app.register_blueprint(decim_safety_bp)
 app.register_blueprint(update_bp)
 app.register_blueprint(rtk_bp)
 app.register_blueprint(realtime_bp)

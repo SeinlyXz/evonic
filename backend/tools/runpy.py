@@ -38,6 +38,25 @@ from backend.tools.lib.backends.docker_backend import (
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _update_decim_disposition(event_id, result=None, disposition=None):
+    """Record the lifecycle outcome on the matching Decim telemetry event.
+
+    The event id is produced by the safety pipeline and kept internal; it is
+    never returned to the tool caller.  Failures here must never affect
+    execution.
+    """
+    if not event_id:
+        return
+    try:
+        from backend.services import decim_safety_telemetry
+        if disposition is None:
+            failed = bool((result or {}).get('error')) or (result or {}).get('exit_code', 0) != 0
+            disposition = 'execution_failed' if failed else 'executed'
+        decim_safety_telemetry.update_disposition(event_id, disposition)
+    except Exception:
+        pass
+
+
 def execute(agent_context: dict, args: dict) -> dict:
     action = args.get('action', 'run')
     session_id = (agent_context or {}).get('session_id') or 'default'
@@ -57,16 +76,23 @@ def execute(agent_context: dict, args: dict) -> dict:
         return {'error': "Missing required argument: 'code'"}
 
     # ------------------------------------------------------------------
-    # HMADS safety check (pipeline: system rules + custom user rules)
+    # HMADS safety check (pipeline: system rules + optional Decim Safety)
     # ------------------------------------------------------------------
-    from backend.tools.lib.safety_pipeline import get_safety_pipeline
+    from backend.tools.lib.safety_pipeline import get_safety_pipeline, should_skip_safety
 
-    if not agent_context.get('_skip_safety') and agent_context.get('safety_checker_enabled', 1) and not agent_context.get('is_super'):
+    # Exact-boolean trusted replay: only server-owned `_skip_safety is True`
+    # bypasses safety (set after human approval).  User/LLM truthy values never do.
+    if get_safety_pipeline is not None and not should_skip_safety(agent_context) \
+            and agent_context.get('safety_checker_enabled', 1) and not agent_context.get('is_super'):
         safety = get_safety_pipeline().check(code, tool_type='python', agent_context=agent_context)
     else:
         safety = {'level': 'safe', 'score': 0, 'reasons': [], 'blocked_patterns': [], 'approval_info': {}}
 
+    # Decim Safety correlation id (internal only; never returned to the caller).
+    _decim_event_id = (safety.get('decim_safety') or {}).get('event_id')
+
     if safety['level'] == 'dangerous':
+        _update_decim_disposition(_decim_event_id, disposition='blocked')
         return {
             'error': 'Execution blocked by heuristic safety system',
             'level': 'dangerous',
@@ -76,6 +102,7 @@ def execute(agent_context: dict, args: dict) -> dict:
         }
 
     if safety['level'] == 'requires_approval':
+        _update_decim_disposition(_decim_event_id, disposition='approval_requested')
         return {
             'error': 'Code requires manual approval before execution',
             'level': 'requires_approval',
@@ -114,7 +141,11 @@ def execute(agent_context: dict, args: dict) -> dict:
     # Dispatch to active backend
     # ------------------------------------------------------------------
     backend = registry.get_backend(session_id, agent_context)
-    return backend.run_python(code, timeout, env)
+    result = backend.run_python(code, timeout, env)
+
+    # Best-effort lifecycle disposition for Decim telemetry (internal only).
+    _update_decim_disposition(_decim_event_id, result)
+    return result
 
 
 # ---------------------------------------------------------------------------

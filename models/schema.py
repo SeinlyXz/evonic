@@ -717,6 +717,64 @@ class SchemaMixin:
                 )
             """)
 
+            # ==================== Decim Safety telemetry ====================
+            # Sanitized comparison evidence only: never raw command text,
+            # agent context, environment values, or provider transport details.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS decim_safety_events (
+                    id TEXT PRIMARY KEY,
+                    occurred_at TEXT NOT NULL,
+                    telemetry_epoch INTEGER NOT NULL DEFAULT 0,
+                    mode TEXT NOT NULL,
+                    tool_type TEXT NOT NULL,
+                    execution_boundary TEXT,
+                    decim_enabled INTEGER NOT NULL DEFAULT 0,
+                    decim_attempted INTEGER NOT NULL DEFAULT 0,
+                    decim_accepted INTEGER NOT NULL DEFAULT 0,
+                    provider_key TEXT,
+                    model_id TEXT,
+                    policy_version TEXT,
+                    model_decision TEXT,
+                    model_confidence REAL,
+                    model_latency_ms INTEGER,
+                    deterministic_level TEXT,
+                    deterministic_score INTEGER,
+                    deterministic_categories TEXT,
+                    final_level TEXT,
+                    decision_source TEXT,
+                    agreement TEXT,
+                    fallback_reason TEXT,
+                    error_category TEXT,
+                    final_unsafe INTEGER NOT NULL DEFAULT 0,
+                    model_unsafe INTEGER NOT NULL DEFAULT 0,
+                    deterministic_unsafe INTEGER NOT NULL DEFAULT 0,
+                    disposition TEXT,
+                    command_fingerprint TEXT,
+                    command_length INTEGER,
+                    correlation_id TEXT,
+                    expires_at TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decim_events_occurred ON decim_safety_events(occurred_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decim_events_unsafe ON decim_safety_events(final_unsafe)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decim_events_epoch ON decim_safety_events(telemetry_epoch)")
+
+            # Aggregate telemetry state (single row).  The epoch is bumped when
+            # telemetry is cleared so stale dashboards can detect the reset.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS decim_safety_telemetry_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    telemetry_epoch INTEGER NOT NULL DEFAULT 0,
+                    cleared_at TEXT,
+                    last_decision_at TEXT,
+                    total_recorded INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            cursor.execute(
+                "INSERT OR IGNORE INTO decim_safety_telemetry_state "
+                "(id, telemetry_epoch, total_recorded) VALUES (1, 0, 0)"
+            )
+
             # Schedules table (global scheduler)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS schedules (

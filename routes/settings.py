@@ -49,6 +49,22 @@ def _coerce_boolean(value: Any) -> bool:
     raise ValueError('must be a boolean')
 
 
+def _decim_settings_public(settings) -> Dict[str, Any]:
+    """Serialize provider-neutral Decim Safety settings (never transport data)."""
+    return {
+        'enabled': settings.enabled,
+        'mode': settings.mode,
+        'provider': settings.provider,
+        'request_timeout_ms': settings.request_timeout_ms,
+        'minimum_confidence': settings.minimum_confidence,
+        'max_payload_chars': settings.max_payload_chars,
+        'circuit_breaker_failures': settings.circuit_breaker_failures,
+        'circuit_breaker_cooldown_seconds': settings.circuit_breaker_cooldown_seconds,
+        'record_enforce_events': settings.record_enforce_events,
+        'retention_days': settings.retention_days,
+    }
+
+
 @settings_bp.route('/system')
 def settings():
     """System page - manage tests"""
@@ -625,6 +641,46 @@ def api_root_fs_scan_guard():
         return jsonify({'success': True, 'enabled': enabled == '1'})
     val = db.get_setting('root_fs_scan_guard_enabled', default)
     return jsonify({'enabled': val == '1'})
+
+
+@settings_bp.route('/api/settings/decim-safety', methods=['GET', 'PUT'])
+def api_decim_safety_settings():
+    """Read or update provider-neutral Decim Safety operational settings.
+
+    Only the public, provider-neutral settings are exposed and persisted here.
+    Provider transport details (endpoint, credentials) are deployment-level
+    configuration and are never part of the settings API surface.
+    """
+    from backend.tools.lib.decim_safety import (
+        load_decim_settings, validate_decim_settings, save_decim_settings,
+    )
+
+    if request.method == 'PUT':
+        data = request.get_json() or {}
+        current = load_decim_settings()
+        merged = {
+            'enabled': data.get('enabled', current.enabled),
+            'mode': data.get('mode', current.mode),
+            'provider': data.get('provider', current.provider),
+            'request_timeout_ms': data.get('request_timeout_ms', current.request_timeout_ms),
+            'minimum_confidence': data.get('minimum_confidence', current.minimum_confidence),
+            'max_payload_chars': data.get('max_payload_chars', current.max_payload_chars),
+            'circuit_breaker_failures': data.get('circuit_breaker_failures', current.circuit_breaker_failures),
+            'circuit_breaker_cooldown_seconds': data.get('circuit_breaker_cooldown_seconds', current.circuit_breaker_cooldown_seconds),
+            'record_enforce_events': data.get('record_enforce_events', current.record_enforce_events),
+            'retention_days': data.get('retention_days', current.retention_days),
+        }
+        try:
+            validated = validate_decim_settings(merged)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+        old = {key: getattr(current, key) for key in merged}
+        save_decim_settings(validated)
+        for key in merged:
+            _audit_setting_change(f'decim_safety.{key}', old[key], getattr(validated, key))
+        return jsonify({'success': True, 'settings': _decim_settings_public(validated)})
+
+    return jsonify({'settings': _decim_settings_public(load_decim_settings())})
 
 
 @settings_bp.route('/api/settings/message-wrapper', methods=['PUT'])
