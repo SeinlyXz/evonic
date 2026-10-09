@@ -878,7 +878,9 @@ def create_blueprint():
             # instance the plugin lifecycle manager loaded (plugin_pkg_kanban_*.handler),
             # whose event handlers run the scans. An absolute import would create a
             # second module instance with separate in-memory state (e.g. _notifier_paused).
-            from .handler import _notify_agent, _load_config
+            from .handler import _is_notifier_paused, _notify_agent, _load_config
+            if _is_notifier_paused():
+                return jsonify({'error': 'Kanban scanning is paused. Resume it before triggering agents.'}), 409
             cfg = _load_config()
             channel_type = cfg.get('CHANNEL_TYPE', 'telegram')
             result = _notify_agent(agent_id, task, channel_type, force=True, force_delay=True)
@@ -923,8 +925,7 @@ def create_blueprint():
                 new_state = bool(data['paused'])
             else:
                 new_state = not _is_notifier_paused()
-            _set_notifier_paused(new_state)
-            return jsonify({'paused': new_state})
+            return jsonify({'paused': _set_notifier_paused(new_state)})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
@@ -936,6 +937,15 @@ def create_blueprint():
         try:
             from .handler import _scan_and_notify
             scan_results = _scan_and_notify()
+            if scan_results.get('paused'):
+                return jsonify({
+                    'success': False,
+                    'paused': True,
+                    'message': 'Kanban scanning is paused. Resume it before triggering agents.',
+                    'notified': 0,
+                    'failed': 0,
+                    'details': [],
+                }), 409
             return jsonify({
                 'success': True,
                 'message': 'Check complete',

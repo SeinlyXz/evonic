@@ -67,13 +67,27 @@ _notifier_paused: bool = False       # global notifier pause flag (UI toggle)
 
 
 def _is_notifier_paused() -> bool:
-    return _notifier_paused
+    """Return whether all automatic Kanban delivery is suspended."""
+    with _state_lock:
+        return _notifier_paused
 
 
-def _set_notifier_paused(paused: bool):
+def _set_notifier_paused(paused: bool) -> bool:
+    """Atomically set the scanner pause state and return the effective value."""
     global _notifier_paused
-    _notifier_paused = paused
-    _log(f'Notifier {"paused" if paused else "resumed"} via UI toggle')
+    with _state_lock:
+        _notifier_paused = bool(paused)
+        effective_state = _notifier_paused
+    _log(f'Notifier {"paused" if effective_state else "resumed"} via UI toggle')
+    return effective_state
+
+
+def _skip_if_notifier_paused(scan_name: str, sdk=None) -> bool:
+    """Prevent paused scanners from reading or delivering any work."""
+    if not _is_notifier_paused():
+        return False
+    _log(f'Notifier is paused — skipping {scan_name}', 'info', sdk)
+    return True
 
 # ── Allowed tools while a task is pending (before activate) ──────────────────
 KANBAN_ALLOWED_TOOLS = {
@@ -428,6 +442,11 @@ def _notify_agent(agent_id: str, task: dict, channel_type: str, sdk=None, force:
                      "Trigger Agents" button to force immediate delivery.
     """
 
+    # A board-wide pause stops every agent trigger, including manual routes that
+    # otherwise use force/force_delay to bypass scheduling safeguards.
+    if _skip_if_notifier_paused('agent notification', sdk):
+        return {'success': False, 'reason': 'paused'}
+
     # Task delay check — bypassed when force_delay=True (e.g. user clicked Trigger Agents)
     if not force_delay:
         if _is_task_delayed(task, _load_config()):
@@ -757,6 +776,8 @@ def _emit_task_idle(agent_id: str, grace_seconds: int = 3) -> None:
 def _notify_agent_followup(agent_id: str, task: dict, merged_content: str,
                            channel_type: str, sdk=None,
                            prior_content: str = None, comment_author: str = None) -> bool:
+    if _skip_if_notifier_paused('comment follow-up notification', sdk):
+        return False
     if comment_author is None:
         comment_author = _get_owner_name()
     """Notify an agent that a completed task needs follow-up based on user comment(s).
@@ -868,6 +889,9 @@ def _notify_stale_task(agent_id: str, task: dict, channel_type: str, sdk=None):
     Bypasses pick/approve since the task is already in-progress in the DB.
     Sets _active_tasks directly so tool guards work correctly.
     """
+    if _skip_if_notifier_paused('stale-task notification', sdk):
+        return
+
     task_id = task['id']
     task_ref = f'#{task_id}'
     title = task['title']
@@ -938,6 +962,9 @@ def _notify_stale_task(agent_id: str, task: dict, channel_type: str, sdk=None):
 
 def _scan_stale_tasks(sdk=None):
     """Scan for in-progress tasks the agent is no longer tracking and re-notify."""
+    if _skip_if_notifier_paused('stale-task scan', sdk):
+        return
+
     config = _load_config()
     eligible = _get_kanban_skill_agents()
     if not eligible:
@@ -1015,14 +1042,14 @@ def _scan_and_notify(sdk=None) -> dict:
     Returns a dict with result details so callers (esp. the UI) can show
     which agents were notified and which were skipped and why.
     """
+    results = {'notified': 0, 'failed': 0, 'details': []}
+    if _skip_if_notifier_paused('new-task scan', sdk):
+        results['paused'] = True
+        return results
+
     config = _load_config()
     eligible = _get_kanban_skill_agents()
-    results = {'notified': 0, 'failed': 0, 'details': []}
     if not eligible:
-        return results
-    if _notifier_paused:
-        _log('Notifier is paused — skipping scan', 'info', sdk)
-        results['paused'] = True
         return results
 
     channel_type = config.get('CHANNEL_TYPE', 'telegram')
@@ -1127,6 +1154,9 @@ def _scan_comments_for_followup(sdk=None):
     LLM classifier; if a comment requests corrections or additional work the task
     is reopened to in-progress and the agent is notified.
     """
+    if _skip_if_notifier_paused('new-comment scan', sdk):
+        return
+
     config = _load_config()
     eligible = _get_kanban_skill_agents()
     if not eligible:
@@ -2241,8 +2271,7 @@ def on_schedule_fired(event, sdk):
     """Route scheduled events to the appropriate scan function."""
     if event.get('owner_type') != 'plugin' or event.get('owner_id') != PLUGIN_ID:
         return
-    if _notifier_paused:
-        _log('Notifier is paused — skipping scheduled scan', 'info', sdk)
+    if _skip_if_notifier_paused('scheduled scan', sdk):
         return
     if event.get('name') == _STALE_SCHEDULE_NAME:
         _scan_stale_tasks(sdk)
