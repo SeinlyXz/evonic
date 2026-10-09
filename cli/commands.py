@@ -1,6 +1,5 @@
 """Evonic CLI commands — start, stop, status, plugin, and skill management."""
 
-import fcntl
 import json
 import os
 import shutil
@@ -20,6 +19,10 @@ for lib_dir in ("lib",):
     lib_path = os.path.join(ROOT, lib_dir)
     if os.path.isdir(lib_path) and lib_path not in sys.path:
         sys.path.insert(0, lib_path)
+
+# Cross-platform advisory file locking (POSIX flock / Windows msvcrt). Imported
+# after the sys.path setup above because it lives in the ``backend`` package.
+from backend.file_lock import AlreadyLockedError, open_and_lock, release
 
 
 # PID file location.
@@ -108,9 +111,20 @@ def _is_running(pid):
         return False
 
 
-def _write_pid(pid):
-    """Write PID to file."""
+def _write_pid(pid, fd=None):
+    """Write PID to the PID file.
+
+    When ``fd`` is given the PID is written through that already-open
+    descriptor instead of reopening the file. This keeps the write from
+    truncating (or conflicting with) a byte-range lock we hold on the same
+    file, which is a lock violation on Windows.
+    """
     os.makedirs(PID_DIR, exist_ok=True)
+    if fd is not None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.ftruncate(fd, 0)
+        os.write(fd, str(pid).encode())
+        return
     with open(PID_FILE, "w") as f:
         f.write(str(pid))
 
@@ -122,38 +136,32 @@ def _remove_pid():
 
 
 def _acquire_pid_lock():
-    """Acquire an exclusive file lock (flock) on the PID file.
+    """Acquire an exclusive lock on the PID file.
 
-    The lock is held for the lifetime of the file descriptor. If another
-    instance already holds the lock, exit immediately to prevent a second
-    server process from starting.
+    Uses the cross-platform :mod:`backend.file_lock` helper so the guard works
+    on Linux, macOS, and Windows. The lock is held for the lifetime of the
+    returned file descriptor; if another instance already holds it, exit
+    immediately to prevent a second server process from starting.
 
     Returns:
-        The open file descriptor, or ``None`` if daemon mode (caller should
-        not hold the lock — the child process will).
+        The open file descriptor holding the lock. Callers must keep it open
+        for as long as the lock should be held.
     """
     if not os.path.exists(PID_DIR):
         os.makedirs(PID_DIR, exist_ok=True)
 
     try:
-        fd = os.open(PID_FILE, os.O_CREAT | os.O_RDWR)
-    except OSError as e:
-        print(f"Error: Could not open PID file {PID_FILE}: {e}")
-        sys.exit(1)
-
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError as e:
-        # EAGAIN or EWOULDBLOCK means another process holds the lock
-        os.close(fd)
+        return open_and_lock(PID_FILE)
+    except AlreadyLockedError:
         existing_pid = _get_pid()
-        msg = f"Server is already running"
+        msg = "Server is already running"
         if existing_pid:
             msg += f" (PID: {existing_pid})"
         print(msg)
         sys.exit(1)
-
-    return fd
+    except OSError as e:
+        print(f"Error: Could not open PID file {PID_FILE}: {e}")
+        sys.exit(1)
 
 
 def start_server(port=None, host=None, debug=None, daemon=False):
@@ -200,9 +208,9 @@ def start_server(port=None, host=None, debug=None, daemon=False):
         )
         # Release the lock BEFORE spawning — the child process (app.py) will
         # acquire its own via its single-instance guard. Holding the lock here
-        # causes a race: the child's fcntl.flock(LOCK_NB) fails because this
-        # process still owns the lock, killing the child immediately.
-        os.close(pid_lock_fd)
+        # causes a race: the child's non-blocking lock attempt fails because
+        # this process still owns the lock, killing the child immediately.
+        release(pid_lock_fd)
 
         proc = subprocess.Popen(
             [sys.executable, app_path],
@@ -255,9 +263,11 @@ def start_server(port=None, host=None, debug=None, daemon=False):
         print("  evonic setup")
         sys.exit(1)
 
-    # Write PID and keep the flock fd open — the lock is held for the entire
-    # server lifetime and released automatically by the OS on process exit.
-    _write_pid(os.getpid())
+    # Write our PID through the locked descriptor (instead of reopening the
+    # file) so the write cannot conflict with the byte-range lock we hold on
+    # Windows. The fd stays open for the entire server lifetime — the lock is
+    # released automatically by the OS on process exit.
+    _write_pid(os.getpid(), pid_lock_fd)
 
     print(EVONIC_BANNER)
 

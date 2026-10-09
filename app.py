@@ -1,4 +1,3 @@
-import fcntl
 import os
 import secrets
 import sys
@@ -35,30 +34,30 @@ _log = logging.getLogger(__name__)
 # and the live server already holds the flock.
 # ---------------------------------------------------------------------------
 if not os.environ.get('EVONIC_TESTING') and not os.environ.get('EVONIC_SMOKE_TEST'):
+    # Cross-platform advisory locking: fcntl.flock on POSIX, msvcrt.locking on
+    # Windows. Imported lazily so `import app` never requires fcntl (absent on
+    # Windows) before the guard runs.
+    from backend.file_lock import AlreadyLockedError, open_and_lock
+
     _APP_ROOT = os.path.dirname(os.path.abspath(__file__))
     _PID_FILE = os.path.join(_APP_ROOT, "shared", "run", "evonic.pid")
     _PID_DIR = os.path.dirname(_PID_FILE)
 
     os.makedirs(_PID_DIR, exist_ok=True)
     # If our launcher (the evonic CLI in foreground mode) already holds the
-    # single-instance flock on this PID file, skip re-acquiring it: this code
-    # runs in the SAME process as the CLI, so a second flock on a different fd
-    # would self-conflict and abort startup. The launcher's lock already guards us.
+    # single-instance lock on this PID file, skip re-acquiring it: this code
+    # runs in the SAME process as the CLI, so a second lock on the same file
+    # would self-conflict and abort startup. The launcher's lock already guards
+    # us, and the launcher writes our PID, so we must not reopen the file for a
+    # truncating write either (that would break the lock on Windows).
     if os.environ.get("EVONIC_PID_LOCK_HELD") == "1":
         _lock_fd = None
     else:
         try:
-            _lock_fd = os.open(_PID_FILE, os.O_CREAT | os.O_RDWR)
-        except OSError as e:
-            _log.critical("Could not open PID file %s: %s", _PID_FILE, e)
-            sys.exit(1)
-
-        try:
-            fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except IOError:
+            _lock_fd = open_and_lock(_PID_FILE)
+        except AlreadyLockedError:
             # Another instance holds the lock — another app.py or CLI foreground
             # process is already running. Read the current PID for a friendly message.
-            os.close(_lock_fd)
             try:
                 with open(_PID_FILE) as _f:
                     _existing_pid = _f.read().strip()
@@ -71,12 +70,17 @@ if not os.environ.get('EVONIC_TESTING') and not os.environ.get('EVONIC_SMOKE_TES
             print(f"\nError: {msg}")
             print("Use 'evonic stop' to stop the running server, then try again.")
             sys.exit(1)
+        except OSError as e:
+            _log.critical("Could not open PID file %s: %s", _PID_FILE, e)
+            sys.exit(1)
 
-    # Write our PID so ``evonic status`` / ``evonic stop`` can find us.
-    # The flock fd stays open for the process lifetime — the OS releases the
-    # lock automatically when this process exits.
-    with open(_PID_FILE, "w") as _f:
-        _f.write(str(os.getpid()))
+        # Write our PID through the locked descriptor (instead of reopening the
+        # file with mode "w") so the write cannot conflict with the byte-range
+        # lock we hold on Windows. The fd stays open for the process lifetime
+        # — the OS releases the lock automatically when this process exits.
+        os.lseek(_lock_fd, 0, os.SEEK_SET)
+        os.ftruncate(_lock_fd, 0)
+        os.write(_lock_fd, str(os.getpid()).encode())
 # ---------------------------------------------------------------------------
 
 from models.db import db

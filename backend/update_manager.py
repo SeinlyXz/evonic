@@ -21,6 +21,7 @@ import time
 from datetime import datetime
 
 import config
+from backend import file_lock
 
 try:
     from packaging import version as pkg_version
@@ -446,33 +447,20 @@ def _resolve_rollback_target() -> str:
 
 def _acquire_update_lock():
     """Cross-process advisory lock so concurrent web+CLI calls don't race on
-    git operations. POSIX only; no-op on Windows (single-user install assumption).
-    Returns (acquired: bool, fd: file | None)."""
-    if sys.platform == 'win32':
-        return True, None
+    git operations. Uses :mod:`backend.file_lock` so the guard is real on both
+    POSIX (fcntl.flock) and Windows (msvcrt.locking) — no longer a Windows no-op.
+    Returns (acquired: bool, fd: int | None)."""
     lock_path = os.path.join(os.path.dirname(_get_state_file_path()), 'update.lock')
     try:
-        import fcntl
-        fd = open(lock_path, 'w')
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return True, fd
-    except (IOError, OSError):
-        try:
-            fd.close()
-        except Exception:
-            pass
+        return True, file_lock.open_and_lock(lock_path)
+    except OSError:
+        # Another update/rollback already holds the lock, or the lock file is
+        # not usable — refuse to proceed rather than run concurrently.
         return False, None
 
 
 def _release_update_lock(fd) -> None:
-    if fd is None:
-        return
-    try:
-        import fcntl
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        fd.close()
-    except Exception:
-        pass
+    file_lock.release(fd)
 
 
 def apply_update(target: str, progress_cb=None) -> dict:
