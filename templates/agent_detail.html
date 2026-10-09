@@ -1303,7 +1303,7 @@ html.dark .agent-tab.tab-btn.active:hover { background: rgb(129 140 248 / .22); 
             <!-- HMADS: Agent-specific safety rules -->
             <div class="mb-4" id="agent-safety-rules-section">
                 <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Safety Rules (Specific)</label>
-                <p class="text-xs text-gray-400 mb-2">Assign specific-scope HMADS rules to this agent. Global rules always apply. <a href="/system#hmads" class="text-indigo-500 hover:underline">Manage rules</a></p>
+                <p class="text-xs text-gray-400 mb-2">Assign specific-scope HMADS rules to this agent. Global rules always apply. <a href="/system/safety#hmads" class="text-indigo-500 hover:underline">Manage rules</a></p>
                 <div id="agent-safety-rules-list" class="space-y-1 max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-md p-2 bg-gray-50 dark:bg-gray-700/50">
                     <div class="text-xs text-gray-400">Loading...</div>
                 </div>
@@ -3617,7 +3617,7 @@ async function loadAgentSafetyRules() {
         _assignedRuleIds = new Set(assignedData.rule_ids || []);
 
         if (!_specificRules.length) {
-            listEl.innerHTML = '<div class="text-xs text-gray-400">No specific-scope rules available. <a href="/system#hmads" class="text-indigo-500 hover:underline">Create one</a></div>';
+            listEl.innerHTML = '<div class="text-xs text-gray-400">No specific-scope rules available. <a href="/system/safety#hmads" class="text-indigo-500 hover:underline">Create one</a></div>';
             return;
         }
         listEl.innerHTML = _specificRules.map(r => {

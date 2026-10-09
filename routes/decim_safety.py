@@ -8,7 +8,7 @@ all list filters are validated server-side.
 
 Endpoints:
 
-* ``GET  /system/decim-safety``                dashboard page
+* ``GET  /system/decim-safety``                legacy redirect → /system/safety#dmss
 * ``GET  /api/admin/decim-safety/health``      operational status
 * ``GET  /api/admin/decim-safety/summary``     aggregate statistics
 * ``GET  /api/admin/decim-safety/metrics``     summary + time-bucketed trend
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, redirect, request
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,13 @@ def _parse_positive_int(raw, *, default: int, minimum: int = 1, maximum: int) ->
 
 @decim_safety_bp.route("/system/decim-safety")
 def decim_safety_page():
-    """Render the Decim Safety dashboard shell (data loaded via the API)."""
-    return render_template("decim_safety.html")
+    """Legacy dashboard route — now consolidated under System > Safety.
+
+    Redirects to the DMSS tab of the consolidated Safety page so existing
+    bookmarks and links keep resolving (task #836). The API surface below is
+    unchanged.
+    """
+    return redirect("/system/safety#dmss")
 
 
 @decim_safety_bp.route("/api/admin/decim-safety/health", methods=["GET"])

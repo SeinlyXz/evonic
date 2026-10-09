@@ -1,0 +1,432 @@
+/* Safety page core — /system/safety
+ * Accessible tab router (General / HMADS / DMSS) with lazy pane init,
+ * General policy status (live from the settings + health APIs), and the
+ * DMSS (Decim Safety) dashboard migrated from the legacy /system/decim-safety
+ * page with proper loading / error / empty states.
+ *
+ * The HMADS pane reuses window.hmads from partials/hmads.html (loaded inline
+ * by the template before this script). */
+
+(function () {
+    "use strict";
+
+    var TABS = ["general", "hmads", "dmss"];
+
+    function qs(sel) { return document.querySelector(sel); }
+    function esc(s) {
+        var d = document.createElement("div");
+        d.textContent = (s === null || s === undefined) ? "" : String(s);
+        return d.innerHTML;
+    }
+
+    /* ==================== Accessible tab router ====================
+     * role=tablist/tab/tabpanel with roving tabindex, arrow-key navigation
+     * and hash routing (#general | #hmads | #dmss). Panes initialize lazily
+     * on first activation so data is only fetched when actually viewed. */
+
+    var SafetyTabs = {
+        _initialized: {},
+
+        init() {
+            var bar = qs("#safety-tablist");
+            if (!bar) return;
+            var tabs = Array.prototype.slice.call(bar.querySelectorAll('[role="tab"]'));
+
+            var select = function (id, focus) {
+                if (TABS.indexOf(id) === -1) id = "general";
+                tabs.forEach(function (t) {
+                    var on = t.dataset.tab === id;
+                    t.setAttribute("aria-selected", on ? "true" : "false");
+                    t.tabIndex = on ? 0 : -1;
+                });
+                TABS.forEach(function (tid) {
+                    var p = document.getElementById("safety-panel-" + tid);
+                    if (p) p.hidden = tid !== id;
+                });
+                if (focus) {
+                    var active = null;
+                    tabs.forEach(function (t) { if (t.dataset.tab === id) active = t; });
+                    if (active) active.focus();
+                }
+                if (location.hash !== "#" + id) {
+                    history.replaceState(null, "", "#" + id);
+                }
+                SafetyTabs.initPane(id);
+            };
+
+            SafetyTabs.initPane = function (id) {
+                if (SafetyTabs._initialized[id]) return;
+                SafetyTabs._initialized[id] = true;
+                try {
+                    if (id === "general") {
+                        if (window.safetyGeneral) window.safetyGeneral.init();
+                    } else if (id === "hmads") {
+                        if (window.hmads) window.hmads.init();
+                    } else if (id === "dmss") {
+                        if (window.safetyDmss) window.safetyDmss.init();
+                    }
+                } catch (e) {
+                    console.error("Safety pane init failed:", id, e);
+                    SafetyTabs._initialized[id] = false;
+                }
+            };
+
+            tabs.forEach(function (t, i) {
+                t.addEventListener("click", function () { select(t.dataset.tab); });
+                t.addEventListener("keydown", function (e) {
+                    var next = null;
+                    if (e.key === "ArrowRight") next = tabs[(i + 1) % tabs.length];
+                    else if (e.key === "ArrowLeft") next = tabs[(i - 1 + tabs.length) % tabs.length];
+                    else if (e.key === "Home") next = tabs[0];
+                    else if (e.key === "End") next = tabs[tabs.length - 1];
+                    if (next) {
+                        e.preventDefault();
+                        select(next.dataset.tab, true);
+                    }
+                });
+            });
+
+            window.addEventListener("hashchange", function () {
+                select(location.hash.slice(1));
+            });
+
+            select(location.hash.slice(1));
+        },
+    };
+
+    /* ==================== General pane: policy + live status ====================
+     * Explains the "HMADS only" vs "DMSS enabled" choice and shows the live
+     * operational state (settings + health). Policy *controls* (persistence
+     * UI) land with task #837 — here the status is read-only. */
+
+    window.safetyGeneral = {
+        _initialized: false,
+        _timer: null,
+
+        init() {
+            if (this._initialized) return;
+            this._initialized = true;
+            var retry = qs("#sg-retry");
+            if (retry) retry.addEventListener("click", function () { window.safetyGeneral.load(); });
+            var refresh = qs("#sg-refresh");
+            if (refresh) refresh.addEventListener("click", function () { window.safetyGeneral.load(); });
+            this.load();
+            // Keep the status card fresh while the page is open.
+            this._timer = setInterval(function () {
+                if (!document.hidden) window.safetyGeneral.load(true);
+            }, 30000);
+        },
+
+        load(silent) {
+            var loading = qs("#sg-loading");
+            var error = qs("#sg-error");
+            var body = qs("#sg-status");
+            if (!silent && loading) loading.hidden = false;
+            if (error) error.hidden = true;
+
+            Promise.all([
+                fetch("/api/settings/decim-safety").then(function (r) { return r.json(); }),
+                fetch("/api/admin/decim-safety/health").then(function (r) { return r.json(); }),
+            ]).then(function (res) {
+                var settings = (res[0] && res[0].settings) || {};
+                var health = res[1] || {};
+                window.safetyGeneral.render(settings, health);
+            }).catch(function (e) {
+                console.error("Failed to load safety status:", e);
+                if (loading) loading.hidden = true;
+                if (body) body.hidden = true;
+                if (error) error.hidden = false;
+            });
+        },
+
+        render(settings, health) {
+            var loading = qs("#sg-loading");
+            var body = qs("#sg-status");
+            if (loading) loading.hidden = true;
+            if (body) body.hidden = false;
+
+            var dmssOn = !!settings.enabled;
+
+            // Highlight the active policy card.
+            document.querySelectorAll(".sf-policy").forEach(function (card) {
+                var policy = card.dataset.policy;
+                var active = (policy === "dmss") === dmssOn;
+                card.classList.toggle("is-active", active);
+                var badge = card.querySelector(".sf-policy-badge");
+                if (badge) {
+                    badge.textContent = active ? "Active" : "Inactive";
+                    badge.className = "sf-policy-badge " + (active ? "sf-badge sf-badge-accent" : "sf-badge sf-badge-muted");
+                }
+            });
+
+            // Mode label: off / shadow / enforce (with the human meaning).
+            var mode = settings.mode || "off";
+            var modeText = mode === "off" ? "off" : mode;
+            this._set("#sg-mode", modeText);
+            this._set("#sg-enabled", dmssOn ? "On" : "Off");
+            this._set("#sg-provider", dmssOn ? (settings.provider || "—") : "— (disabled)");
+            this._set("#sg-circuit", health.circuit_state || "—");
+            this._set("#sg-fallback",
+                (health.fallback_rate_24h === null || health.fallback_rate_24h === undefined)
+                    ? "—" : (Math.round(health.fallback_rate_24h * 1000) / 10) + "%");
+            this._set("#sg-last", health.last_decision_at || "never");
+            this._set("#sg-timeout", (settings.request_timeout_ms != null ? settings.request_timeout_ms + " ms" : "—"));
+            this._set("#sg-confidence", (settings.minimum_confidence != null ? String(settings.minimum_confidence) : "—"));
+            this._set("#sg-breaker",
+                (settings.circuit_breaker_failures != null && settings.circuit_breaker_cooldown_seconds != null)
+                    ? (settings.circuit_breaker_failures + " fails / " + settings.circuit_breaker_cooldown_seconds + " s cooldown")
+                    : "—");
+            this._set("#sg-retention", (settings.retention_days != null ? settings.retention_days + " days" : "—"));
+
+            // Circuit badge color.
+            var cb = qs("#sg-circuit-badge");
+            if (cb) {
+                var state = (health.circuit_state || "closed").toLowerCase();
+                cb.className = "sf-badge " + (state === "open" ? "sf-badge-err" : (state === "half-open" ? "sf-badge-warn" : "sf-badge-ok"));
+                cb.textContent = state;
+            }
+        },
+
+        _set(sel, value) {
+            var el = qs(sel);
+            if (el) el.textContent = value;
+        },
+    };
+
+    /* ==================== DMSS pane: migrated dashboard ====================
+     * Same data surface as the legacy /system/decim-safety page
+     * (health / summary / events / telemetry-clear), restyled with the
+     * shared tokens and with explicit loading / error / empty states. */
+
+    window.safetyDmss = {
+        API: "/api/admin/decim-safety",
+        _initialized: false,
+        _timer: null,
+        state: { limit: 50, offset: 0, total: 0 },
+
+        init() {
+            if (this._initialized) return;
+            this._initialized = true;
+
+            var refresh = qs("#dmss-refresh");
+            if (refresh) refresh.addEventListener("click", function () { window.safetyDmss.refresh(); });
+            var clear = qs("#dmss-clear");
+            if (clear) clear.addEventListener("click", function () { window.safetyDmss.clearTelemetry(); });
+            var retry = qs("#dmss-retry");
+            if (retry) retry.addEventListener("click", function () { window.safetyDmss.refresh(); });
+            ["#f-window", "#f-mode", "#f-tool", "#f-unsafe"].forEach(function (sel) {
+                var el = qs(sel);
+                if (el) el.addEventListener("change", function () {
+                    window.safetyDmss.state.offset = 0;
+                    window.safetyDmss.refresh();
+                });
+            });
+
+            this.refresh();
+            this._timer = setInterval(function () {
+                if (!document.hidden) window.safetyDmss.loadHealth();
+            }, 30000);
+        },
+
+        _filters() {
+            var p = new URLSearchParams();
+            var w = qs("#f-window");
+            var v = w ? parseInt(w.value, 10) : 168;
+            p.set("window_hours", String(isNaN(v) ? 168 : v));
+            var m = qs("#f-mode");
+            if (m && m.value) p.set("mode", m.value);
+            var t = qs("#f-tool");
+            if (t && t.value) p.set("tool_type", t.value);
+            return p;
+        },
+
+        _setError(show, message) {
+            var banner = qs("#dmss-error");
+            if (!banner) return;
+            banner.hidden = !show;
+            if (show) {
+                var msg = qs("#dmss-error-msg");
+                if (msg) msg.textContent = message || "Failed to load DMSS data.";
+            }
+        },
+
+        refresh() {
+            this.loadHealth();
+            this.loadSummary();
+            this.loadEvents();
+        },
+
+        loadHealth() {
+            var badge = qs("#dmss-state-badge");
+            function text(sel, v) { var el = qs(sel); if (el) el.textContent = v; }
+            fetch(this.API + "/health").then(function (r) {
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                return r.json();
+            }).then(function (d) {
+                window.safetyDmss._setError(false);
+                text("#kpi-enabled", d.enabled ? "On" : "Off");
+                text("#kpi-mode", d.enabled ? (d.mode || "off") : "off");
+                text("#kpi-provider", d.provider || "—");
+                text("#kpi-circuit", "circuit " + (d.circuit_state || "closed"));
+                text("#kpi-fallback",
+                    (d.fallback_rate_24h === null || d.fallback_rate_24h === undefined)
+                        ? "—" : (Math.round(d.fallback_rate_24h * 1000) / 10) + "%");
+                if (badge) {
+                    var label = d.enabled ? d.mode : "disabled";
+                    badge.textContent = label;
+                    badge.className = "sf-badge " +
+                        (d.enabled && d.mode === "enforce" ? "sf-badge-err" :
+                         d.enabled ? "sf-badge-warn" : "sf-badge-muted");
+                }
+            }).catch(function () {
+                if (badge) {
+                    badge.textContent = "unreachable";
+                    badge.className = "sf-badge sf-badge-err";
+                }
+                window.safetyDmss._setError(true, "Health check failed — the Decim Safety API is unreachable.");
+            });
+        },
+
+        loadSummary() {
+            var p = this._filters();
+            fetch(this.API + "/summary?" + p.toString()).then(function (r) {
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                return r.json();
+            }).then(function (d) {
+                function text(sel, v) { var el = qs(sel); if (el) el.textContent = v; }
+                text("#kpi-total", d.total_comparisons != null ? d.total_comparisons : 0);
+                text("#kpi-accepted", (d.decim_accepted != null ? d.decim_accepted : 0) + " accepted · " + (d.fallback_count != null ? d.fallback_count : 0) + " fallback");
+                text("#kpi-unsafe",
+                    (d.unsafe && d.unsafe.final != null)
+                        ? (d.unsafe.final + " unsafe · " + Math.round((d.unsafe.final_rate || 0) * 1000) / 10 + "%")
+                        : "—");
+                window.safetyDmss._renderTable("#tbl-decisions", d.decision_distribution || {});
+                window.safetyDmss._renderTable("#tbl-agreement", d.agreement_matrix || {});
+            }).catch(function (e) {
+                console.error("DMSS summary failed:", e);
+            });
+        },
+
+        _renderTable(sel, obj) {
+            var el = qs(sel);
+            if (!el) return;
+            var rows = Object.keys(obj).map(function (k) {
+                return "<tr><td>" + esc(k) + "</td><td>" + esc(obj[k]) + "</td></tr>";
+            }).join("");
+            el.innerHTML = rows || '<tr><td colspan="2" class="sf-empty-cell">no data in this window</td></tr>';
+        },
+
+        loadEvents() {
+            var p = this._filters();
+            p.set("limit", String(this.state.limit));
+            p.set("offset", String(this.state.offset));
+            var unsafe = qs("#f-unsafe");
+            if (unsafe && unsafe.checked) p.set("unsafe_only", "1");
+            var body = qs("#tbl-events-body");
+            if (!body) return;
+
+            fetch(this.API + "/events?" + p.toString()).then(function (r) {
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                return r.json();
+            }).then(function (d) {
+                window.safetyDmss._setError(false);
+                window.safetyDmss.state.total = d.total || 0;
+                var events = d.events || [];
+                if (!events.length) {
+                    body.innerHTML = '<tr><td colspan="11" class="sf-empty-cell">No events in this window. Commands flagged while "Unsafe only" is on appear here.</td></tr>';
+                } else {
+                    body.innerHTML = events.map(function (e) {
+                        return "<tr>" +
+                            "<td>" + esc(e.occurred_at) + "</td>" +
+                            "<td>" + esc(e.mode) + "</td>" +
+                            "<td>" + esc(e.tool_type) + "</td>" +
+                            '<td class="strong">' + esc(e.final_level) + "</td>" +
+                            "<td>" + esc(e.decision_source) + "</td>" +
+                            "<td>" + esc(e.model_decision || "—") + "</td>" +
+                            "<td>" + (e.model_confidence == null ? "—" : esc(e.model_confidence)) + "</td>" +
+                            "<td>" + esc(e.agreement || "—") + "</td>" +
+                            "<td>" + esc(e.fallback_reason || "—") + "</td>" +
+                            "<td>" + esc(e.disposition || "—") + "</td>" +
+                            '<td class="mono">' + esc(e.command_fingerprint || "—") + " (" + esc(e.command_length) + ")</td>" +
+                            "</tr>";
+                    }).join("");
+                }
+                window.safetyDmss._renderPager();
+            }).catch(function (e) {
+                console.error("DMSS events failed:", e);
+                body.innerHTML = '<tr><td colspan="11" class="sf-empty-cell sf-empty-cell-err">Failed to load events.</td></tr>';
+                window.safetyDmss._setError(true, "Failed to load the activity table — check the Decim Safety service and retry.");
+            });
+        },
+
+        _renderPager() {
+            var el = qs("#dmss-pager");
+            if (!el) return;
+            var total = this.state.total;
+            var limit = this.state.limit;
+            var start = total ? this.state.offset + 1 : 0;
+            var end = Math.min(this.state.offset + limit, total);
+            el.innerHTML =
+                "<span>Showing " + start + "–" + end + " of " + total + "</span>" +
+                '<button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" id="dmss-pg-prev"' + (this.state.offset <= 0 ? " disabled" : "") + ">Prev</button>" +
+                '<button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" id="dmss-pg-next"' + (end >= total ? " disabled" : "") + ">Next</button>";
+            var prev = qs("#dmss-pg-prev");
+            var next = qs("#dmss-pg-next");
+            if (prev) prev.addEventListener("click", function () {
+                window.safetyDmss.state.offset = Math.max(0, window.safetyDmss.state.offset - limit);
+                window.safetyDmss.loadEvents();
+            });
+            if (next) next.addEventListener("click", function () {
+                if (end < total) {
+                    window.safetyDmss.state.offset += limit;
+                    window.safetyDmss.loadEvents();
+                }
+            });
+        },
+
+        clearTelemetry() {
+            var self = this;
+            if (!confirm("Clear all Decim Safety telemetry records and statistics? This does not change Decim configuration.")) return;
+            fetch(this.API + "/telemetry/clear", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                alert(d.success ? ("Cleared " + d.deleted + " record(s).") : "Clear failed.");
+                self.state.offset = 0;
+                self.refresh();
+            }).catch(function () {
+                alert("Clear failed.");
+            });
+        },
+    };
+
+    /* ==================== Diagnostic tester placeholder (task #839) ====================
+     * Entry point only: the bounded provider test endpoint lands in #839. */
+
+    window.safetyTester = {
+        init() {
+            var run = qs("#dmss-tester-run");
+            if (!run) return;
+            run.addEventListener("click", function () {
+                var out = qs("#dmss-tester-out");
+                if (out) {
+                    out.className = "sf-tester-out";
+                    out.textContent = "Tester endpoint lands with task #839 — this entry point is wired and ready.";
+                }
+            });
+        },
+    };
+
+    /* ==================== Boot ==================== */
+
+    function boot() {
+        SafetyTabs.init();
+        window.safetyTester.init();
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot);
+    } else {
+        boot();
+    }
+})();

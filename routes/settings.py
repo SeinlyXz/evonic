@@ -71,6 +71,19 @@ def settings():
     return render_template('settings.html')
 
 
+@settings_bp.route('/system/safety')
+def safety_page():
+    """Consolidated Safety administration page (General / HMADS / DMSS).
+
+    Single entry point under System > Safety: the General tab explains the
+    HMADS-only vs DMSS-enabled policy choice, the HMADS tab hosts the
+    deterministic safety-rules CRUD, and the DMSS tab hosts the Decim Safety
+    dashboard. Legacy routes (/system#hmads, /system/decim-safety) redirect
+    here.
+    """
+    return render_template('safety.html')
+
+
 @settings_bp.route('/system/models')
 def settings_models():
     """Models system page"""

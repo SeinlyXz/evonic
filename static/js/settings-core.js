@@ -252,7 +252,6 @@ const SettingsNav = {
         general: { init: () => window.settingsGeneral && settingsGeneral.init() },
         tools: { init: () => window.settingsTools && settingsTools.init() },
         models: { init: () => window.settingsModels && settingsModels.init() },
-        hmads: { init: () => window.hmads && hmads.init() },
         users: { init: () => window.usersTab && usersTab.init() },
         shared_channel: { init: () => window.sharedChannel && sharedChannel.init() },
         logs: { init: () => window.logViewer && logViewer.init() },
@@ -261,6 +260,12 @@ const SettingsNav = {
 
     activate(id, opts) {
         opts = opts || {};
+        // #836: HMADS rules moved to the consolidated Safety page —
+        // legacy callers (showTab('hmads'), deep links) are redirected there.
+        if (id === "hmads") {
+            window.location.replace("/system/safety#hmads");
+            return;
+        }
         const section = this.sections[id] ? id : "general";
         document.querySelectorAll(".settings-pane").forEach((p) => {
             p.classList.toggle("active", p.id === "section-" + section);
@@ -293,6 +298,11 @@ const SettingsNav = {
 
     route() {
         const h = location.hash.slice(1);
+        // #836: the old #hmads hash now lives on the consolidated Safety page
+        if (h === "hmads") {
+            window.location.replace("/system/safety#hmads");
+            return;
+        }
         if (h.startsWith("tools-")) {
             const toolId = decodeURIComponent(h.slice(6));
             this.activate("tools", { fromHash: true });

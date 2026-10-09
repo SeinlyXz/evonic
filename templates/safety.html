@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/safety.css') }}?v=1">
+
+<div class="safety-page">
+    <div class="safety-header">
+        <div>
+            <h2><i data-lucide="shield-check"></i>Safety</h2>
+            <p class="safety-sub">Heuristic (HMADS) and decision-model (DMSS) safety controls for agent tool execution</p>
+        </div>
+        <a href="/system" class="safety-back"><i data-lucide="arrow-left"></i>System Settings</a>
+    </div>
+
+    <!-- ==================== Tabs ==================== -->
+    <div class="safety-tabs" role="tablist" aria-label="Safety sections" id="safety-tablist">
+        <button type="button" class="safety-tab" role="tab" id="safety-tab-general"
+                data-tab="general" aria-selected="true" aria-controls="safety-panel-general">
+            <i data-lucide="sliders-horizontal"></i><span>General</span>
+        </button>
+        <button type="button" class="safety-tab" role="tab" id="safety-tab-hmads"
+                data-tab="hmads" aria-selected="false" aria-controls="safety-panel-hmads" tabindex="-1">
+            <i data-lucide="shield-alert"></i><span>HMADS</span>
+        </button>
+        <button type="button" class="safety-tab" role="tab" id="safety-tab-dmss"
+                data-tab="dmss" aria-selected="false" aria-controls="safety-panel-dmss" tabindex="-1">
+            <i data-lucide="brain-circuit"></i><span>DMSS</span>
+        </button>
+    </div>
+
+    <!-- ==================== General ==================== -->
+    <div role="tabpanel" id="safety-panel-general" aria-labelledby="safety-tab-general" class="safety-panel">
+        <!-- Policy choice -->
+        <div class="sf-policy-grid">
+            <article class="sf-card sf-policy" id="sg-policy-hmads" data-policy="hmads-only">
+                <h3 class="sf-policy-name">
+                    HMADS only
+                    <span class="sf-policy-badge sf-badge sf-badge-muted">…</span>
+                </h3>
+                <p class="sf-policy-body">
+                    Every <code>bash</code> / <code>python</code> command is scored purely by the
+                    deterministic heuristic rules — the built-in guards plus the custom rules managed
+                    in the <a href="#hmads">HMADS tab</a>. No model call, no network, fully
+                    predictable, zero extra latency.
+                </p>
+            </article>
+
+            <article class="sf-card sf-policy" id="sg-policy-dmss" data-policy="dmss">
+                <h3 class="sf-policy-name">
+                    DMSS enabled
+                    <span class="sf-policy-active-pill" id="sg-pill-dmss" hidden>Active</span>
+                </h3>
+                <p class="sf-policy-body">
+                    A provider-hosted decision model (DMSS) also evaluates each command.
+                    <strong>shadow</strong> records and compares model decisions while HMADS still
+                    decides; <strong>enforce</strong> lets the model decide when it can.
+                </p>
+            </article>
+        </div>
+
+        <!-- Deterministic fallback explainer -->
+        <div class="sf-fallback">
+            <i data-lucide="shield-check"></i>
+            <div>
+                <div class="sf-fallback-title">Deterministic HMADS fallback</div>
+                <p>
+                    When DMSS is enabled, the deterministic HMADS decision is always the exact
+                    fallback. If the DMSS call times out (<code>request_timeout_ms</code>), its
+                    circuit breaker is open, or the model returns an unusable decision (malformed,
+                    or confidence below <code>minimum_confidence</code>), the pipeline applies the
+                    HMADS decision instead. A command is never left undecided — and the fallback is
+                    deterministic, so identical inputs always produce identical outcomes.
+                </p>
+            </div>
+        </div>
+
+        <!-- Live status -->
+        <div class="sf-card sf-mt">
+            <div class="sf-card-head">
+                <h3>Current status</h3>
+                <button type="button" class="sf-btn" id="sg-refresh"><i data-lucide="refresh-cw"></i>Refresh</button>
+            </div>
+            <div id="sg-loading" class="sf-state">
+                <div class="spinner"></div>
+                <span>Loading safety status…</span>
+            </div>
+            <div id="sg-error" class="sf-state sf-state-err" hidden>
+                <span id="sg-error-msg">Failed to load safety status.</span>
+                <button type="button" class="sf-btn" id="sg-retry">Retry</button>
+            </div>
+            <div id="sg-status" hidden>
+                <div class="sf-status-grid">
+                    <div class="sf-kpi">
+                        <div class="sf-kpi-label">DMSS</div>
+                        <div class="sf-kpi-value" id="sg-enabled">—</div>
+                        <div class="sf-kpi-sub" id="sg-mode">—</div>
+                    </div>
+                    <div class="sf-kpi">
+                        <div class="sf-kpi-label">Provider</div>
+                        <div class="sf-kpi-value" id="sg-provider">—</div>
+                        <div class="sf-kpi-sub"><span id="sg-circuit-badge" class="sf-badge sf-badge-muted">closed</span></div>
+                    </div>
+                    <div class="sf-kpi">
+                        <div class="sf-kpi-label">Fallback (24h)</div>
+                        <div class="sf-kpi-value" id="sg-fallback">—</div>
+                        <div class="sf-kpi-sub" id="sg-last">last decision —</div>
+                    </div>
+                    <div class="sf-kpi">
+                        <div class="sf-kpi-label">Guardrails</div>
+                        <div class="sf-kpi-value" id="sg-timeout">—</div>
+                        <div class="sf-kpi-sub" id="sg-confidence">—</div>
+                    </div>
+                    <div class="sf-kpi">
+                        <div class="sf-kpi-label">Resilience</div>
+                        <div class="sf-kpi-value" id="sg-breaker">—</div>
+                        <div class="sf-kpi-sub" id="sg-retention">—</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Policy controls placeholder (persistence lands with task #837) -->
+        <div class="sf-tester sf-mt">
+            <i data-lucide="sliders-horizontal"></i>
+            <div class="sf-tester-body">
+                <div class="sf-tester-title">Policy controls <span class="sf-tester-note">coming soon</span></div>
+                <p class="sf-tester-desc">
+                    The switch between <em>HMADS only</em> and <em>DMSS enabled</em> (mode, provider,
+                    guardrail tuning) lands here with the General settings work (task #837). Until
+                    then, the status above is read-only.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== HMADS ==================== -->
+    <div role="tabpanel" id="safety-panel-hmads" aria-labelledby="safety-tab-hmads" class="safety-panel" hidden>
+        {% include 'partials/hmads.html' %}
+    </div>
+
+    <!-- ==================== DMSS ==================== -->
+    <div role="tabpanel" id="safety-panel-dmss" aria-labelledby="safety-tab-dmss" class="safety-panel" hidden>
+        <div class="sf-dmss-section-head">
+            <h3>Decision Model Safety System (DMSS)</h3>
+            <div class="sf-dmss-actions">
+                <span id="dmss-state-badge" class="sf-badge sf-badge-muted">loading…</span>
+                <button type="button" class="sf-btn" id="dmss-refresh"><i data-lucide="refresh-cw"></i>Refresh</button>
+            </div>
+        </div>
+        <p class="sf-card-desc">
+            Provider-agnostic decision-model safety. Deterministic HMADS remains the fallback.
+        </p>
+
+        <div id="dmss-error" class="sf-state sf-state-err" hidden>
+            <span id="dmss-error-msg">Failed to load DMSS telemetry.</span>
+            <button type="button" class="sf-btn" id="dmss-retry">Retry</button>
+        </div>
+
+        <!-- KPIs -->
+        <div class="sf-dmss-grid">
+            <div class="sf-kpi">
+                <div class="sf-kpi-label">Status</div>
+                <div class="sf-kpi-value" id="kpi-enabled">—</div>
+                <div class="sf-kpi-sub" id="kpi-mode">—</div>
+            </div>
+            <div class="sf-kpi">
+                <div class="sf-kpi-label">Provider</div>
+                <div class="sf-kpi-value" id="kpi-provider">—</div>
+                <div class="sf-kpi-sub" id="kpi-circuit">circuit —</div>
+            </div>
+            <div class="sf-kpi">
+                <div class="sf-kpi-label">Comparisons</div>
+                <div class="sf-kpi-value" id="kpi-total">—</div>
+                <div class="sf-kpi-sub" id="kpi-accepted">—</div>
+            </div>
+            <div class="sf-kpi">
+                <div class="sf-kpi-label">Fallback rate</div>
+                <div class="sf-kpi-value" id="kpi-fallback">—</div>
+                <div class="sf-kpi-sub" id="kpi-unsafe">—</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="sf-filters sf-mt">
+            <label>Window
+                <select id="f-window" class="sf-select">
+                    <option value="24">24h</option>
+                    <option value="168" selected>7d</option>
+                    <option value="720">30d</option>
+                    <option value="0">All</option>
+                </select>
+            </label>
+            <label>Mode
+                <select id="f-mode" class="sf-select">
+                    <option value="">all</option>
+                    <option value="shadow">shadow</option>
+                    <option value="enforce">enforce</option>
+                </select>
+            </label>
+            <label>Tool
+                <select id="f-tool" class="sf-select">
+                    <option value="">all</option>
+                    <option value="bash">bash</option>
+                    <option value="python">python</option>
+                </select>
+            </label>
+            <label><input type="checkbox" id="f-unsafe" class="sf-checkbox" checked> Unsafe only</label>
+        </div>
+
+        <!-- Distribution / agreement -->
+        <div class="sf-dist-grid sf-mt">
+            <div class="sf-card">
+                <div class="sf-card-title">Decision distribution</div>
+                <div class="sf-table-wrap"><table class="sf-table" id="tbl-decisions"></table></div>
+            </div>
+            <div class="sf-card">
+                <div class="sf-card-title">Agreement matrix</div>
+                <div class="sf-table-wrap"><table class="sf-table" id="tbl-agreement"></table></div>
+            </div>
+        </div>
+
+        <!-- Activity -->
+        <div class="sf-card sf-mt">
+            <div class="sf-card-head">
+                <h3>Activity</h3>
+                <button type="button" class="sf-btn sf-btn-danger" id="dmss-clear">Clear telemetry…</button>
+            </div>
+            <div class="sf-table-wrap">
+                <table class="sf-table" id="tbl-events">
+                    <thead>
+                        <tr>
+                            <th>When</th><th>Mode</th><th>Tool</th><th>Final</th><th>Source</th>
+                            <th>Model</th><th>Conf</th><th>Agreement</th><th>Fallback</th>
+                            <th>Disposition</th><th>Fingerprint</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbl-events-body">
+                        <tr><td colspan="11" class="sf-empty-cell">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="dmss-pager" class="sf-pager"></div>
+        </div>
+
+        <!-- Diagnostic tester placeholder (entry point for task #839) -->
+        <div class="sf-tester sf-mt">
+            <i data-lucide="flask-conical"></i>
+            <div class="sf-tester-body">
+                <div class="sf-tester-title">Diagnostic tester <span class="sf-tester-note">diagnostic only</span></div>
+                <p class="sf-tester-desc">
+                    Paste a sample payload and call the DMSS provider end-to-end to debug a
+                    decision. The tester does not execute commands, does not alter production
+                    decisions, and does not pollute telemetry. The entry point lands with the
+                    tester endpoint (task #839).
+                </p>
+                <div class="sf-tester-box">
+                    <textarea id="dmss-tester-payload" rows="3"
+                              placeholder="Sample payload (e.g. a bash command)…" disabled></textarea>
+                    <button type="button" class="sf-btn" id="dmss-tester-run" disabled>Test</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/safety.js') }}?v=1"></script>
+{% endblock %}
