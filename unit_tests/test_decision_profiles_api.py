@@ -157,6 +157,47 @@ def test_non_builtin_can_be_deleted_and_routes_require_authentication(client):
     assert anonymous.get("/api/admin/decision-profiles").status_code == 401
 
 
+def test_api_accepts_canonical_decision_model_capabilities(client):
+    db.create_model({
+        "id": "systemone/LiquidAI-d1-3B",
+        "name": "LiquidAI d1-3B",
+        "type": "remote",
+        "provider": "systemone",
+        "model_name": "LiquidAI/d1-3B",
+        "capabilities": {
+            "version": "model-capabilities/v1",
+            "operations": {"decision": "verified", "strict_output": "verified"},
+            "schema_versions": ["decision-schema/v1"],
+        },
+    })
+
+    response = client.post("/api/admin/decision-profiles", json=_payload(
+        key="application.liquidai", primary_model_id="systemone/LiquidAI-d1-3B",
+    ))
+
+    assert response.status_code == 201
+    assert response.get_json()["profile"]["primary_model_id"] == "systemone/LiquidAI-d1-3B"
+
+
+def test_api_rejects_canonical_model_without_strict_output(client):
+    db.create_model({
+        "id": "test/decision-without-strict-output",
+        "name": "decision without strict output",
+        "type": "remote",
+        "provider": "test",
+        "model_name": "decision-without-strict-output",
+        "capabilities": {
+            "operations": {"decision": "verified"},
+            "schema_versions": ["decision-schema/v1"],
+        },
+    })
+    response = client.post("/api/admin/decision-profiles", json=_payload(
+        key="application.incompatible", primary_model_id="test/decision-without-strict-output",
+    ))
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "incompatible_model"
+
+
 def test_api_rejects_models_without_decision_capability(client):
     db.create_model({
         "id": "test/not-decision",

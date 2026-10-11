@@ -97,10 +97,25 @@ class DecisionProfilesMixin:
         if not model:
             _fail("unknown_model", path, "does not reference a configured model")
         capabilities = model.get("capabilities") or {}
-        decision = capabilities.get("decision") if isinstance(capabilities, dict) else None
-        if not isinstance(decision, dict) or not decision.get("enabled"):
+        if not isinstance(capabilities, dict):
             _fail("incompatible_model", path, "must reference a model enabled for Decision Models")
-        schema_versions = decision.get("schema_versions", [SCHEMA_VERSION])
+
+        # model-capabilities/v1 is the canonical registry contract used by the
+        # model selector. Keep accepting the original nested form so persisted
+        # profiles and administrator-created legacy model rows remain valid.
+        operations = capabilities.get("operations")
+        schema_versions = capabilities.get("schema_versions")
+        if isinstance(operations, dict):
+            supports_decision = (
+                operations.get("decision") not in (None, "unsupported")
+                and operations.get("strict_output") not in (None, "unsupported")
+            )
+        else:
+            decision = capabilities.get("decision")
+            supports_decision = isinstance(decision, dict) and bool(decision.get("enabled"))
+            schema_versions = decision.get("schema_versions", [SCHEMA_VERSION]) if supports_decision else None
+        if not supports_decision:
+            _fail("incompatible_model", path, "must reference a model enabled for Decision Models")
         if not isinstance(schema_versions, list) or SCHEMA_VERSION not in schema_versions:
             _fail("incompatible_schema", path, f"does not support {SCHEMA_VERSION}")
         return model["id"]
