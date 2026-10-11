@@ -1628,8 +1628,8 @@ html.dark .ev-banner-info { background: rgb(99 102 241 / .12); border-color: rgb
 html.dark .ev-banner-ok { background: rgb(34 197 94 / .1); border-color: rgb(34 197 94 / .3); color: #86efac; }
 html.dark .ev-banner-danger { background: rgb(239 68 68 / .1); border-color: rgb(239 68 68 / .32); color: #fca5a5; }
 /* Banners that live under the navbar (update, WhatsApp, system alerts): same surface as the navbar, so the corners below
-   it stay seamless. The state is carried by a left accent bar, tinted text and pill actions instead of a coloured fill. */
-header .ev-banner { --bn: 99 102 241; background: var(--bg-header); border-width: 1px 0 0; border-style: solid; border-color: rgb(148 163 184 / .16); box-shadow: inset 3px 0 0 rgb(var(--bn)); }
+   it stay seamless. The state is carried by tinted text and pill actions instead of a coloured fill. */
+header .ev-banner { --bn: 99 102 241; background: var(--bg-header); border-width: 1px 0 0; border-style: solid; border-color: rgb(148 163 184 / .16); }
 header .ev-banner.ev-banner-info { --bn: 99 102 241; background: var(--bg-header); border-color: rgb(148 163 184 / .16); color: #3730a3; }
 header .ev-banner.ev-banner-warn { --bn: 245 158 11; background: var(--bg-header); border-color: rgb(148 163 184 / .16); color: #92400e; }
 header .ev-banner.ev-banner-ok { --bn: 34 197 94; background: var(--bg-header); border-color: rgb(148 163 184 / .16); color: #166534; }
