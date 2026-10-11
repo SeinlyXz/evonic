@@ -95,6 +95,7 @@ from routes.skills import skills_bp
 from routes.plugins import plugins_bp
 from routes.scheduler import scheduler_bp
 from routes.models import models_bp
+from routes.decision_profiles import decision_profiles_bp
 from routes.providers import providers_bp
 from routes.codex import codex_bp
 from routes.claude import claude_bp
@@ -272,6 +273,7 @@ app.register_blueprint(settings_bp)
 app.register_blueprint(sessions_bp)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(models_bp)
+app.register_blueprint(decision_profiles_bp)
 app.register_blueprint(providers_bp)
 app.register_blueprint(codex_bp)
 app.register_blueprint(claude_bp)

@@ -1343,6 +1343,36 @@ class SchemaMixin:
                 )
             """)
 
+            # Versioned, provider-neutral Decision Profile configuration. Model
+            # IDs are deliberately soft references: model administration may
+            # remove a model before a profile is corrected or disabled.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS decision_profiles (
+                    profile_key TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                    mode TEXT NOT NULL DEFAULT 'enforce'
+                        CHECK (mode IN ('off', 'shadow', 'enforce')),
+                    schema_version TEXT NOT NULL,
+                    policy_version TEXT NOT NULL,
+                    schema_json TEXT NOT NULL,
+                    primary_model_id TEXT NOT NULL,
+                    fallback_model_id TEXT,
+                    timeout_ms INTEGER NOT NULL,
+                    retry_limit INTEGER NOT NULL DEFAULT 0,
+                    minimum_confidence REAL NOT NULL DEFAULT 0.0,
+                    revision INTEGER NOT NULL DEFAULT 1,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CHECK (timeout_ms > 0),
+                    CHECK (retry_limit >= 0),
+                    CHECK (minimum_confidence >= 0 AND minimum_confidence <= 1)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decision_profiles_enabled "
+                           "ON decision_profiles(enabled, profile_key)")
+
             conn.commit()
 
         # Migrate chat data from main DB to per-agent DBs
