@@ -44,6 +44,27 @@ def test_fresh_database_has_endpoint_registry_ledger_and_additive_fields():
     assert ledger["registry_endpoint_v1_provider_fields"]["precondition"] == "provider connection columns present"
 
 
+def test_builtin_liquidai_d1_3b_model_is_selectable_without_connection_data():
+    from models.db import db
+
+    model = db.get_model_by_id("systemone/LiquidAI-d1-3B")
+
+    assert model["name"] == "LiquidAI d1-3B"
+    assert model["provider"] == "systemone"
+    assert model["model_name"] == "LiquidAI/d1-3B"
+    assert model["base_url"] == model["api_key"] == ""
+    assert model["api_format"] == "systemone"
+    assert model["context_window"] == 32768
+    assert model["vision_supported"] is True
+    assert model["capabilities"] == {
+        "version": "model-capabilities/v1",
+        "operations": {"decision": "verified", "strict_output": "verified"},
+        "schema_versions": ["decision-schema/v1"],
+        "confidence": "verified",
+        "data_egress": ["public"],
+    }
+
+
 def _simulate_legacy_registry():
     """Strip the new registry fields to exercise the upgrade path in place."""
     from models.db import db

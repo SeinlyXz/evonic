@@ -1467,6 +1467,10 @@ class SchemaMixin:
             # Must run after all registry prerequisites exist, but before this
             # transaction commits: applied ledger entries are atomic with data.
             self._run_registry_endpoint_migrations(cursor)
+
+            # Built-in model metadata is intentionally connection-free. Operators
+            # configure a compatible provider endpoint and credentials separately.
+            self._seed_builtin_decision_models(cursor)
             conn.commit()
 
         # Migrate chat data from main DB to per-agent DBs
@@ -1648,6 +1652,55 @@ class SchemaMixin:
             )
             updated += cursor.rowcount
         return {"providers_backfilled": updated, "precondition": "provider connection columns present"}
+
+    def _seed_builtin_decision_models(self, cursor):
+        """Make built-in decision-model metadata selectable without a connection.
+
+        Model rows are soft references to provider connections, so a catalog entry
+        can be installed before an operator configures its System One endpoint.
+        INSERT OR IGNORE preserves any administrator changes to an existing row.
+        """
+        capabilities = json.dumps({
+            "version": "model-capabilities/v1",
+            "operations": {
+                "decision": "verified",
+                "strict_output": "verified",
+            },
+            "schema_versions": ["decision-schema/v1"],
+            "confidence": "verified",
+            "data_egress": ["public"],
+        }, sort_keys=True)
+        cursor.execute("SELECT COALESCE(MAX(shortcode), 0) FROM llm_models")
+        next_shortcode = cursor.fetchone()[0] + 1
+        cursor.execute(
+            """INSERT OR IGNORE INTO llm_models (
+                id, name, type, provider, base_url, api_key, model_name,
+                max_tokens, timeout, thinking, thinking_budget, enabled,
+                is_default, model_max_concurrent, api_format, vision_supported,
+                shortcode, context_window, capabilities
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "systemone/LiquidAI-d1-3B",
+                "LiquidAI d1-3B",
+                "remote",
+                "systemone",
+                "",
+                "",
+                "LiquidAI/d1-3B",
+                32768,
+                60,
+                0,
+                0,
+                1,
+                0,
+                3,
+                "systemone",
+                1,
+                next_shortcode,
+                32768,
+                capabilities,
+            ),
+        )
 
     def _migrate_model_capabilities(self, cursor):
         """Normalize capabilities and explicitly mark retained legacy overrides."""
