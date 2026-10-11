@@ -131,10 +131,30 @@ class DecisionProfilesMixin:
         if merged.get("schema_version") != SCHEMA_VERSION:
             _fail("unsupported_schema_version", "schema_version", f"must be {SCHEMA_VERSION}")
         merged["policy_version"] = _text(merged.get("policy_version"), "policy_version", required=True, maximum=80)
-        merged["primary_model_id"] = self._validate_model_reference(merged.get("primary_model_id"), "primary_model_id", required=True)
-        merged["fallback_model_id"] = self._validate_model_reference(merged.get("fallback_model_id"), "fallback_model_id", required=False)
-        if merged["fallback_model_id"] == merged["primary_model_id"]:
-            _fail("duplicate_fallback_model", "fallback_model_id", "must differ from primary_model_id")
+        requires_model = bool(merged["enabled"]) and merged["mode"] != "off"
+        if requires_model:
+            merged["primary_model_id"] = self._validate_model_reference(
+                merged.get("primary_model_id"), "primary_model_id", required=True,
+            )
+            merged["fallback_model_id"] = self._validate_model_reference(
+                merged.get("fallback_model_id"), "fallback_model_id", required=False,
+            )
+            if merged["fallback_model_id"] == merged["primary_model_id"]:
+                _fail("duplicate_fallback_model", "fallback_model_id", "must differ from primary_model_id")
+        else:
+            # Inactive built-ins are seeded before any compatible model exists.
+            # Preserve an existing configured model so an administrator can
+            # temporarily disable and later re-enable a profile without having
+            # to select it again. Empty references remain valid for first-run
+            # bootstrap rows and stale references remain inert while disabled.
+            primary_model_id = merged.get("primary_model_id")
+            fallback_model_id = merged.get("fallback_model_id")
+            merged["primary_model_id"] = primary_model_id.strip() if isinstance(primary_model_id, str) else ""
+            merged["fallback_model_id"] = (
+                fallback_model_id.strip()
+                if isinstance(fallback_model_id, str) and fallback_model_id.strip()
+                else None
+            )
         merged["timeout_ms"] = _integer(merged.get("timeout_ms"), "timeout_ms", 1, _MAX_TIMEOUT_MS)
         merged["retry_limit"] = _integer(merged.get("retry_limit", 0), "retry_limit", 0, _MAX_RETRY_LIMIT)
         merged["minimum_confidence"] = _confidence(merged.get("minimum_confidence", 0.0))

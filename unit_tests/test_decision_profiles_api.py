@@ -61,7 +61,23 @@ def test_schema_is_created_idempotently_and_profile_round_trips():
     assert created["revision"] == 1
 
     with sqlite3.connect(db.db_path) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM decision_profiles").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM decision_profiles").fetchone()[0] == 3
+
+
+def test_builtin_agent_profiles_are_seeded_disabled_and_idempotent():
+    db._init_tables()
+    profiles = {profile["profile_key"]: profile for profile in db.list_decision_profiles()}
+    for key in ("agent.task_complexity", "agent.path_boundary"):
+        profile = profiles[key]
+        assert profile["enabled"] is False
+        assert profile["mode"] == "off"
+        assert profile["primary_model_id"] == ""
+        assert profile["schema_version"] == "decision-schema/v1"
+
+    # A later startup preserves the same seed rows rather than replacing them.
+    db._init_tables()
+    assert len([profile for profile in db.list_decision_profiles()
+                if profile["profile_key"] in {"agent.task_complexity", "agent.path_boundary"}]) == 2
 
 
 def test_api_crud_disable_conflict_and_secret_free_model_reference(client):

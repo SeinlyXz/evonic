@@ -15,12 +15,13 @@ window.settingsGeneral = {
         this._renderPresets();
 
         try {
-            const [general, models, defaultModel, classifier, cmpModel] = await Promise.all([
+            const [general, models, defaultModel, classifier, cmpModel, decisionProfiles] = await Promise.all([
                 apiGet("/api/settings/general"),
                 ModelsCache.get(),
                 apiGet("/api/settings/default-model").catch(() => null),
                 apiGet("/api/settings/task-classifier").catch(() => null),
                 apiGet("/api/settings/cmp-model").catch(() => null),
+                apiGet("/api/admin/decision-profiles").catch(() => ({profiles: []})),
             ]);
             if (!general || general.error) {
                 throw new Error((general && general.error) || "Failed to load settings");
@@ -35,6 +36,8 @@ window.settingsGeneral = {
                 kbOrganizerModelId: general.kb_organizer_model_id || "",
                 classifierModelId: classifier ? classifier.model_id || "" : "",
                 cmpModelId: cmpModel ? cmpModel.model_id || "" : "",
+                taskDecisionProfile: this._profile(decisionProfiles.profiles, "agent.task_complexity"),
+                cmpDecisionProfile: this._profile(decisionProfiles.profiles, "agent.path_boundary"),
             });
             const clsToggle = document.getElementById("task-classifier-toggle");
             if (clsToggle && classifier) clsToggle.checked = !!classifier.enabled;
@@ -92,6 +95,10 @@ window.settingsGeneral = {
         set("whatsapp-outbound-limit-input", s.whatsapp_max_outbound_per_minute);
     },
 
+    _profile(profiles, key) {
+        return (profiles || []).find((profile) => profile.profile_key === key) || null;
+    },
+
     _currentSelectValues() {
         const val = (id) => {
             const el = document.getElementById(id);
@@ -106,6 +113,18 @@ window.settingsGeneral = {
             kbOrganizerModelId: val("kb-organizer-model-select"),
             classifierModelId: val("task-classifier-model-select"),
             cmpModelId: val("cmp-model-select"),
+            taskDecisionProfile: this._profileFromSelect("agent.task_complexity", "task-classifier-decision-model-select"),
+            cmpDecisionProfile: this._profileFromSelect("agent.path_boundary", "cmp-decision-model-select"),
+        };
+    },
+
+    _profileFromSelect(key, selectId) {
+        const select = document.getElementById(selectId);
+        return {
+            profile_key: key,
+            primary_model_id: select ? select.value : "",
+            enabled: !!(select && select.value),
+            mode: select && select.value ? "enforce" : "off",
         };
     },
 
@@ -125,6 +144,23 @@ window.settingsGeneral = {
         };
 
         const enabled = models.filter((m) => m.enabled);
+        const decisionCompatible = enabled.filter((model) => {
+            const decision = model.capabilities && model.capabilities.decision;
+            return decision && decision.enabled &&
+                Array.isArray(decision.schema_versions) && decision.schema_versions.includes("decision-schema/v1");
+        });
+        fill(
+            "task-classifier-decision-model-select",
+            decisionCompatible,
+            current.taskDecisionProfile && current.taskDecisionProfile.primary_model_id,
+            "Use legacy Task Classifier",
+        );
+        fill(
+            "cmp-decision-model-select",
+            decisionCompatible,
+            current.cmpDecisionProfile && current.cmpDecisionProfile.primary_model_id,
+            "Use legacy CMP classifier",
+        );
         fill("default-model-select", models, current.defaultModelId, "— Select model —");
         fill(
             "default-model-fallback-select",
@@ -197,6 +233,47 @@ window.settingsGeneral = {
                 throw new Error((res && res.error) || "Save failed");
             }
         });
+
+        const saveBuiltinDecisionProfile = async (profileKey, selectId) => {
+            const select = document.getElementById(selectId);
+            const current = await apiGet("/api/admin/decision-profiles/" + encodeURIComponent(profileKey));
+            const profile = current && current.profile;
+            if (!profile) throw new Error("Built-in Decision Profile is unavailable");
+            const modelId = select ? select.value : "";
+            const payload = {
+                ...profile,
+                revision: profile.revision,
+                enabled: !!modelId,
+                mode: modelId ? "enforce" : "off",
+                primary_model_id: modelId || profile.primary_model_id,
+            };
+            const res = await apiPut("/api/admin/decision-profiles/" + encodeURIComponent(profileKey), payload);
+            if (!res || !res.success) {
+                const error = res && res.error;
+                throw new Error((error && error.message) || "Save failed");
+            }
+        };
+        const bindDecisionProfileSelect = (profileKey, selectId) => {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            select.addEventListener("change", async () => {
+                const row = select.closest(".setting-row");
+                const status = row && row.querySelector(".save-status");
+                if (status) status.textContent = "Saving…";
+                try {
+                    await saveBuiltinDecisionProfile(profileKey, selectId);
+                    if (status) status.textContent = "Saved";
+                } catch (error) {
+                    // Restore the saved configuration after a rejected change.
+                    const latest = await apiGet("/api/admin/decision-profiles/" + encodeURIComponent(profileKey)).catch(() => null);
+                    if (latest && latest.profile) select.value = latest.profile.primary_model_id || "";
+                    if (status) status.textContent = "Failed to save";
+                    if (window.toast) toast.show(error.message, "error");
+                }
+            });
+        };
+        bindDecisionProfileSelect("agent.task_complexity", "task-classifier-decision-model-select");
+        bindDecisionProfileSelect("agent.path_boundary", "cmp-decision-model-select");
 
         // Public history: guarded by an explicit confirm modal when enabling
         AutoSave.registerGuard("public_history", (enabling) => {

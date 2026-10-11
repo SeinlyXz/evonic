@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import shutil
+import json
 import config
 
 
@@ -1372,6 +1373,41 @@ class SchemaMixin:
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_decision_profiles_enabled "
                            "ON decision_profiles(enabled, profile_key)")
+
+            # Built-in agent profiles must be visible from a fresh installation,
+            # even before an administrator has configured a Decision Models-capable
+            # model. They are deliberately disabled/off and use an empty soft
+            # model reference until General Settings or Decision Models assigns a
+            # compatible model. INSERT OR IGNORE preserves administrator edits.
+            builtin_agent_profiles = (
+                (
+                    "agent.task_complexity",
+                    "Task Classifier",
+                    "Classifies bounded task requests as trivial or complex for the initial agent mode recommendation.",
+                    json.dumps({"version": "decision-schema/v1", "fields": [{
+                        "key": "complexity", "kind": "choice",
+                        "description": "Whether the bounded task request needs planning.",
+                        "choices": ["trivial", "complex"],
+                    }]}, sort_keys=True, separators=(",", ":")),
+                ),
+                (
+                    "agent.path_boundary",
+                    "Path Detection (CMP)",
+                    "Determines whether a bounded incoming request belongs to the current task path.",
+                    json.dumps({"version": "decision-schema/v1", "fields": [{
+                        "key": "belongs_to_current", "kind": "boolean",
+                        "description": "Whether the incoming request belongs to the current task path.",
+                    }]}, sort_keys=True, separators=(",", ":")),
+                ),
+            )
+            cursor.executemany(
+                """INSERT OR IGNORE INTO decision_profiles (
+                    profile_key, display_name, description, enabled, mode,
+                    schema_version, policy_version, schema_json, primary_model_id,
+                    fallback_model_id, timeout_ms, retry_limit, minimum_confidence
+                ) VALUES (?, ?, ?, 0, 'off', 'decision-schema/v1', '1', ?, '', NULL, 3000, 0, 0.0)""",
+                builtin_agent_profiles,
+            )
 
             # Decision Activity deliberately holds diagnostic metadata only. It
             # never stores invocation contexts, policy metadata, credentials,
