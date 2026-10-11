@@ -31,14 +31,27 @@ class DecisionCompatibilityError(ValueError):
     """Actionable failure raised before a provider receives a request."""
 
 
+def _legacy_decision_metadata(raw: Mapping[str, Any]) -> Mapping[str, Any]:
+    decision = raw.get("decision")
+    return decision if isinstance(decision, Mapping) else {}
+
+
+def _canonical_operations(raw: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return canonical operations when capabilities use model-capabilities/v1."""
+    operations = raw.get("operations")
+    return operations if isinstance(operations, Mapping) else {}
+
+
 def public_decision_capabilities(model: Mapping[str, Any]) -> dict[str, Any]:
     """Return public capability metadata without model connection credentials."""
     raw = model.get("capabilities") or {}
     if not isinstance(raw, Mapping):
         raw = {}
-    decision = raw.get("decision") or {}
-    if not isinstance(decision, Mapping):
-        decision = {}
+    decision = _legacy_decision_metadata(raw)
+    operations = _canonical_operations(raw)
+    # Canonical capabilities declare support through the decision/strict_output
+    # operations; the legacy decision block remains a supported compatibility shape.
+    canonical = operations.get("decision", "unsupported") != "unsupported" and operations.get("strict_output", "unsupported") != "unsupported"
     primitives = decision.get("schema_primitives") or ()
     if not isinstance(primitives, (list, tuple)):
         primitives = ()
@@ -46,7 +59,7 @@ def public_decision_capabilities(model: Mapping[str, Any]) -> dict[str, Any]:
         "model_id": model.get("id"),
         "enabled": bool(model.get("enabled", True)),
         "decision": {
-            "structured_output": bool(decision.get("structured_output", False)),
+            "structured_output": bool(decision.get("structured_output", False)) or canonical,
             "schema_primitives": sorted(str(value) for value in primitives if str(value) in SUPPORTED_PRIMITIVES),
             "candidate_scores": bool(decision.get("candidate_scores", False)),
             "provider_logits": bool(decision.get("provider_logits", False)),
@@ -66,13 +79,29 @@ def validate_decision_compatibility(model: Mapping[str, Any] | None, invocation:
         raise DecisionCompatibilityError(
             f"Model '{model.get('id')}' is not marked with decision.structured_output=true."
         )
-    required = {field.kind.value for field in invocation.schema.fields}
-    missing = sorted(required - set(decision["schema_primitives"]))
-    if missing:
-        raise DecisionCompatibilityError(
-            f"Model '{model.get('id')}' does not support decision schema primitives: {', '.join(missing)}."
-        )
-    if model.get("api_format", "openai") not in {"openai"}:
+    raw = model.get("capabilities") if isinstance(model.get("capabilities"), Mapping) else {}
+    schema_versions = raw.get("schema_versions") if isinstance(raw.get("schema_versions"), (list, tuple)) else ()
+    if raw.get("version") == "model-capabilities/v1":
+        # Canonical capabilities describe structured output by operation and
+        # schema version; individual primitives are the reasoner's responsibility.
+        if invocation.schema.version not in schema_versions:
+            raise DecisionCompatibilityError(
+                f"Model '{model.get('id')}' does not declare decision schema version '{invocation.schema.version}'."
+            )
+    else:
+        required = {field.kind.value for field in invocation.schema.fields}
+        missing = sorted(required - set(decision["schema_primitives"]))
+        if missing:
+            raise DecisionCompatibilityError(
+                f"Model '{model.get('id')}' does not support decision schema primitives: {', '.join(missing)}."
+            )
+    adapter_key = model.get("adapter_key")
+    if adapter_key:
+        if adapter_key != "openai.chat_completions.v1":
+            raise DecisionCompatibilityError(
+                f"Model '{model.get('id')}' uses unsupported decision adapter '{adapter_key}'."
+            )
+    elif model.get("api_format", "openai") not in {"openai"}:
         raise DecisionCompatibilityError(
             f"Model '{model.get('id')}' uses unsupported decision adapter format '{model.get('api_format')}'."
         )

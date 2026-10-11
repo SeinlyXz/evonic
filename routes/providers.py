@@ -51,8 +51,10 @@ def api_create_provider():
 
     try:
         new_id = db.create_provider(data)
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        return jsonify({"success": False, "error": "Unable to create provider"}), 500
 
     return jsonify({"success": True, "provider_id": new_id})
 
@@ -70,7 +72,10 @@ def api_update_provider(provider_id):
     if "api_key" in data and not data["api_key"]:
         del data["api_key"]
 
-    success = db.update_provider(provider_id, data)
+    try:
+        success = db.update_provider(provider_id, data)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
     if not success:
         return jsonify({"success": False, "error": "No changes made"}), 400
 
@@ -107,9 +112,9 @@ def api_fetch_provider_models(provider_id):
         models = [dict(m, already_added=m["id"] in existing) for m in KNOWN_MODELS]
         return jsonify({"success": True, "models": models, "total": len(models)})
 
-    base_url = provider.get("base_url", "").rstrip("/")
+    base_url = (provider.get("endpoint") or provider.get("base_url", "")).rstrip("/")
     if not base_url:
-        return jsonify({"success": False, "error": "Provider has no base_url configured"}), 400
+        return jsonify({"success": False, "error": "Provider has no endpoint configured"}), 400
 
     api_format = provider.get("api_format", "openai")
     if api_format == "ollama":
@@ -218,9 +223,9 @@ def api_test_provider(provider_id):
             return jsonify({"success": True, "message": f"Claude Code CLI {status['version']} ready"})
         return jsonify({"success": False, "error": status["error"]})
 
-    base_url = provider.get("base_url", "").rstrip("/")
+    base_url = (provider.get("endpoint") or provider.get("base_url", "")).rstrip("/")
     if not base_url:
-        return jsonify({"success": False, "error": "Provider has no base_url configured"}), 400
+        return jsonify({"success": False, "error": "Provider has no endpoint configured"}), 400
 
     api_format = provider.get("api_format", "openai")
     if api_format == "ollama":

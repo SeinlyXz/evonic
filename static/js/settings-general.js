@@ -144,10 +144,15 @@ window.settingsGeneral = {
         };
 
         const enabled = models.filter((m) => m.enabled);
+        // Uses the same canonical model-capabilities/v1 vocabulary as the registry.
         const decisionCompatible = enabled.filter((model) => {
-            const decision = model.capabilities && model.capabilities.decision;
-            return decision && decision.enabled &&
-                Array.isArray(decision.schema_versions) && decision.schema_versions.includes("decision-schema/v1");
+            const operations = (model.capabilities && model.capabilities.operations) || {};
+            const schemaVersions = (model.capabilities && model.capabilities.schema_versions) || [];
+            return Boolean(
+                operations.decision && operations.decision !== "unsupported" &&
+                operations.strict_output && operations.strict_output !== "unsupported" &&
+                Array.isArray(schemaVersions) && schemaVersions.includes("decision-schema/v1"),
+            );
         });
         fill(
             "task-classifier-decision-model-select",

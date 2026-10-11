@@ -152,8 +152,13 @@ window.settingsModels = {
             ? "border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-200 dark:ring-indigo-800"
             : "border-gray-200 dark:border-gray-700";
         const shortcode = model.shortcode != null ? model.shortcode : "?";
-        const decision = model.capabilities && model.capabilities.decision;
-        const decisionCompatible = Boolean(decision && decision.enabled && Array.isArray(decision.schema_versions) && decision.schema_versions.includes("decision-schema/v1"));
+        const operations = (model.capabilities && model.capabilities.operations) || {};
+        const schemaVersions = (model.capabilities && model.capabilities.schema_versions) || [];
+        const decisionCompatible = Boolean(
+            operations.decision && operations.decision !== "unsupported" &&
+            operations.strict_output && operations.strict_output !== "unsupported" &&
+            Array.isArray(schemaVersions) && schemaVersions.includes("decision-schema/v1"),
+        );
         const decisionBadge = decisionCompatible
             ? '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-200">Decision ready</span>'
             : '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Not decision compatible</span>';
@@ -215,22 +220,33 @@ window.settingsModels = {
         document.getElementById("provider-id").disabled = true;
         document.getElementById("provider-name").value = prov.name || "";
         document.getElementById("provider-type").value = prov.type || "remote";
-        document.getElementById("provider-base-url").value = prov.base_url || "";
+        document.getElementById("provider-base-url").value = prov.endpoint || prov.base_url || "";
         document.getElementById("provider-api-key").value = "";
         document.getElementById("provider-api-format").value = prov.api_format || "openai";
         openModal("provider-modal");
     },
 
+    _adapterKeyForFormat(format) {
+        return {
+            openai: "openai.chat_completions.v1",
+            ollama: "ollama.chat.v1",
+            anthropic: "anthropic.messages.v1",
+            codex: "codex.responses.v1",
+        }[format] || "openai.chat_completions.v1";
+    },
+
     async saveProvider(event) {
         event.preventDefault();
         const editId = document.getElementById("provider-edit-id").value;
+        const apiFormat = document.getElementById("provider-api-format").value;
         const data = {
             id: document.getElementById("provider-id").value,
             name: document.getElementById("provider-name").value,
             type: document.getElementById("provider-type").value,
-            base_url: document.getElementById("provider-base-url").value,
+            endpoint: document.getElementById("provider-base-url").value,
             api_key: document.getElementById("provider-api-key").value,
-            api_format: document.getElementById("provider-api-format").value,
+            api_format: apiFormat,
+            adapter_key: this._adapterKeyForFormat(apiFormat),
         };
 
         try {
@@ -395,8 +411,6 @@ window.settingsModels = {
         this._populateProviderSelect();
         document.getElementById("model-provider").value = providerId;
         document.getElementById("model-type").value = prov.type || "remote";
-        if (prov.base_url) document.getElementById("model-base-url").value = prov.base_url;
-        if (prov.api_format) document.getElementById("model-api-format").value = prov.api_format;
         this.toggleFields();
         openModal("model-modal");
     },
@@ -411,8 +425,7 @@ window.settingsModels = {
         document.getElementById("model-type").value = model.type || "remote";
         this._populateProviderSelect();
         document.getElementById("model-provider").value = model.provider || "";
-        document.getElementById("model-base-url").value = model.base_url || "";
-        document.getElementById("model-api-key").value = model.api_key || "";
+        document.getElementById("model-base-url").value = model.legacy_override_provenance ? "Legacy override retained (read-only)" : "Inherited from provider";
         document.getElementById("model-name-param").value = model.model_name || "";
         document.getElementById("model-max-tokens").value = model.max_tokens || 32768;
         document.getElementById("model-context-window").value = model.context_window || 0;
@@ -428,29 +441,19 @@ window.settingsModels = {
         document.getElementById("model-is-default").checked = !!model.is_default;
         document.getElementById("model-vision-supported").checked =
             !!model.vision_supported;
-        document.getElementById("model-api-format").value = model.api_format || "openai";
-        const decision = (model.capabilities && model.capabilities.decision) || {};
-        document.getElementById("model-decision-enabled").checked = !!decision.enabled;
-        document.getElementById("model-decision-schemas").value = Array.isArray(decision.schema_versions) && decision.schema_versions.length
-            ? decision.schema_versions.join(", ") : "decision-schema/v1";
+        const operations = (model.capabilities && model.capabilities.operations) || {};
+        const decisionEnabled = operations.decision && operations.decision !== "unsupported";
+        document.getElementById("model-decision-enabled").checked = !!decisionEnabled;
+        document.getElementById("model-decision-schemas").value = Array.isArray(model.capabilities?.schema_versions) && model.capabilities.schema_versions.length
+            ? model.capabilities.schema_versions.join(", ") : "decision-schema/v1";
 
         this.toggleFields();
         openModal("model-modal");
     },
 
     toggleFields() {
-        const type = document.getElementById("model-type").value;
-        const provider = document.getElementById("model-provider").value;
-        const apiKeyGroup = document.getElementById("api-key-group");
-        if (type === "local" && (provider === "ollama" || provider === "llama.cpp")) {
-            apiKeyGroup.style.display = "none";
-        } else {
-            apiKeyGroup.style.display = "block";
-        }
-        const idHint = document.getElementById("model-id-hint");
-        if (idHint) {
-            idHint.style.display = type === "remote" ? "block" : "none";
-        }
+        // Locality is display metadata only. Provider endpoint/adapter/auth own
+        // all connection behavior, so this method intentionally has no routing effects.
     },
 
     async save(event) {
@@ -458,18 +461,24 @@ window.settingsModels = {
 
         const modelId = document.getElementById("model-id").value;
         const existingModel = this.models.find((model) => model.id === modelId);
-        const capabilities = { ...((existingModel && existingModel.capabilities) || {}) };
-        capabilities.decision = {
-            enabled: document.getElementById("model-decision-enabled").checked,
-            schema_versions: document.getElementById("model-decision-schemas").value
-                .split(",").map((value) => value.trim()).filter(Boolean),
+        const decisionEnabled = document.getElementById("model-decision-enabled").checked;
+        const schemaVersions = document.getElementById("model-decision-schemas").value
+            .split(",").map((value) => value.trim()).filter(Boolean);
+        const capabilities = {
+            version: "model-capabilities/v1",
+            operations: {
+                chat: "advertised",
+                ...(document.getElementById("model-vision-supported").checked ? { vision: "advertised" } : {}),
+                ...(decisionEnabled ? { decision: "advertised", strict_output: "advertised" } : {}),
+            },
+            schema_versions: decisionEnabled ? schemaVersions : [],
+            confidence: "unsupported",
+            data_egress: ["public"],
         };
         const modelData = {
             name: document.getElementById("model-name").value,
             type: document.getElementById("model-type").value,
             provider: document.getElementById("model-provider").value,
-            base_url: document.getElementById("model-base-url").value,
-            api_key: document.getElementById("model-api-key").value,
             model_name: document.getElementById("model-name-param").value,
             max_tokens:
                 parseInt(document.getElementById("model-max-tokens").value) || 32768,
@@ -490,7 +499,6 @@ window.settingsModels = {
             vision_supported: document.getElementById("model-vision-supported").checked
                 ? 1
                 : 0,
-            api_format: document.getElementById("model-api-format").value,
             capabilities,
         };
 

@@ -29,11 +29,18 @@ window.decisionModels = {
     },
 
     compatibleModels() {
-        return this.models.filter((model) => {
-            const decision = model.capabilities && model.capabilities.decision;
-            return model.enabled && decision && decision.enabled &&
-                Array.isArray(decision.schema_versions) && decision.schema_versions.includes("decision-schema/v1");
-        });
+        return this.models.filter((model) => model.enabled && this._supportsDecision(model));
+    },
+
+    _supportsDecision(model) {
+        // UI vocabulary mirrors the canonical model-capabilities/v1 contract.
+        const operations = (model.capabilities && model.capabilities.operations) || {};
+        const schemaVersions = (model.capabilities && model.capabilities.schema_versions) || [];
+        return Boolean(
+            operations.decision && operations.decision !== "unsupported" &&
+            operations.strict_output && operations.strict_output !== "unsupported" &&
+            Array.isArray(schemaVersions) && schemaVersions.includes("decision-schema/v1"),
+        );
     },
 
     render() {

@@ -825,6 +825,16 @@ class SchemaMixin:
 
             # ==================== Providers Table ====================
 
+            # A ledger row is committed with each registry migration, making
+            # interrupted initialization explicit and safely resumable.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS registry_migration_ledger (
+                    migration_id TEXT PRIMARY KEY,
+                    applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    details TEXT NOT NULL DEFAULT '{}'
+                )
+            """)
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS providers (
                     id TEXT PRIMARY KEY,
@@ -845,6 +855,9 @@ class SchemaMixin:
                 "refresh_token TEXT",
                 "token_expires_at INTEGER",
                 "credential_source TEXT DEFAULT 'api_key'",
+                "endpoint TEXT",
+                "adapter_key TEXT",
+                "connection_options TEXT NOT NULL DEFAULT '{}'",
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE providers ADD COLUMN {col}")
@@ -980,6 +993,12 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Existing model-level connection values are legacy-only. The
+            # provenance column prevents them from being mistaken for new input.
+            try:
+                cursor.execute("ALTER TABLE llm_models ADD COLUMN legacy_override_provenance TEXT")
+            except sqlite3.OperationalError:
+                pass
 
             # One-shot migration: rewrite model ids to 'provider/model_name'
             # format (v2). Old ids are kept in legacy_id so stale references
@@ -1445,6 +1464,9 @@ class SchemaMixin:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_decision_activity_correlation "
                            "ON decision_activity(correlation_id, created_at DESC, id DESC)")
 
+            # Must run after all registry prerequisites exist, but before this
+            # transaction commits: applied ledger entries are atomic with data.
+            self._run_registry_endpoint_migrations(cursor)
             conn.commit()
 
         # Migrate chat data from main DB to per-agent DBs
@@ -1573,6 +1595,95 @@ class SchemaMixin:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
         )
         self.invalidate_settings_cache()
+
+    def _run_registry_endpoint_migrations(self, cursor):
+        """Apply endpoint-registry migrations once; ledger writes share the caller transaction."""
+        migrations = (
+            ("registry_endpoint_v1_provider_fields", self._migrate_provider_endpoint_fields),
+            ("registry_endpoint_v1_model_capabilities", self._migrate_model_capabilities),
+        )
+        for migration_id, migration in migrations:
+            cursor.execute("SELECT 1 FROM registry_migration_ledger WHERE migration_id = ?", (migration_id,))
+            if cursor.fetchone():
+                continue
+            try:
+                details = migration(cursor)
+                cursor.execute(
+                    "INSERT INTO registry_migration_ledger (migration_id, details) VALUES (?, ?)",
+                    (migration_id, json.dumps(details, sort_keys=True)),
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Registry migration {migration_id} failed before completion; it can be resumed: {exc}"
+                ) from exc
+
+    @staticmethod
+    def _adapter_key_for_legacy_format(api_format):
+        """Map known legacy formats; never infer an adapter from an URL."""
+        return {
+            "openai": "openai.chat_completions.v1",
+            "ollama": "ollama.chat.v1",
+            "anthropic": "anthropic.messages.v1",
+            "codex": "codex.responses.v1",
+            "systemone": "systemone.questions.v1",
+        }.get((api_format or "openai").lower(), "openai.chat_completions.v1")
+
+    def _migrate_provider_endpoint_fields(self, cursor):
+        """Backfill provider endpoints, adapters, and JSON options from legacy data."""
+        expected = {"endpoint", "adapter_key", "connection_options"}
+        actual = {row[1] for row in cursor.execute("PRAGMA table_info(providers)")}
+        missing = expected - actual
+        if missing:
+            raise RuntimeError(f"providers schema missing required columns: {', '.join(sorted(missing))}")
+        cursor.execute("SELECT id, base_url, api_format, endpoint, adapter_key, connection_options FROM providers")
+        updated = 0
+        for provider_id, base_url, api_format, endpoint, adapter_key, options in cursor.fetchall():
+            try:
+                options = options if isinstance(json.loads(options or "{}"), dict) else "{}"
+            except (TypeError, ValueError):
+                options = "{}"
+            cursor.execute(
+                "UPDATE providers SET endpoint = ?, adapter_key = ?, connection_options = ? WHERE id = ?",
+                (endpoint or base_url or "", adapter_key or self._adapter_key_for_legacy_format(api_format), options or "{}", provider_id),
+            )
+            updated += cursor.rowcount
+        return {"providers_backfilled": updated, "precondition": "provider connection columns present"}
+
+    def _migrate_model_capabilities(self, cursor):
+        """Normalize capabilities and explicitly mark retained legacy overrides."""
+        expected = {"capabilities", "legacy_override_provenance"}
+        actual = {row[1] for row in cursor.execute("PRAGMA table_info(llm_models)")}
+        missing = expected - actual
+        if missing:
+            raise RuntimeError(f"llm_models schema missing required columns: {', '.join(sorted(missing))}")
+        cursor.execute("SELECT id, capabilities, vision_supported, base_url, api_key FROM llm_models")
+        updated = 0
+        for model_id, raw_capabilities, vision_supported, base_url, api_key in cursor.fetchall():
+            try:
+                raw = json.loads(raw_capabilities) if isinstance(raw_capabilities, str) else raw_capabilities
+            except (TypeError, ValueError):
+                raw = {}
+            raw = raw if isinstance(raw, dict) else {}
+            if raw.get("version") == "model-capabilities/v1":
+                canonical = raw
+            else:
+                decision = raw.get("decision") if isinstance(raw.get("decision"), dict) else {}
+                operations = {"chat": "advertised"}
+                if vision_supported:
+                    operations["vision"] = "advertised"
+                if decision.get("structured_output"):
+                    operations.update({"decision": "advertised", "strict_output": "advertised"})
+                canonical = {
+                    "version": "model-capabilities/v1", "operations": operations,
+                    "schema_versions": ["decision-schema/v1"] if decision.get("structured_output") else [],
+                    "confidence": "unsupported", "data_egress": ["public"],
+                }
+            cursor.execute(
+                "UPDATE llm_models SET capabilities = ?, legacy_override_provenance = ? WHERE id = ?",
+                (json.dumps(canonical, sort_keys=True), "legacy_model_override" if base_url or api_key else None, model_id),
+            )
+            updated += cursor.rowcount
+        return {"models_normalized": updated, "precondition": "model capability and provenance columns present"}
 
     def _populate_session_index(self):
         """One-time migration: populate session_index from all per-agent chat DBs.

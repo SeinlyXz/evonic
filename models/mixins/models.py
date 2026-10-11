@@ -6,7 +6,8 @@ from typing import Dict, Any, List, Optional
 _MODEL_COLUMNS = (
     "id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, "
     "thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, "
-    "model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window, capabilities"
+    "model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window, capabilities, "
+    "legacy_override_provenance"
 )
 
 
@@ -275,6 +276,23 @@ class ModelsMixin:
             )
             conn.commit()
             return cursor.rowcount > 0
+
+    def get_model_references(self, model_id: str) -> Dict[str, List[str]]:
+        """Report soft references so callers can warn before registry changes."""
+        references: Dict[str, List[str]] = {"agents": [], "profiles": [], "settings": []}
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            for column in ("model_id", "fallback_model_id", "vision_model_id", "default_model_id"):
+                try:
+                    cursor.execute(f"SELECT id FROM agents WHERE {column} = ?", (model_id,))
+                    references["agents"].extend(f"{column}:{row[0]}" for row in cursor.fetchall())
+                except sqlite3.OperationalError:
+                    continue
+            cursor.execute("SELECT profile_key FROM decision_profiles WHERE primary_model_id = ? OR fallback_model_id = ?", (model_id, model_id))
+            references["profiles"] = [row[0] for row in cursor.fetchall()]
+            cursor.execute("SELECT key FROM app_settings WHERE value = ? AND key LIKE '%model%id%'", (model_id,))
+            references["settings"] = [row[0] for row in cursor.fetchall()]
+        return references
 
     def delete_model(self, model_id: str) -> bool:
         """Delete a model."""
