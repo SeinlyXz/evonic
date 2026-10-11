@@ -134,6 +134,20 @@ def evaluate_goal(goal: Any, candidate_response: str, tasks: Any = None,
             "title": str(goal or ""),
         }
         candidate = _compact(candidate_response, 4000)
+        # An enforce-mode Decision Profile may replace the legacy evaluator only
+        # after shared runtime validation. Every non-result preserves the
+        # existing evaluator and, ultimately, its fail-open finalization.
+        try:
+            from backend.agent_decisions import get_builtin_decision_runner, goal_completion_input
+            profile = get_builtin_decision_runner().decide(
+                "agent.goal_completion", goal_completion_input(
+                    goal_map.get("summary") or goal_map.get("title"), candidate,
+                    tasks, nudges_used, max_nudges))
+            if profile and profile.get("decision") in VALID_DECISIONS:
+                return {"decision": profile["decision"], "reason": "",
+                        "next_action": "", "failed": False}
+        except Exception:
+            _logger.debug("Decision Profile goal completion unavailable; using legacy evaluator", exc_info=True)
         if client is None:
             from backend.task_classifier import _get_classifier_client
             client = _get_classifier_client("goal_evaluator_model_id")
