@@ -2,7 +2,7 @@
 {% from 'partials/toggle.html' import toggle, toggle_widget %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/state-ui.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/state-ui.css') }}?v=18">
 <!-- Toast Container -->
 <style>
 footer { display: none; }
@@ -1195,6 +1195,17 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
 #tab-general .adv-sec label.flex.items-center.gap-3.cursor-pointer > div > p { margin: .25rem 0 0; font-size: .875rem; line-height: 1.6; color: var(--gs-text); }
 /* autosave check/spinner of a toggle: sit right next to the switch (it used to float over the description in the stacked layout) */
 #tab-general label.flex.items-center.gap-3.cursor-pointer > .as-status { right: auto; left: 3.5rem; top: auto; bottom: .25rem; transform: none; }
+
+/* session summary dialog (Show more) */
+.ssm-backdrop { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgb(2 6 23 / .55); }
+.ssm-backdrop.hidden { display: none; }
+.ssm { display: flex; flex-direction: column; width: min(48rem, 100%); max-height: min(80vh, 100%); background: var(--bg-card, #fff); color: inherit; border: 1px solid rgb(148 163 184 / .3); border-radius: 1.25rem; box-shadow: 0 24px 60px -16px rgb(2 6 23 / .6); overflow: hidden; }
+.ssm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid rgb(148 163 184 / .22); }
+.ssm-head h3 { margin: 0; font-size: 1.0625rem; font-weight: 700; }
+.ssm-head p { margin: .125rem 0 0; font-size: .75rem; color: #94a3b8; }
+.ssm-x { flex: none; width: 2rem; height: 2rem; font-size: 1.5rem; line-height: 1; color: #94a3b8; background: transparent; border: 0; border-radius: .5rem; cursor: pointer; }
+.ssm-x:hover { background: rgb(148 163 184 / .15); color: inherit; }
+.ssm-body { flex: 1; min-height: 0; overflow-y: auto; padding: 1.25rem; font-size: .875rem; line-height: 1.65; }
 </style>
 <div id="agent-page-root" class="px-2 py-1 md:py-4 flex-1 min-h-0 flex flex-col h-[calc(100dvh-var(--header-h,56px))]">
     {% if workspace_invalid %}
@@ -2951,7 +2962,7 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
 
 <script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=69" defer></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=6" defer></script>
-<script src="{{ url_for('static', filename='js/state-ui.js') }}?v=14" defer></script>
+<script src="{{ url_for('static', filename='js/state-ui.js') }}?v=15" defer></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
 // AGENT_ID/ENABLE_AGENT_STATE are mutable: softSwitchAgent() retargets the page
@@ -8606,6 +8617,40 @@ function buildContextUsageHtml(cu) {
 
 let _refreshSessionStateTimer = null;
 let _refreshSessionStateReq = 0;
+// ---- "Show more" on the session summary preview: full summary in a dialog (the button called this, but it was never defined) ----
+function closeSessionSummaryModal() {
+    const m = document.getElementById('session-summary-modal');
+    if (m) m.classList.add('hidden');
+    document.removeEventListener('keydown', _sessionSummaryEsc, true);
+}
+function _sessionSummaryEsc(e) { if (e.key === 'Escape') { e.stopPropagation(); closeSessionSummaryModal(); } }
+function openSessionSummaryModal() {
+    let m = document.getElementById('session-summary-modal');
+    if (!m) {
+        m = document.createElement('div');
+        m.id = 'session-summary-modal';
+        m.className = 'ssm-backdrop hidden';
+        m.setAttribute('role', 'presentation');
+        m.innerHTML = '<div class="ssm" role="dialog" aria-modal="true" aria-labelledby="ssm-title">' +
+            '<div class="ssm-head"><div><h3 id="ssm-title">Session summary</h3><p id="ssm-meta"></p></div>' +
+            '<button type="button" class="ssm-x" aria-label="Close summary" onclick="closeSessionSummaryModal()">&times;</button></div>' +
+            '<div id="ssm-body" class="ssm-body recap-prose"></div></div>';
+        m.addEventListener('mousedown', e => { if (e.target === m) closeSessionSummaryModal(); });
+        document.body.appendChild(m);
+    }
+    const text = window._sessionSummaryText || '';
+    const body = m.querySelector('#ssm-body');
+    body.innerHTML = text
+        ? marked.parse(text).replace(/^\s*<h[1-3][^>]*>\s*summary\s*<\/h[1-3]>\s*/i, '')
+        : '<p class="text-sm text-gray-400 italic">No summary yet.</p>';
+    if (text && window.ui && ui.addCopyButtons) ui.addCopyButtons(body);
+    m.querySelector('#ssm-meta').textContent = window._sessionSummaryMeta || '';
+    m.classList.remove('hidden');
+    document.addEventListener('keydown', _sessionSummaryEsc, true);
+    const x = m.querySelector('.ssm-x');
+    if (x) x.focus();
+}
+
 const _refreshSessionStateImpl = async function() {
     const myReq = ++_refreshSessionStateReq;
     try {
@@ -8644,6 +8689,8 @@ const _refreshSessionStateImpl = async function() {
         const meta = document.getElementById('summary-meta');
         const mobileContent = document.getElementById('mobile-summary-content');
         const mobileMeta = document.getElementById('mobile-summary-meta');
+        window._sessionSummaryText = data.summary || '';
+        window._sessionSummaryMeta = data.summary ? `${data.message_count} messages summarized` + (data.updated_at ? ` \u00b7 ${data.updated_at}` : '') : '';
         if (data.summary) {
             const preview = data.summary.replace(/\s+/g, ' ').trim().slice(0, 180);
             const html = '<div class="st-stack">' + goalHtml + sectionsHtml + `<div class="st-summary"><div class="st-sec-h"><span>Summary</span></div><p class="text-xs leading-5 text-gray-600 dark:text-gray-300">${esc(preview)}${data.summary.length > 180 ? '…' : ''}</p><button type="button" onclick="openSessionSummaryModal()" class="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400" aria-haspopup="dialog">Show more</button></div>` + '</div>';

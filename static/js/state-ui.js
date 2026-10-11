@@ -98,13 +98,12 @@
     function planTreeHtml(pf) {
         var parts = String(pf).split('/').filter(Boolean);
         var file = parts.pop();
-        var h = '<button type="button" class="st-plan" onclick="openPlanModal(\'' + esc(pf) + '\')" title="' + esc(pf) + ' — click to open plan">' + ICON.file + '<span class="st-plan-name">' + esc(file) + '</span></button>';
-        h = '<ul><li>' + h + '</li></ul>';
-        for (var i = parts.length - 1; i >= 0; i--) {
-            h = '<li><div class="st-tree-dir">' + ICON.folder + '<span>' + esc(parts[i]) + '</span></div>' + h + '</li>';
-            if (i > 0) h = '<ul>' + h + '</ul>';
-        }
-        return '<div class="st-tree">' + (parts.length ? '<ul>' + h + '</ul>' : h) + '</div>';
+        var dir = parts.join('/');
+        // one plan at a time: a single card with the file name; the folder is only shown when it is not the default "plan"
+        return '<button type="button" class="st-plan-card" onclick="openPlanModal(\'' + esc(pf) + '\')" title="' + esc(pf) + ' \u2014 click to open plan">' +
+            '<span class="st-plan-ic">' + ICON.file + '</span>' +
+            '<span class="st-plan-txt"><span class="st-plan-name">' + esc(file) + '</span>' + (dir && dir !== 'plan' ? '<span class="st-plan-path">' + esc(dir) + '/</span>' : '') + '</span>' +
+            '<span class="st-plan-go">' + ICON.chev + '</span></button>';
     }
 
     /** Plan file tree only — the mode (plan / execute) lives in the card header, see setModeChip(). */
