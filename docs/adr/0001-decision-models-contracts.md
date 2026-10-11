@@ -92,7 +92,49 @@ Typed errors include cancellation, deadline exceeded, invalid request, provider 
 
 ## Consequences
 
-- Later registry, persistence, and provider tasks can depend on stable types without importing a concrete provider.
+- The model registry may mark an existing model as decision-capable without changing its primary `type`; a model may therefore serve conversation, evaluation, vision, decision, or future uses concurrently.
 - Consumers get a predictable validation and error vocabulary.
 - Implementations must retain provider-native details only where semantics are explicit, bounded, and safe to expose.
 - This ADR intentionally leaves fallback selection and policy enforcement to future owners.
+
+## Registry capability and adapter extension
+
+The registry persists optional additive metadata in `llm_models.capabilities`. Legacy
+models have `{}` and retain their pre-existing behavior. A decision-capable model is
+currently declared as:
+
+```json
+{
+  "decision": {
+    "structured_output": true,
+    "schema_primitives": ["choice", "boolean", "score"],
+    "candidate_scores": false,
+    "provider_logits": false
+  }
+}
+```
+
+`validate_decision_compatibility` in `backend/tools/lib/decision_adapters.py` is the
+server-side guard for both a future Decision Profile assignment and a Direct Model
+Test. It checks that the model exists, is enabled, declares structured output,
+supports every requested schema primitive, and has a registered adapter format. It
+must run before provider invocation and returns an actionable incompatibility error.
+
+The first implementation, `OpenAIStructuredDecisionAdapter`, supports `api_format`
+`openai` and sends the v1 DSL as a strict JSON schema to `/chat/completions`. It
+maps the returned object to `DecisionResult`, validates it against the requested
+schema, applies the configured timeout bounded by the cooperative invocation
+deadline, and reports cancellation/deadline/provider/invalid-response failures
+through the normalized `DecisionError` vocabulary.
+
+Adapters must never log or expose API keys, resolved credentials, or request
+authorization headers. Public capability reporting is intentionally limited to
+enabled state and decision capability metadata. Candidate scores and raw provider
+logits are optional: an adapter may populate them only when the provider actually
+returns values with those semantics. The OpenAI structured-output adapter does not
+synthesize either; absent raw logits remain omitted from field results.
+
+To add an adapter, implement the `DecisionAdapter` protocol, add a deterministic
+format branch to `adapter_for_model`, preserve the compatibility guard, map provider
+usage/timing metadata where available, and add a network-mocked contract test for
+success, unsupported schema, cancellation/deadline, and malformed provider output.

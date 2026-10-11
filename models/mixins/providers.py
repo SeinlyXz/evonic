@@ -1,6 +1,8 @@
 import sqlite3
 from typing import Dict, Any, List, Optional
 
+from models.mixins.models import _MODEL_COLUMNS, _decode_capabilities
+
 
 _SENSITIVE_PROVIDER_KEYS = frozenset({"api_key"})
 
@@ -88,14 +90,10 @@ class ProvidersMixin:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, name, type, provider, base_url, api_key, model_name, "
-                "max_tokens, timeout, thinking, thinking_budget, temperature, "
-                "enabled, is_default, created_at, updated_at, model_max_concurrent, "
-                "api_format, vision_supported, legacy_id, shortcode, context_window "
-                "FROM llm_models WHERE provider = ? ORDER BY name",
+                f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE provider = ? ORDER BY name",
                 (provider_id,),
             )
-            return [dict(row) for row in cursor.fetchall()]
+            return [_decode_capabilities(dict(row)) for row in cursor.fetchall()]
 
     def resolve_model_config(self, model: Dict[str, Any]) -> Dict[str, Any]:
         """Fill in base_url/api_key/api_format from the provider if the model's own are empty."""

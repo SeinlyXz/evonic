@@ -970,6 +970,15 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Optional, additive capability metadata. Keeping this separate
+            # from `type` preserves models that serve multiple purposes.
+            try:
+                cursor.execute(
+                    "ALTER TABLE llm_models ADD COLUMN capabilities TEXT NOT NULL DEFAULT '{}'"
+                )
+            except sqlite3.OperationalError:
+                pass
+
 
             # One-shot migration: rewrite model ids to 'provider/model_name'
             # format (v2). Old ids are kept in legacy_id so stale references

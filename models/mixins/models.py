@@ -1,5 +1,25 @@
+import json
 import sqlite3
 from typing import Dict, Any, List, Optional
+
+
+_MODEL_COLUMNS = (
+    "id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, "
+    "thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, "
+    "model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window, capabilities"
+)
+
+
+def _decode_capabilities(model: Dict[str, Any]) -> Dict[str, Any]:
+    """Decode persisted capability JSON defensively for legacy and malformed rows."""
+    raw = model.get("capabilities")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            raw = {}
+    model["capabilities"] = raw if isinstance(raw, dict) else {}
+    return model
 
 
 class ModelsMixin:
@@ -10,16 +30,16 @@ class ModelsMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models ORDER BY name LIMIT 1000")
-            return [dict(row) for row in cursor.fetchall()]
+            cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models ORDER BY name LIMIT 1000")
+            return [_decode_capabilities(dict(row)) for row in cursor.fetchall()]
 
     def get_enabled_llm_models(self) -> List[Dict[str, Any]]:
         """Return list of only enabled model configs (enabled=1)."""
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models WHERE enabled = 1 ORDER BY name LIMIT 1000")
-            return [dict(row) for row in cursor.fetchall()]
+            cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE enabled = 1 ORDER BY name LIMIT 1000")
+            return [_decode_capabilities(dict(row)) for row in cursor.fetchall()]
 
     def save_llm_models(self, models_list: List[Dict[str, Any]]) -> None:
         """Persist models to llm_models table."""
@@ -32,8 +52,8 @@ class ModelsMixin:
                     INSERT INTO llm_models (id, name, type, provider, base_url, api_key,
                         model_name, max_tokens, timeout, thinking, thinking_budget,
                         temperature, enabled, is_default, model_max_concurrent, api_format,
-                        vision_supported, legacy_id, shortcode, context_window)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        vision_supported, legacy_id, shortcode, context_window, capabilities)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     m.get('id'),
                     m.get('name'),
@@ -55,6 +75,7 @@ class ModelsMixin:
                     m.get('legacy_id'),
                     m.get('shortcode'),
                     m.get('context_window', 0),
+                    json.dumps(m.get('capabilities') or {}, sort_keys=True),
                 ))
             conn.commit()
 
@@ -63,21 +84,21 @@ class ModelsMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models WHERE is_default = 1 LIMIT 1")
+            cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE is_default = 1 LIMIT 1")
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return _decode_capabilities(dict(row)) if row else None
 
     def get_model_by_id(self, model_id: str) -> Optional[Dict[str, Any]]:
         """Lookup model by ID, falling back to legacy_id for pre-rename references."""
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models WHERE id = ?", (model_id,))
+            cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE id = ?", (model_id,))
             row = cursor.fetchone()
             if not row:
-                cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models WHERE legacy_id = ? LIMIT 1", (model_id,))
+                cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE legacy_id = ? LIMIT 1", (model_id,))
                 row = cursor.fetchone()
-            return dict(row) if row else None
+            return _decode_capabilities(dict(row)) if row else None
 
     def _model_id_exists(self, model_id: str) -> bool:
         """True if an id is taken as a current id or as a legacy alias."""
@@ -103,9 +124,9 @@ class ModelsMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models WHERE model_name = ? LIMIT 1", (model_name,))
+            cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE model_name = ? LIMIT 1", (model_name,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return _decode_capabilities(dict(row)) if row else None
 
     def get_agent_model(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Return agent's primary model (model_id) or global default or None."""
@@ -116,14 +137,14 @@ class ModelsMixin:
             cursor.execute("SELECT model_id FROM agents WHERE id = ?", (agent_id,))
             row = cursor.fetchone()
             if row and row['model_id']:
-                cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models WHERE id = ?", (row['model_id'],))
+                cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE id = ?", (row['model_id'],))
                 model_row = cursor.fetchone()
                 if model_row:
-                    return dict(model_row)
+                    return _decode_capabilities(dict(model_row))
             # Fallback to global default
-            cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models WHERE is_default = 1 LIMIT 1")
+            cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE is_default = 1 LIMIT 1")
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return _decode_capabilities(dict(row)) if row else None
 
     def get_agent_default_model(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Deprecated alias — use get_agent_model()."""
@@ -161,10 +182,10 @@ class ModelsMixin:
             cursor.execute("SELECT fallback_model_id FROM agents WHERE id = ?", (agent_id,))
             row = cursor.fetchone()
             if row and row["fallback_model_id"]:
-                cursor.execute("SELECT id, name, type, provider, base_url, api_key, model_name, max_tokens, timeout, thinking, thinking_budget, temperature, enabled, is_default, created_at, updated_at, model_max_concurrent, api_format, vision_supported, legacy_id, shortcode, context_window FROM llm_models WHERE id = ?", (row["fallback_model_id"],))
+                cursor.execute(f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE id = ?", (row["fallback_model_id"],))
                 model_row = cursor.fetchone()
                 if model_row:
-                    return dict(model_row)
+                    return _decode_capabilities(dict(model_row))
             return None
 
     def set_agent_fallback_model(self, agent_id: str, model_id: Optional[str]) -> bool:
@@ -206,8 +227,8 @@ class ModelsMixin:
                 INSERT INTO llm_models (id, name, type, provider, base_url, api_key,
                     model_name, max_tokens, timeout, thinking, thinking_budget,
                     temperature, enabled, is_default, model_max_concurrent, api_format,
-                    vision_supported, shortcode, context_window)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    vision_supported, shortcode, context_window, capabilities)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 model_id,
                 model_data.get('name'),
@@ -228,6 +249,7 @@ class ModelsMixin:
                 model_data.get('vision_supported', 0),
                 next_code,
                 model_data.get('context_window', 0),
+                json.dumps(model_data.get('capabilities') or {}, sort_keys=True),
             ))
             conn.commit()
         return model_id
@@ -237,9 +259,12 @@ class ModelsMixin:
         allowed = {'name', 'type', 'provider', 'base_url', 'api_key', 'model_name',
                    'max_tokens', 'timeout', 'thinking', 'thinking_budget', 'temperature', 'enabled', 'is_default',
                    'model_max_concurrent', 'api_format', 'vision_supported', 'context_window'}
+        allowed = allowed | {'capabilities'}
         updates = {k: v for k, v in model_data.items() if k in allowed}
         if not updates:
             return False
+        if 'capabilities' in updates:
+            updates['capabilities'] = json.dumps(updates['capabilities'] or {}, sort_keys=True)
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [model_id]
         with self._connect() as conn:
@@ -264,12 +289,8 @@ class ModelsMixin:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, name, type, provider, base_url, api_key, model_name, "
-                "max_tokens, timeout, thinking, thinking_budget, temperature, "
-                "enabled, is_default, created_at, updated_at, model_max_concurrent, "
-                "api_format, vision_supported, legacy_id, shortcode, context_window "
-                "FROM llm_models WHERE shortcode = ?",
+                f"SELECT {_MODEL_COLUMNS} FROM llm_models WHERE shortcode = ?",
                 (shortcode,),
             )
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return _decode_capabilities(dict(row)) if row else None

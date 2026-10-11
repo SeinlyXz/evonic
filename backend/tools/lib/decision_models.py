@@ -345,10 +345,12 @@ class ProviderMetadata:
     provider_key: str
     model_id: str
     model_revision: str | None = None
+    usage: Mapping[str, int] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = {"provider_key": self.provider_key, "model_id": self.model_id}
         if self.model_revision is not None: result["model_revision"] = self.model_revision
+        if self.usage is not None: result["usage"] = dict(self.usage)
         return result
 
 
