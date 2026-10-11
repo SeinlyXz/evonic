@@ -6,6 +6,8 @@ The responses intentionally contain only model IDs, never model credentials.
 
 from __future__ import annotations
 
+import base64
+import json
 from typing import Any, Mapping
 
 from flask import Blueprint, jsonify, request
@@ -31,6 +33,24 @@ def _error(exc: DecisionProfileValidationError, status: int = 400):
 def _payload() -> Mapping[str, Any] | None:
     data = request.get_json(silent=True)
     return data if isinstance(data, dict) else None
+
+
+def _cursor(value: str | None) -> tuple[float, str] | None:
+    if not value:
+        return None
+    try:
+        created_at, event_id = json.loads(base64.urlsafe_b64decode(value.encode()).decode())
+        return float(created_at), str(event_id)
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError("invalid cursor") from None
+
+
+def _next_cursor(events: list[Mapping[str, Any]]) -> str | None:
+    if not events:
+        return None
+    event = events[-1]
+    data = json.dumps([event["created_at"], event["id"]], separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(data).decode()
 
 
 @decision_profiles_bp.route("/api/admin/decision-profiles", methods=["GET"])
@@ -87,3 +107,54 @@ def delete_decision_profile(profile_key: str):
     if not deleted:
         return jsonify({"success": False, "error": {"code": "not_found", "path": "profile_key", "message": "profile not found"}}), 404
     return jsonify({"success": True})
+
+
+@decision_profiles_bp.route("/api/admin/decision-activity", methods=["GET"])
+def list_decision_activity():
+    """List bounded activity metadata using authorized, cursor-based pagination."""
+    try:
+        limit = int(request.args.get("limit", "50"))
+        cursor = _cursor(request.args.get("cursor"))
+        filters: dict[str, Any] = {}
+        for key in ("source", "profile_key", "model_id", "result_class", "error_code", "correlation_id", "from", "to"):
+            if request.args.get(key) is not None:
+                filters[key] = request.args[key]
+        if request.args.get("fallback_used") is not None:
+            value = request.args["fallback_used"].lower()
+            if value not in {"true", "false", "1", "0"}:
+                raise ValueError("invalid fallback_used")
+            filters["fallback_used"] = value in {"true", "1"}
+        events = db.list_decision_activity(limit=limit + 1, cursor=cursor, filters=filters)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": {"code": "invalid_query", "message": "query parameters are invalid"}}), 400
+    page_size = max(1, min(limit, 100))
+    has_more = len(events) > page_size
+    events = events[:page_size]
+    return jsonify({"events": events, "next_cursor": _next_cursor(events) if has_more else None})
+
+
+@decision_profiles_bp.route("/api/admin/decision-activity/<event_id>", methods=["GET"])
+def get_decision_activity(event_id: str):
+    event = db.get_decision_activity(event_id)
+    if not event:
+        return jsonify({"success": False, "error": {"code": "not_found", "message": "activity event not found"}}), 404
+    return jsonify({"event": event})
+
+
+@decision_profiles_bp.route("/api/admin/decision-activity/<event_id>/redact", methods=["POST"])
+def redact_decision_activity(event_id: str):
+    if not db.redact_decision_activity(event_id):
+        return jsonify({"success": False, "error": {"code": "not_found", "message": "activity event not found"}}), 404
+    return jsonify({"success": True})
+
+
+@decision_profiles_bp.route("/api/admin/decision-activity/purge", methods=["POST"])
+def purge_decision_activity():
+    data = _payload()
+    try:
+        before = float(data["before"]) if data else None
+        if before is None:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"success": False, "error": {"code": "invalid_payload", "message": "before must be a Unix timestamp"}}), 400
+    return jsonify({"success": True, "deleted": db.purge_decision_activity(before)})

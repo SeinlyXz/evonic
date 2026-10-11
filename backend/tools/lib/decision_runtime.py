@@ -66,6 +66,8 @@ class RuntimeRequest:
     cancellation: DecisionCancellation | None = None
     channel: str = "internal"
     rate_limit_key: str = "default"
+    # Explicit operational origin for privacy-safe activity diagnostics.
+    activity_source: str = "production"
 
 
 class FixedWindowRateLimiter:
@@ -132,6 +134,32 @@ class DecisionRuntime:
         else:
             self.metrics.observe(name, value, tags=tags)
 
+    def _activity(self, request: RuntimeRequest, result: DecisionResult) -> None:
+        """Best-effort, privacy-safe diagnostic persistence.
+
+        Activity persistence must not alter a decision result, including on a
+        database outage or an implementation defect in the telemetry layer.
+        """
+        try:
+            source = request.activity_source if request.activity_source in {"production", "playground", "profile_test"} else "production"
+            fields = {field.key: field.value for field in result.fields}
+            confidences = [field.confidence for field in result.fields if field.confidence is not None]
+            self.db.record_decision_activity({
+                "source": source, "profile_key": result.profile.key,
+                "profile_version": result.profile.version,
+                "model_id": result.provider.model_id if result.provider else None,
+                "adapter_key": result.provider.provider_key if result.provider else None,
+                "outcome_summary": fields,
+                "confidence": min(confidences) if confidences else None,
+                "latency_ms": result.timing.total_ms, "attempts": result.attempts,
+                "fallback_used": bool(result.fallback and result.fallback.used),
+                "fallback_reason": result.fallback.reason if result.fallback else None,
+                "error_code": result.error.code.value if result.error else None,
+                "correlation_id": request.correlation_id,
+            })
+        except Exception:
+            self.logger.warning("decision_runtime.activity_write_failed profile=%s", request.profile_key)
+
     def _profile(self, request: RuntimeRequest) -> Mapping[str, Any]:
         profile = self.db.get_decision_profile(request.profile_key)
         if not profile:
@@ -170,7 +198,9 @@ class DecisionRuntime:
             profile = self._profile(request)
             invocation = self._invocation(request, profile)
             if invocation.cancellation and invocation.cancellation.cancelled:
-                return self._failure(invocation, DecisionErrorCode.CANCELLED, "Decision was cancelled.", started)
+                result = self._failure(invocation, DecisionErrorCode.CANCELLED, "Decision was cancelled.", started)
+                self._activity(request, result)
+                return result
             model_ids = [profile["primary_model_id"]] + ([profile["fallback_model_id"]] if profile.get("fallback_model_id") else [])
             max_attempts = min(MAX_ATTEMPTS, int(profile["retry_limit"]) + 1)
             last: DecisionResult | None = None
@@ -186,7 +216,9 @@ class DecisionRuntime:
                     result = replace(result, attempts=attempt + 1, fallback=FallbackMetadata(fallback, "previous_attempt_failed" if fallback else None) if fallback else None)
                     if result.error and result.error.code is DecisionErrorCode.CANCELLED:
                         # Cancellation is terminal: never retry or invoke fallback.
-                        return replace(result, timing=TimingMetadata(int((time.monotonic() - started) * 1000), result.timing.provider_ms))
+                        result = replace(result, timing=TimingMetadata(int((time.monotonic() - started) * 1000), result.timing.provider_ms))
+                        self._activity(request, result)
+                        return result
                     if _safe_json_bytes(result.to_dict()) > MAX_RESPONSE_BYTES:
                         raise DecisionRuntimeError(DecisionRuntimeErrorCode.RESPONSE_TOO_LARGE, "Decision response exceeds the response limit.")
                     if result.error is None:
@@ -197,6 +229,7 @@ class DecisionRuntime:
                             last = replace(result, error=_safe_error(DecisionErrorCode.PROVIDER_RESPONSE_INVALID, "Decision confidence was below the configured threshold."))
                         else:
                             self._success(result, request, started, fallback)
+                            self._activity(request, result)
                             return result
                     else:
                         last = result
@@ -207,7 +240,9 @@ class DecisionRuntime:
                     self._metric("decision_runtime.fallback", profile=request.profile_key)
             assert last is not None
             self._metric("decision_runtime.failure", profile=request.profile_key, error=last.error.code.value if last.error else "unknown")
-            return replace(last, timing=TimingMetadata(int((time.monotonic() - started) * 1000), last.timing.provider_ms))
+            result = replace(last, timing=TimingMetadata(int((time.monotonic() - started) * 1000), last.timing.provider_ms))
+            self._activity(request, result)
+            return result
         except DecisionRuntimeError:
             self._metric("decision_runtime.failure", profile=request.profile_key, error="boundary")
             raise

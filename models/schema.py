@@ -1373,6 +1373,42 @@ class SchemaMixin:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_decision_profiles_enabled "
                            "ON decision_profiles(enabled, profile_key)")
 
+            # Decision Activity deliberately holds diagnostic metadata only. It
+            # never stores invocation contexts, policy metadata, credentials,
+            # raw provider content, candidates, or provider logits.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS decision_activity (
+                    id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL CHECK (source IN ('production', 'playground', 'profile_test')),
+                    profile_key TEXT NOT NULL,
+                    profile_version TEXT NOT NULL,
+                    model_id TEXT,
+                    adapter_key TEXT,
+                    result_class TEXT NOT NULL CHECK (result_class IN ('success', 'error')),
+                    error_code TEXT,
+                    confidence REAL,
+                    latency_ms INTEGER,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    fallback_used INTEGER NOT NULL DEFAULT 0 CHECK (fallback_used IN (0, 1)),
+                    fallback_reason TEXT,
+                    correlation_id TEXT,
+                    outcome_json TEXT NOT NULL DEFAULT '{}',
+                    redacted INTEGER NOT NULL DEFAULT 0 CHECK (redacted IN (0, 1)),
+                    created_at REAL NOT NULL,
+                    CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+                    CHECK (latency_ms IS NULL OR latency_ms >= 0),
+                    CHECK (attempts >= 0)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decision_activity_time "
+                           "ON decision_activity(created_at DESC, id DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decision_activity_profile_time "
+                           "ON decision_activity(profile_key, created_at DESC, id DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decision_activity_model_time "
+                           "ON decision_activity(model_id, created_at DESC, id DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decision_activity_correlation "
+                           "ON decision_activity(correlation_id, created_at DESC, id DESC)")
+
             conn.commit()
 
         # Migrate chat data from main DB to per-agent DBs

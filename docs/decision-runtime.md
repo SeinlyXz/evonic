@@ -37,6 +37,8 @@ Runtime errors raised before invocation are `DecisionRuntimeError` with a `Decis
 
 The optional metrics sink receives `decision_runtime.success`, `failure`, `fallback`, `low_confidence`, and `latency_ms` events. Tags contain the profile key and error class only. Logs similarly contain profile key, attempt count, and fallback flag—never context, fields, raw provider content, or credentials.
 
+Decision Activity separately persists a bounded diagnostic record for each returned runtime result. Set `RuntimeRequest.activity_source` to `production` (default), `playground`, or `profile_test` to distinguish callers. Activity writes are best-effort and cannot affect the returned decision. See [Decision Activity API and Privacy Policy](decision-activity.md) for its schema, snapshot allowlist, administrative API, redaction, and retention operations.
+
 ## Integration guidance
 
 Pass the application database object and, in production, use the default `OpenAIStructuredDecisionAdapter`. Tests and future provider formats should inject `adapter_factory(model) -> DecisionAdapter`. Consumers should provide a stable channel/rate-limit key appropriate to their own request boundary. Do not use the safety-specific Decim runtime as a substitute for this service.
