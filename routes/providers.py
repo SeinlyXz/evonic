@@ -3,6 +3,8 @@ from typing import Any, Dict
 import requests
 from flask import Blueprint, jsonify, request
 
+from backend.tools.lib.model_route_adapters import DEFAULT_ROUTE_ADAPTER_REGISTRY
+from backend.tools.lib.model_routing_contracts import AdapterKey, validate_endpoint
 from models.db import db
 
 providers_bp = Blueprint("providers", __name__)
@@ -19,6 +21,16 @@ def _sanitize(provider: Dict[str, Any]) -> Dict[str, Any]:
     for key in _SENSITIVE_KEYS:
         provider.pop(key, None)
     return provider
+
+
+def _provider_adapter(provider: Dict[str, Any]):
+    """Resolve a provider diagnostic through the versioned adapter registry."""
+    try:
+        adapter = DEFAULT_ROUTE_ADAPTER_REGISTRY.get(AdapterKey(provider["adapter_key"]))
+        endpoint = validate_endpoint(provider.get("endpoint") or provider.get("base_url", ""))
+    except (KeyError, ValueError):
+        return None, None
+    return adapter, endpoint
 
 
 @providers_bp.route("/api/providers", methods=["GET"])
@@ -112,17 +124,14 @@ def api_fetch_provider_models(provider_id):
         models = [dict(m, already_added=m["id"] in existing) for m in KNOWN_MODELS]
         return jsonify({"success": True, "models": models, "total": len(models)})
 
-    base_url = (provider.get("endpoint") or provider.get("base_url", "")).rstrip("/")
-    if not base_url:
-        return jsonify({"success": False, "error": "Provider has no endpoint configured"}), 400
+    adapter, base_url = _provider_adapter(provider)
+    if adapter is None or not base_url:
+        return jsonify({"success": False, "error": "Provider has an invalid endpoint or adapter configuration"}), 400
 
-    api_format = provider.get("api_format", "openai")
-    if api_format == "ollama":
-        models_url = f"{base_url}/tags"
-    elif api_format == "codex":
-        models_url = f"{base_url}/models"
-    else:
-        models_url = f"{base_url}/models"
+    # Discovery is deliberately prompt-free. The adapter key, not hostname or
+    # locality metadata, determines its protocol-specific probe path.
+    models_url = f"{base_url}{adapter.discovery_path()}"
+    api_format = provider.get("api_format", "openai")  # legacy auth bridge only
 
     headers = {"Content-Type": "application/json"}
     if api_format == "codex":
@@ -168,31 +177,7 @@ def api_fetch_provider_models(provider_id):
             })
 
         data = resp.json()
-        if api_format == "ollama":
-            raw_models = data.get("models", [])
-            models = [{"id": m.get("name", ""), "name": m.get("name", "")} for m in raw_models]
-        elif api_format == "codex":
-            raw_models = data.get("models", data.get("data", []))
-            if isinstance(raw_models, list) and raw_models:
-                models = []
-                for m in raw_models:
-                    if isinstance(m, str):
-                        models.append({"id": m, "name": m})
-                    elif isinstance(m, dict):
-                        mid = m.get("id") or m.get("slug") or m.get("model") or m.get("name", "")
-                        models.append({"id": mid, "name": mid})
-            else:
-                models = [
-                    {"id": "gpt-5.6-sol", "name": "GPT-5.6 Sol"},
-                    {"id": "gpt-5.6-terra", "name": "GPT-5.6 Terra"},
-                    {"id": "gpt-5.6-luna", "name": "GPT-5.6 Luna"},
-                ]
-        else:
-            raw_models = data.get("data", data.get("models", []))
-            if isinstance(raw_models, list):
-                models = [{"id": m.get("id", ""), "name": m.get("id", "")} for m in raw_models]
-            else:
-                models = []
+        models = adapter.parse_discovered_models(data if isinstance(data, dict) else {})
 
         # Mark which ones are already added
         existing = {m["model_name"] for m in db.get_models_by_provider(provider_id)}
@@ -223,15 +208,13 @@ def api_test_provider(provider_id):
             return jsonify({"success": True, "message": f"Claude Code CLI {status['version']} ready"})
         return jsonify({"success": False, "error": status["error"]})
 
-    base_url = (provider.get("endpoint") or provider.get("base_url", "")).rstrip("/")
-    if not base_url:
-        return jsonify({"success": False, "error": "Provider has no endpoint configured"}), 400
+    adapter, base_url = _provider_adapter(provider)
+    if adapter is None or not base_url:
+        return jsonify({"success": False, "error": "Provider has an invalid endpoint or adapter configuration"}), 400
 
-    api_format = provider.get("api_format", "openai")
-    if api_format == "ollama":
-        url = f"{base_url}/tags"
-    else:
-        url = f"{base_url}/models"
+    # This is a synthetic discovery probe; it never submits a production prompt.
+    url = f"{base_url}{adapter.discovery_path()}"
+    api_format = provider.get("api_format", "openai")  # legacy auth bridge only
 
     headers = {}
     if api_format == "codex":
@@ -272,11 +255,7 @@ def api_test_provider(provider_id):
         if resp.status_code == 200:
             try:
                 data = resp.json()
-                if api_format == "ollama":
-                    models = data.get("models", [])
-                else:
-                    models = data.get("data", data.get("models", []))
-                count = len(models) if isinstance(models, list) else "?"
+                count = len(adapter.parse_discovered_models(data if isinstance(data, dict) else {}))
             except Exception:
                 count = "?"
             return jsonify({"success": True, "message": f"Connected ({count} models available)"})

@@ -59,6 +59,14 @@ Fallback is eligible only when the source failure is typed and retryable and the
 
 Provider endpoint/adapter are the forward-looking source of truth. Existing model-level endpoint/auth fields or legacy format fields are compatibility inputs only during an explicitly bounded migration window; no new model-level endpoint/auth override is permitted.
 
+### Extension and diagnostic rules
+
+To add a provider protocol, add a new versioned `AdapterKey` and a `RouteAdapter` that declares its operations, credential strategy, prompt-free discovery path, and response normalization. Do not infer a protocol from an endpoint hostname or add a provider-deployment layer: **there is no provider-deployments resource**. A different endpoint or account is a different provider.
+
+Provider connection tests and model discovery are synthetic health operations: they use the registered adapter's discovery endpoint and must never submit production prompts. Public diagnostics and comparison telemetry may report adapter keys, capability/compatibility codes, and credential *state*, but must redact endpoints, credentials, request bodies, and upstream response bodies.
+
+Before retiring legacy `remote`/`local`, `api_format`, or model endpoint/credential compatibility reads, maintain a measured equivalence window and verify reference-preserving, resumable migrations (row counts, canonical IDs and aliases, defaults, agent/profile/fallback references, and disabled/stale rows). Column removal, if justified, requires a separately verified SQLite table rebuild.
+
 ## Consequences
 
 - Registry, profile assignment, runtime, and fallback have one canonical capability vocabulary.
