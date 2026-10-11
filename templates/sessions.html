@@ -428,6 +428,20 @@ html.dark .st-chip.amber { background: rgb(245 158 11 / .16); color: #fcd34d; bo
 .st-meter > div { height: 100%; border-radius: 9999px; transition: width .3s ease; }
 /* plan file */
 /* plan file tree */
+/* single plan card: there is only ever one plan file, so no tree */
+.st-plan-card { display: flex; align-items: center; gap: .625rem; width: 100%; padding: .625rem .75rem; text-align: left; cursor: pointer; border-radius: .75rem;
+    color: #4338ca; background: rgb(99 102 241 / .08); border: 1px solid rgb(99 102 241 / .28); transition: background-color .15s, border-color .15s; }
+.st-plan-card:hover { background: rgb(99 102 241 / .15); border-color: rgb(99 102 241 / .5); }
+html.dark .st-plan-card { color: #c7d2fe; background: rgb(129 140 248 / .1); border-color: rgb(129 140 248 / .3); }
+html.dark .st-plan-card:hover { background: rgb(129 140 248 / .18); border-color: rgb(129 140 248 / .5); }
+.st-plan-ic { display: inline-flex; flex: none; }
+.st-plan-ic svg { width: 16px; height: 16px; }
+.st-plan-txt { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.st-plan-card .st-plan-name { font-size: .8125rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.st-plan-path { font-size: .6875rem; line-height: 1.2; opacity: .65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-plan-go { display: inline-flex; flex: none; opacity: .55; transition: transform .15s, opacity .15s; }
+.st-plan-go svg { width: 14px; height: 14px; }
+.st-plan-card:hover .st-plan-go { opacity: 1; transform: translateX(2px); }
 .st-plan-sec { position: relative; }
 .st-plan-sec .st-tree { margin-top: 0; }
 /* the mode chip floats in the top-right corner; only the first row leaves room for it, so long file names get the full width below */
@@ -2514,13 +2528,12 @@ let _stTasksDoneOpen = false;
 function _planTreeHtml(pf) {
         var parts = String(pf).split('/').filter(Boolean);
         var file = parts.pop();
-        var h = '<button type="button" class="st-plan" onclick="openPlanModal(\'' + esc(pf) + '\')" title="' + esc(pf) + ' — click to open plan">' + ST_ICON.file + '<span class="st-plan-name">' + esc(file) + '</span></button>';
-        h = '<ul><li>' + h + '</li></ul>';
-        for (var i = parts.length - 1; i >= 0; i--) {
-            h = '<li><div class="st-tree-dir">' + ST_ICON.folder + '<span>' + esc(parts[i]) + '</span></div>' + h + '</li>';
-            if (i > 0) h = '<ul>' + h + '</ul>';
-        }
-        return '<div class="st-tree">' + (parts.length ? '<ul>' + h + '</ul>' : h) + '</div>';
+        var dir = parts.join('/');
+        // one plan at a time: a single card with the file name; the folder is only shown when it is not the default "plan"
+        return '<button type="button" class="st-plan-card" onclick="openPlanModal(\'' + esc(pf) + '\')" title="' + esc(pf) + ' \u2014 click to open plan">' +
+            '<span class="st-plan-ic">' + ST_ICON.file + '</span>' +
+            '<span class="st-plan-txt"><span class="st-plan-name">' + esc(file) + '</span>' + (dir && dir !== 'plan' ? '<span class="st-plan-path">' + esc(dir) + '/</span>' : '') + '</span>' +
+            '<span class="st-plan-go">' + ST_ICON.chev + '</span></button>';
     }
 
 // Mode chip: when the mode changes the new chip slides in from the left and stacks over the old one.
