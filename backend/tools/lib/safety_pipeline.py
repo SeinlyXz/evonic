@@ -213,6 +213,37 @@ class SafetyPipeline:
         """
         deterministic = self.check_deterministic(code, tool_type, agent_context)
 
+        # `safety.command` is the preferred configuration source for DMSS. The
+        # bridge only classifies text; this pipeline retains final policy control.
+        profile = self._safety_command_profile()
+        if profile is not None:
+            outcome = self._run_safety_command_profile(code, tool_type, agent_context)
+            metadata = {
+                "attempted": outcome.attempted,
+                "accepted": outcome.decision is not None,
+                "profile_key": "safety.command",
+                "profile_mode": outcome.mode,
+                "migration_source": "decision_profile",
+                "fallback_reason": outcome.fallback_reason,
+                "correlation_id": outcome.correlation_id,
+            }
+            if outcome.decision is None:
+                result = dict(deterministic)
+                result["decision_source"] = "deterministic_fallback"
+                result["decim_safety"] = {**metadata, "decision_source": "deterministic_fallback"}
+                return result
+            metadata.update({"model_decision": outcome.decision,
+                             "model_confidence": outcome.confidence,
+                             "model_id": outcome.model_id,
+                             "provider_key": outcome.provider_key,
+                             "model_latency_ms": outcome.latency_ms})
+            if outcome.mode == "shadow":
+                result = dict(deterministic)
+                result["decision_source"] = "deterministic_shadow"
+                result["decim_safety"] = {**metadata, "decision_source": "deterministic_shadow"}
+                return result
+            return self._apply_profile_decision(deterministic, outcome.decision, metadata)
+
         settings = decim_settings
         if settings is None:
             settings = self._load_settings()
@@ -329,6 +360,39 @@ class SafetyPipeline:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _safety_command_profile(self):
+        try:
+            from models.db import db
+            return db.get_decision_profile("safety.command")
+        except Exception:
+            return None
+
+    def _run_safety_command_profile(self, code, tool_type, agent_context):
+        from backend.dmss_decision_profile import get_safety_command_runner
+        boundary = "remote_ssh" if (agent_context or {}).get("ssh_connected") else "sandboxed_docker"
+        if not (agent_context or {}).get("sandbox_enabled", 1):
+            boundary = "local_process"
+        return get_safety_command_runner().decide(code, tool_type, boundary)
+
+    def _apply_profile_decision(self, deterministic, decision, metadata):
+        level_map = {"allow": "safe", "review": "requires_approval", "block": "dangerous"}
+        requested = level_map[decision]
+        level = requested if _LEVEL_RANK[requested] >= _LEVEL_RANK[deterministic["level"]] else deterministic["level"]
+        result = dict(deterministic)
+        result.update({"level": level, "requires_approval": level == "requires_approval",
+                       "decision_source": "decision_profile",
+                       "decim_safety": {**metadata, "decision_source": "decision_profile",
+                                        "final_reason": "model" if level == requested else "hmads_floor"}})
+        if level == deterministic["level"]:
+            return result
+        if level == "requires_approval":
+            result.update({"score": max(8, deterministic["score"]), "reasons": ["Command Safety requires manual approval."],
+                           "blocked_patterns": ["safety_command_review"], "approval_info": _generate_approval_info(["safety_command_review"], 0)})
+        else:
+            result.update({"score": max(15, deterministic["score"]), "reasons": ["Command Safety blocked this execution."],
+                           "blocked_patterns": ["safety_command_block"], "approval_info": None})
+        return result
+
     def _load_settings(self):
         try:
             from backend.tools.lib.decim_safety import load_decim_settings
