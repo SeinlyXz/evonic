@@ -181,7 +181,7 @@
             var badge = isStale ? '<span class="st-chip amber" style="padding:0 .375rem;font-size:.625rem" title="This task has been in progress for a while">stale</span>' : '';
             return '<li class="st-task ' + kind + '">' + icon + '<span class="' + (active ? 'task-active-text' : '') + '" style="min-width:0;flex:1">' + textOf(t) + '</span>' + badge + '</li>';
         };
-        var h = '<div class="st-sec"><div class="st-sec-h">' + ICON.tasks + '<span>Tasks</span><span class="st-sec-r" title="' + done.length + ' of ' + d.tasks.length + ' done">' + pct + '%</span></div>';
+        var h = '<div class="st-sec"><div class="st-sec-h">' + ICON.tasks + '<span>Tasks</span><span class="st-sec-r" title="' + done.length + ' of ' + d.tasks.length + ' done">' + pct + '% · ' + done.length + '/' + d.tasks.length + '</span></div>';
         h += '<div class="st-tasks-progress"><div class="st-meter"><div style="width:' + pct + '%;background:#22c55e"></div></div></div>';
         if (done.length) {
             h += '<details class="st-done" ' + (global._stTasksDoneOpen ? 'open' : '') + ' ontoggle="_stTasksDoneOpen = this.open">'
