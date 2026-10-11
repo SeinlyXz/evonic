@@ -11,6 +11,10 @@ from backend.tools.lib.decision_runtime import (
     DecisionRuntime, DecisionRuntimeError, DecisionRuntimeErrorCode,
     FixedWindowRateLimiter, RuntimeRequest,
 )
+from backend.tools.lib.model_routing_contracts import (
+    AdapterKey, CapabilityEvidence, ModelCapabilities, Operation, ProviderRoute,
+    ResolvedModelRoute,
+)
 
 
 def _model(model_id):
@@ -49,6 +53,25 @@ class FakeDB:
 
     def get_model_by_id(self, model_id):
         return self.models.get(model_id)
+
+
+def _route(model_id, *, enabled=True, provider_enabled=True, egress=("public",)):
+    return ResolvedModelRoute(
+        model_id, ProviderRoute("test", "https://adapter.invalid/v1", AdapterKey.OPENAI_CHAT_COMPLETIONS_V1, provider_enabled),
+        model_id, ModelCapabilities({Operation.DECISION: CapabilityEvidence.VERIFIED,
+                                     Operation.STRICT_OUTPUT: CapabilityEvidence.VERIFIED},
+                                    frozenset({"decision-schema/v1"}), data_egress=frozenset(egress)),
+        credentials={"api_key": "private"}, enabled=enabled,
+    )
+
+
+class RoutedFakeDB(FakeDB):
+    def __init__(self, routes, **kwargs):
+        super().__init__(**kwargs)
+        self.routes = routes
+
+    def resolve_model_route(self, model_id):
+        return self.routes.get(model_id)
 
 
 @dataclass
@@ -166,3 +189,37 @@ def test_secret_like_context_is_rejected_without_echoing_value():
         runtime.invoke(_request(input_context={"authorization": "Bearer dont-return-this"}))
     assert exc.value.code is DecisionRuntimeErrorCode.SECRET_DETECTED
     assert "dont-return-this" not in str(exc.value)
+
+
+def test_disabled_provider_route_is_rejected_without_invoking_adapter():
+    db = RoutedFakeDB({"primary": _route("primary", provider_enabled=False)},
+                      profile=_profile(fallback_model_id=None, retry_limit=0))
+    result = _runtime(db, []).invoke(_request())
+    assert result.error.code is DecisionErrorCode.NO_COMPATIBLE_MODEL
+
+
+def test_egress_restricted_fallback_is_not_invoked():
+    class RetryableFailure:
+        key = "failure"
+        def decide(self, invocation):
+            return _result(invocation, error=DecisionError(DecisionErrorCode.PROVIDER_UNAVAILABLE, "safe", True))
+
+    db = RoutedFakeDB({
+        "primary": _route("primary", egress=("internal",)),
+        "fallback": _route("fallback", egress=("public",)),
+    })
+    result = _runtime(db, [RetryableFailure()]).invoke(
+        _request(policy_metadata={"data_classification": "internal"}))
+    assert result.error.code is DecisionErrorCode.NO_COMPATIBLE_MODEL
+
+
+def test_non_retryable_failure_does_not_egress_to_fallback():
+    class TerminalFailure:
+        key = "terminal"
+        def decide(self, invocation):
+            return _result(invocation, error=DecisionError(DecisionErrorCode.PROVIDER_RESPONSE_INVALID, "safe", False))
+
+    db = RoutedFakeDB({"primary": _route("primary"), "fallback": _route("fallback")})
+    result = _runtime(db, [TerminalFailure()]).invoke(_request())
+    assert result.error.code is DecisionErrorCode.PROVIDER_RESPONSE_INVALID
+    assert result.attempts == 1

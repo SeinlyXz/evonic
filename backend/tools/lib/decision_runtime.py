@@ -16,6 +16,10 @@ import time
 from typing import Any, Callable, Mapping, Protocol
 
 from backend.tools.lib.decision_adapters import DecisionCompatibilityError, OpenAIStructuredDecisionAdapter, validate_decision_compatibility
+from backend.tools.lib.model_route_adapters import DEFAULT_ROUTE_ADAPTER_REGISTRY, RouteAdapterRegistry
+from backend.tools.lib.model_routing_contracts import (
+    Operation, OperationRequirements, compatibility_for,
+)
 from backend.tools.lib.decision_models import (
     CONTRACT_VERSION, SCHEMA_VERSION, ContractValidationError, DecisionAdapter,
     DecisionCancellation, DecisionError, DecisionErrorCode, DecisionInvocation,
@@ -119,10 +123,12 @@ class DecisionRuntime:
     resolved model mapping, whose credentials are never returned or logged.
     """
     def __init__(self, db: Any, *, adapter_factory: Callable[[Mapping[str, Any]], DecisionAdapter] | None = None,
+                 route_adapters: RouteAdapterRegistry | None = None,
                  rate_limiter: FixedWindowRateLimiter | None = None, metrics: MetricsSink | None = None,
                  logger: logging.Logger | None = None) -> None:
         self.db = db
         self.adapter_factory = adapter_factory or OpenAIStructuredDecisionAdapter
+        self.route_adapters = route_adapters or DEFAULT_ROUTE_ADAPTER_REGISTRY
         self.rate_limiter = rate_limiter or FixedWindowRateLimiter()
         self.metrics, self.logger = metrics, logger or logging.getLogger(__name__)
 
@@ -209,9 +215,35 @@ class DecisionRuntime:
                 fallback = attempt > 0
                 model = self.db.get_model_by_id(model_id)
                 try:
-                    validate_decision_compatibility(model, invocation)
-                    bounded_model = dict(model)
-                    bounded_model["timeout"] = min(MAX_TIMEOUT_MS / 1000, float(profile["timeout_ms"]) / 1000)
+                    configured_timeout = min(MAX_TIMEOUT_MS / 1000, float(profile["timeout_ms"]) / 1000)
+                    # The profile timeout is a cumulative budget across primary
+                    # and fallback attempts, never a fresh timeout per provider.
+                    timeout = configured_timeout - (time.monotonic() - started)
+                    if timeout <= 0:
+                        raise TimeoutError("Decision deadline elapsed before provider invocation.")
+                    route = self._resolve_route(model_id)
+                    if route is None:
+                        # Temporary compatibility branch for non-registry test/dry-run
+                        # stores. Production registry databases always resolve a route.
+                        validate_decision_compatibility(model, invocation)
+                        bounded_model = {**model, "timeout": timeout}
+                    else:
+                        requirements = OperationRequirements(
+                            frozenset({Operation.DECISION, Operation.STRICT_OUTPUT}),
+                            schema_version=invocation.schema.version,
+                            require_confidence=bool(profile.get("require_confidence", False)),
+                            data_classification=str((request.policy_metadata or {}).get("data_classification", "public")),
+                        )
+                        compatible = compatibility_for(route, requirements)
+                        if not compatible.compatible:
+                            raise DecisionCompatibilityError(compatible.message)
+                        adapter_failure = self.route_adapters.validate(route, Operation.DECISION)
+                        if adapter_failure:
+                            raise DecisionCompatibilityError(adapter_failure.message)
+                        adapter = self.route_adapters.get(route.provider.adapter_key)
+                        assert adapter is not None
+                        bounded_model = adapter.model_config(route, timeout=timeout)
+                        validate_decision_compatibility(bounded_model, invocation)
                     result = self.adapter_factory(bounded_model).decide(invocation)
                     result = replace(result, attempts=attempt + 1, fallback=FallbackMetadata(fallback, "previous_attempt_failed" if fallback else None) if fallback else None)
                     if result.error and result.error.code is DecisionErrorCode.CANCELLED:
@@ -233,11 +265,19 @@ class DecisionRuntime:
                             return result
                     else:
                         last = result
+                        # A provider explicitly marks non-retryable failures as
+                        # terminal; never egress the request to a fallback route.
+                        if result.error is not None and not result.error.retryable:
+                            break
                 except (DecisionCompatibilityError, ContractValidationError, ValueError, TimeoutError) as exc:
                     code = DecisionErrorCode.DEADLINE_EXCEEDED if isinstance(exc, TimeoutError) else DecisionErrorCode.NO_COMPATIBLE_MODEL if isinstance(exc, DecisionCompatibilityError) else DecisionErrorCode.PROVIDER_RESPONSE_INVALID
                     last = self._failure(invocation, code, "Decision provider returned an invalid response." if code is DecisionErrorCode.PROVIDER_RESPONSE_INVALID else "No compatible decision model is available." if code is DecisionErrorCode.NO_COMPATIBLE_MODEL else "Decision provider timed out.", started, attempt + 1, fallback)
                 if fallback:
                     self._metric("decision_runtime.fallback", profile=request.profile_key)
+                # Route compatibility failures and a terminal provider result
+                # must not consume another attempt or invoke fallback.
+                if last and last.error and not last.error.retryable:
+                    break
             assert last is not None
             self._metric("decision_runtime.failure", profile=request.profile_key, error=last.error.code.value if last.error else "unknown")
             result = replace(last, timing=TimingMetadata(int((time.monotonic() - started) * 1000), last.timing.provider_ms))
@@ -247,8 +287,13 @@ class DecisionRuntime:
             self._metric("decision_runtime.failure", profile=request.profile_key, error="boundary")
             raise
 
+    def _resolve_route(self, model_id: str):
+        resolver = getattr(self.db, "resolve_model_route", None)
+        return resolver(model_id) if callable(resolver) else None
+
     def _failure(self, invocation: DecisionInvocation, code: DecisionErrorCode, message: str, started: float, attempts: int = 0, fallback: bool = False) -> DecisionResult:
-        return DecisionResult(invocation.profile, SCHEMA_VERSION, (), None, TimingMetadata(int((time.monotonic() - started) * 1000)), attempts, (), FallbackMetadata(True, "previous_attempt_failed") if fallback else None, _safe_error(code, message, code is DecisionErrorCode.PROVIDER_UNAVAILABLE))
+        retryable = code in {DecisionErrorCode.PROVIDER_UNAVAILABLE, DecisionErrorCode.DEADLINE_EXCEEDED}
+        return DecisionResult(invocation.profile, SCHEMA_VERSION, (), None, TimingMetadata(int((time.monotonic() - started) * 1000)), attempts, (), FallbackMetadata(True, "previous_attempt_failed") if fallback else None, _safe_error(code, message, retryable))
 
     def _success(self, result: DecisionResult, request: RuntimeRequest, started: float, fallback: bool) -> None:
         self._metric("decision_runtime.success", profile=request.profile_key)

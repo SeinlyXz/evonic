@@ -468,6 +468,7 @@ class LLMClient:
             self.max_tokens = model_config.get("max_tokens")
             self.temperature = model_config.get("temperature")
             self.api_format = model_config.get("api_format", "openai")
+            self.adapter_key = model_config.get("adapter_key")
         else:
             try:
                 from models.db import db
@@ -486,6 +487,7 @@ class LLMClient:
                     self.max_tokens = dm.get("max_tokens")
                     self.temperature = dm.get("temperature")
                     self.api_format = dm.get("api_format", "openai")
+                    self.adapter_key = dm.get("adapter_key")
                 else:
                     self.base_url = None
                     self.api_key = None
@@ -496,6 +498,7 @@ class LLMClient:
                     self.max_tokens = None
                     self.temperature = None
                     self.api_format = "openai"
+                    self.adapter_key = None
             except Exception:
                 self.base_url = None
                 self.api_key = None
@@ -506,6 +509,7 @@ class LLMClient:
                 self.max_tokens = None
                 self.temperature = None
                 self.api_format = "openai"
+                self.adapter_key = None
         self._cached_model_name = None
         # OpenCode Go/Zen require a stable session id (x-opencode-session) on
         # inference requests for routing and prompt caching. Prefer an explicit
@@ -965,18 +969,23 @@ class LLMClient:
         if self.api_format == "claude_cli":
             return self._claude_cli_chat_completion(
                 provider_messages, tools, log_file, tool_choice)
-        if self.api_format == "codex":
+
+        # The persisted versioned adapter is authoritative. Legacy api_format is
+        # retained only as a compatibility alias while existing records migrate.
+        adapter_key = self.adapter_key or {
+            "codex": "codex.responses.v1",
+            "ollama": "ollama.chat.v1",
+            "anthropic": "anthropic.messages.v1",
+        }.get(self.api_format, "openai.chat_completions.v1")
+        if adapter_key == "codex.responses.v1":
             return self._codex_chat_completion(
                 provider_messages, tools, temperature, max_tokens, log_file,
                 tool_choice)
 
-        is_ollama_fmt = self.api_format == "ollama" or (
-            self.base_url and "ollama.com" in self.base_url
-        )
-        is_claude = (self.model or "").lower().startswith("claude") or (
-            self.base_url and "anthropic.com" in self.base_url
-        )
-        is_anthropic = self.api_format == "anthropic"
+        is_ollama_fmt = adapter_key == "ollama.chat.v1"
+        is_anthropic = adapter_key == "anthropic.messages.v1"
+        # Claude-specific request options are protocol-driven, not hostname-driven.
+        is_claude = is_anthropic
         anthropic_token = self.api_key
         if is_anthropic and not getattr(self, "_model_api_key_override", False):
             from backend.provider.claude_code import resolve_api_key
