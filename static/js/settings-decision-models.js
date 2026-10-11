@@ -120,9 +120,13 @@ window.decisionModels = {
         const revision = document.getElementById("decision-profile-revision").value;
         try {
             const response = revision ? await apiPut("/api/admin/decision-profiles/" + encodeURIComponent(data.profile_key), {...data, revision: Number(revision)}) : await apiPost("/api/admin/decision-profiles", data);
-            if (!response.success) { this.showError((response.error && response.error.path ? response.error.path + ": " : "") + ((response.error && response.error.message) || "Could not save profile.")); return; }
+            if (!response.success) {
+                const message = (response.error && response.error.path ? response.error.path + ": " : "") + ((response.error && response.error.message) || "Could not save profile.");
+                if (window.toast) toast.show(message, "error");
+                return;
+            }
             closeModal("decision-profile-modal"); await this.load(); if (window.toast) toast.show("Decision Profile saved", "success");
-        } catch (error) { this.showError("Could not save profile. Check the values and try again."); }
+        } catch (error) { if (window.toast) toast.show("Could not save profile. Check the values and try again.", "error"); }
     },
 
     showError(message) { const el = document.getElementById("decision-profile-error"); el.textContent = message; el.classList.remove("hidden"); },

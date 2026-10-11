@@ -22,3 +22,13 @@ def test_activity_detail_does_not_repurpose_outcome_as_rerun_input():
     assert "event.source === \"production\"" in SCRIPT
     assert "it never runs automatically" in SCRIPT
     assert "Production inputs, raw provider data, and normalized outputs" in SCRIPT
+
+
+def test_decision_profile_save_errors_use_global_toasts():
+    save_method = SCRIPT.split("async save(event)", 1)[1].split("showError(message)", 1)[0]
+
+    assert 'toast.show(message, "error")' in save_method
+    assert 'toast.show("Could not save profile. Check the values and try again.", "error")' in save_method
+    assert "if (!response.success) {\n                const message" in save_method
+    assert "this.showError((response.error" not in save_method
+    assert "this.showError(\"Could not save profile" not in save_method
