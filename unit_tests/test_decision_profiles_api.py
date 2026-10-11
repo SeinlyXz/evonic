@@ -23,6 +23,7 @@ def _model(model_id="test/profile-primary"):
         "type": "remote",
         "provider": "test",
         "model_name": model_id.rsplit("/", 1)[-1],
+        "capabilities": {"decision": {"enabled": True, "schema_versions": ["decision-schema/v1"]}},
     })
 
 
@@ -138,3 +139,22 @@ def test_non_builtin_can_be_deleted_and_routes_require_authentication(client):
 
     anonymous = app.test_client()
     assert anonymous.get("/api/admin/decision-profiles").status_code == 401
+
+
+def test_api_rejects_models_without_decision_capability(client):
+    db.create_model({
+        "id": "test/not-decision",
+        "name": "not decision",
+        "type": "remote",
+        "provider": "test",
+        "model_name": "not-decision",
+    })
+    response = client.post("/api/admin/decision-profiles", json=_payload(
+        key="application.incompatible", primary_model_id="test/not-decision",
+    ))
+    assert response.status_code == 400
+    assert response.get_json()["error"] == {
+        "code": "incompatible_model",
+        "path": "primary_model_id",
+        "message": "must reference a model enabled for Decision Models",
+    }

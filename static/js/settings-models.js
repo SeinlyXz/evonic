@@ -152,6 +152,11 @@ window.settingsModels = {
             ? "border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-200 dark:ring-indigo-800"
             : "border-gray-200 dark:border-gray-700";
         const shortcode = model.shortcode != null ? model.shortcode : "?";
+        const decision = model.capabilities && model.capabilities.decision;
+        const decisionCompatible = Boolean(decision && decision.enabled && Array.isArray(decision.schema_versions) && decision.schema_versions.includes("decision-schema/v1"));
+        const decisionBadge = decisionCompatible
+            ? '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-200">Decision ready</span>'
+            : '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Not decision compatible</span>';
 
         return `
         <div class="model-card bg-white dark:bg-gray-800 rounded-lg border ${defaultBorder} p-3 hover:shadow-sm transition-shadow flex flex-col gap-2">
@@ -173,12 +178,14 @@ window.settingsModels = {
                 <span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${typeColors}">${model.type}</span>
                 <span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${enabledColors}">${model.enabled ? "On" : "Off"}</span>
                 ${model.thinking ? '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300">Thinking</span>' : ""}
+                ${decisionBadge}
             </div>
 
             <div class="flex items-end justify-between gap-2">
                 <div class="text-[11px] text-gray-500 dark:text-gray-400 truncate min-w-0">
                     ${model.model_name}
                 </div>
+                ${decisionCompatible ? `<button class="text-[11px] text-indigo-600 dark:text-indigo-300 hover:underline" onclick="decisionModels.openPlayground({model: '${model.id}'})">Playground</button>` : ""}
                 <button class="p-1 rounded border border-red-400 dark:border-red-500 text-red-400 dark:text-red-400 bg-transparent cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors shrink-0" onclick="settingsModels.remove('${model.id}')" title="Delete"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
             </div>
         </div>`;
@@ -372,6 +379,7 @@ window.settingsModels = {
         document.getElementById("modal-title").textContent = "Add Model";
         document.getElementById("model-form").reset();
         document.getElementById("model-id").value = "";
+        document.getElementById("model-decision-schemas").value = "decision-schema/v1";
         this._populateProviderSelect();
         openModal("model-modal");
     },
@@ -383,6 +391,7 @@ window.settingsModels = {
         document.getElementById("modal-title").textContent = "Add Model — " + (prov.name || providerId);
         document.getElementById("model-form").reset();
         document.getElementById("model-id").value = "";
+        document.getElementById("model-decision-schemas").value = "decision-schema/v1";
         this._populateProviderSelect();
         document.getElementById("model-provider").value = providerId;
         document.getElementById("model-type").value = prov.type || "remote";
@@ -420,6 +429,10 @@ window.settingsModels = {
         document.getElementById("model-vision-supported").checked =
             !!model.vision_supported;
         document.getElementById("model-api-format").value = model.api_format || "openai";
+        const decision = (model.capabilities && model.capabilities.decision) || {};
+        document.getElementById("model-decision-enabled").checked = !!decision.enabled;
+        document.getElementById("model-decision-schemas").value = Array.isArray(decision.schema_versions) && decision.schema_versions.length
+            ? decision.schema_versions.join(", ") : "decision-schema/v1";
 
         this.toggleFields();
         openModal("model-modal");
@@ -444,6 +457,13 @@ window.settingsModels = {
         event.preventDefault();
 
         const modelId = document.getElementById("model-id").value;
+        const existingModel = this.models.find((model) => model.id === modelId);
+        const capabilities = { ...((existingModel && existingModel.capabilities) || {}) };
+        capabilities.decision = {
+            enabled: document.getElementById("model-decision-enabled").checked,
+            schema_versions: document.getElementById("model-decision-schemas").value
+                .split(",").map((value) => value.trim()).filter(Boolean),
+        };
         const modelData = {
             name: document.getElementById("model-name").value,
             type: document.getElementById("model-type").value,
@@ -471,6 +491,7 @@ window.settingsModels = {
                 ? 1
                 : 0,
             api_format: document.getElementById("model-api-format").value,
+            capabilities,
         };
 
         try {

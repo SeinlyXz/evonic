@@ -33,6 +33,10 @@
                 {% include 'partials/settings/models.html' %}
             </section>
 
+            <section id="section-decision-models" class="settings-pane">
+                {% include 'partials/settings/decision_models.html' %}
+            </section>
+
             <section id="section-users" class="settings-pane">
                 {% include 'partials/users.html' %}
             </section>
@@ -52,5 +56,6 @@
 <script src="{{ url_for('static', filename='js/settings-core.js') }}?v=5"></script>
 <script src="{{ url_for('static', filename='js/settings-general.js') }}?v=4"></script>
 <script src="{{ url_for('static', filename='js/settings-tools.js') }}?v=2"></script>
-<script src="{{ url_for('static', filename='js/settings-models.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/settings-models.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='js/settings-decision-models.js') }}?v=1"></script>
 {% endblock %}

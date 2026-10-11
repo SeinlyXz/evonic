@@ -1,0 +1,52 @@
+{# Decision Models administration pane. Behaviour lives in settings-decision-models.js. #}
+<div class="subpage" data-page="decision-profiles">
+  <div class="settings-pane-head flex items-start justify-between gap-4">
+    <div>
+      <h2 class="settings-pane-title">Decision Profiles</h2>
+      <p class="settings-pane-desc">Reusable, versioned configuration for structured decision requests. Provider credentials are never shown here.</p>
+    </div>
+    <button type="button" class="btn-primary" onclick="decisionModels.openCreate()"><i data-lucide="plus"></i>New profile</button>
+  </div>
+  <div id="decision-profiles-status" class="text-sm text-gray-500 dark:text-gray-400 py-6" role="status">Loading profiles…</div>
+  <div id="decision-profiles-list" class="grid grid-cols-1 lg:grid-cols-2 gap-4" aria-live="polite"></div>
+</div>
+
+<div class="subpage" data-page="decision-playground">
+  <div class="settings-pane-head">
+    <h2 class="settings-pane-title">Decision Playground</h2>
+    <p class="settings-pane-desc">A selected model or profile is retained for the forthcoming Playground. No test is run from this page.</p>
+  </div>
+  <div id="decision-playground-context" class="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 p-4 text-sm text-indigo-900 dark:text-indigo-100" role="status"></div>
+</div>
+
+<div class="subpage" data-page="decision-activity">
+  <div class="settings-pane-head">
+    <h2 class="settings-pane-title">Decision Activity</h2>
+    <p class="settings-pane-desc">Decision activity history will appear here when runtime consumers are enabled.</p>
+  </div>
+  <p class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-sm text-gray-600 dark:text-gray-300">There is no activity to display yet.</p>
+</div>
+
+<div id="decision-profile-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="decision-profile-modal-title">
+  <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl mx-4 flex flex-col max-h-[90vh]">
+    <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+      <h3 id="decision-profile-modal-title" class="text-lg font-semibold text-gray-900 dark:text-gray-100">New Decision Profile</h3>
+      <button type="button" onclick="closeModal('decision-profile-modal')" aria-label="Close profile form" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
+    </div>
+    <form id="decision-profile-form" class="overflow-y-auto p-6 flex-1 space-y-4" onsubmit="decisionModels.save(event)">
+      <input type="hidden" id="decision-profile-revision">
+      <div id="decision-profile-error" class="hidden rounded border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-3 text-sm text-red-800 dark:text-red-200" role="alert"></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-key">Profile key *</label><input required pattern="[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+" id="decision-profile-key" placeholder="application.release_gate" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><p class="text-xs text-gray-500 mt-1">Lowercase, dot-separated, and immutable after creation.</p></div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-name">Display name *</label><input required id="decision-profile-name" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"></div>
+      </div>
+      <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-description">Description</label><textarea id="decision-profile-description" rows="2" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"></textarea></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"><input type="checkbox" id="decision-profile-enabled" checked> Enabled</label><div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-mode">Mode</label><select id="decision-profile-mode" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><option value="off">Off</option><option value="shadow">Shadow</option><option value="enforce">Enforce</option></select></div></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-primary">Primary model *</label><select required id="decision-profile-primary" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"></select></div><div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-fallback">Fallback model</label><select id="decision-profile-fallback" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"></select></div></div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-timeout">Timeout (ms)</label><input required min="1" max="300000" type="number" id="decision-profile-timeout" value="1200" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><p class="text-xs text-gray-500 mt-1">1–300,000 ms per request.</p></div><div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-retries">Retries</label><input required min="0" max="10" type="number" id="decision-profile-retries" value="1" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><p class="text-xs text-gray-500 mt-1">0–10 retries after a failure.</p></div><div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-confidence">Minimum confidence</label><input required min="0" max="1" step="0.01" type="number" id="decision-profile-confidence" value="0.75" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><p class="text-xs text-gray-500 mt-1">Accept only results from 0 through 1.</p></div></div>
+      <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-policy">Policy version *</label><input required id="decision-profile-policy" value="policy/v1" class="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"></div>
+      <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="decision-profile-schema">Schema (decision-schema/v1) *</label><textarea required id="decision-profile-schema" rows="9" spellcheck="false" class="font-mono text-xs w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"></textarea><p class="text-xs text-gray-500 mt-1">Use the supported boolean, choice, or score field schema. Validation feedback identifies the failing field.</p></div>
+      <div class="flex justify-end gap-2 pt-2"><button type="button" class="btn-secondary" onclick="closeModal('decision-profile-modal')">Cancel</button><button type="submit" class="btn-primary">Save profile</button></div>
+    </form>
+  </div>
+</div>

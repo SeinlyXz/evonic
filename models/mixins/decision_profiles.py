@@ -96,6 +96,13 @@ class DecisionProfilesMixin:
         model = self.get_model_by_id(model_id)
         if not model:
             _fail("unknown_model", path, "does not reference a configured model")
+        capabilities = model.get("capabilities") or {}
+        decision = capabilities.get("decision") if isinstance(capabilities, dict) else None
+        if not isinstance(decision, dict) or not decision.get("enabled"):
+            _fail("incompatible_model", path, "must reference a model enabled for Decision Models")
+        schema_versions = decision.get("schema_versions", [SCHEMA_VERSION])
+        if not isinstance(schema_versions, list) or SCHEMA_VERSION not in schema_versions:
+            _fail("incompatible_schema", path, f"does not support {SCHEMA_VERSION}")
         return model["id"]
 
     def validate_decision_profile(self, data: Mapping[str, Any], *, existing: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:

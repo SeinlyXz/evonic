@@ -255,6 +255,7 @@ const SettingsNav = {
         general: { init: () => window.settingsGeneral && settingsGeneral.init() },
         tools: { init: () => window.settingsTools && settingsTools.init() },
         models: { init: () => window.settingsModels && settingsModels.init() },
+        "decision-models": { init: () => window.decisionModels && decisionModels.init() },
         users: { init: () => window.usersTab && usersTab.init() },
         shared_channel: { init: () => window.sharedChannel && sharedChannel.init() },
         logs: { init: () => window.logViewer && logViewer.init() },
@@ -262,6 +263,7 @@ const SettingsNav = {
     /* Nav groups: key -> {label, default page}. The key is also the pane id. */
     groups: {
         general: { label: "General", default: "general-appearance" },
+        "decision-models": { label: "Decision Models", default: "decision-profiles" },
     },
     /* Sub-pages: page id -> {pane, group, label} */
     subpages: {
@@ -271,6 +273,9 @@ const SettingsNav = {
         "general-reliability": { pane: "general", group: "general", label: "Reliability & Concurrency" },
         "general-whatsapp-safe-delivery": { pane: "general", group: "general", label: "WhatsApp Safe Delivery" },
         "general-privacy": { pane: "general", group: "general", label: "Privacy & Access" },
+        "decision-profiles": { pane: "decision-models", group: "decision-models", label: "Profiles" },
+        "decision-playground": { pane: "decision-models", group: "decision-models", label: "Playground" },
+        "decision-activity": { pane: "decision-models", group: "decision-models", label: "Activity" },
     },
     DEFAULT_PAGE: "general-appearance",
     current: null,
@@ -362,20 +367,21 @@ const SettingsNav = {
 
     route() {
         const h = location.hash.slice(1);
+        const pageHash = h.split("?", 1)[0];
         // #836: the old #hmads hash now lives on the consolidated Safety page
-        if (h === "hmads") {
+        if (pageHash === "hmads") {
             window.location.replace("/system/safety#hmads");
             return;
         }
-        if (h.startsWith("tools-")) {
-            const toolId = decodeURIComponent(h.slice(6));
+        if (pageHash.startsWith("tools-")) {
+            const toolId = decodeURIComponent(pageHash.slice(6));
             this.activate("tools", { fromHash: true });
             if (window.settingsTools && settingsTools.whenLoaded) {
                 settingsTools.whenLoaded.then(() => settingsTools.openEditor(toolId));
             }
             return;
         }
-        this.activate(h, { fromHash: true });
+        this.activate(pageHash, { fromHash: true });
     },
 
     /** Human label for a page id. */

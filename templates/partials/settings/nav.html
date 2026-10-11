@@ -22,6 +22,16 @@
     <button type="button" class="settings-nav-item" data-section="models">
         <i data-lucide="brain-circuit"></i><span>Models</span>
     </button>
+    <div class="settings-nav-group" id="nav-group-decision-models">
+        <button type="button" class="settings-nav-item settings-nav-parent" data-group="decision-models" aria-expanded="false" aria-controls="nav-sub-decision-models">
+            <i data-lucide="git-branch"></i><span>Decision Models</span><i data-lucide="chevron-right" class="nav-chev"></i>
+        </button>
+        <div class="settings-nav-sub" id="nav-sub-decision-models">
+            <button type="button" class="settings-nav-item" data-section="decision-profiles"><i data-lucide="file-stack"></i><span>Profiles</span></button>
+            <button type="button" class="settings-nav-item" data-section="decision-playground"><i data-lucide="flask-conical"></i><span>Playground</span></button>
+            <button type="button" class="settings-nav-item" data-section="decision-activity"><i data-lucide="activity"></i><span>Activity</span></button>
+        </div>
+    </div>
     <a href="/system/safety" class="settings-nav-item"
        title="Safety: HMADS rules + DMSS decision model (System > Safety)">
         <i data-lucide="shield-check"></i><span>Safety</span>
