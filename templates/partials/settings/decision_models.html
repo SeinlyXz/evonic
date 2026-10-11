@@ -12,11 +12,20 @@
 </div>
 
 <div class="subpage" data-page="decision-playground">
-  <div class="settings-pane-head">
-    <h2 class="settings-pane-title">Decision Playground</h2>
-    <p class="settings-pane-desc">A selected model or profile is retained for the forthcoming Playground. No test is run from this page.</p>
+  <div class="settings-pane-head"><div><h2 class="settings-pane-title">Decision Playground</h2><p class="settings-pane-desc">Run a bounded, inference-only structured decision. Tests never execute tools, commands, webhooks, or change production configuration.</p></div></div>
+  <div id="decision-playground-context" class="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 p-4 text-sm text-indigo-900 dark:text-indigo-100 mb-4" role="status"></div>
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+    <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 space-y-4">
+      <div class="flex flex-wrap gap-3 items-end"><div><label class="block text-sm font-medium mb-1" for="playground-mode">Test mode</label><select id="playground-mode" class="border rounded-lg px-3 py-2 dark:bg-gray-700"><option value="profile">Saved Profile Test</option><option value="direct">Direct Model Test</option></select></div><div id="playground-profile-wrap"><label class="block text-sm font-medium mb-1" for="playground-profile">Profile</label><select id="playground-profile" class="border rounded-lg px-3 py-2 dark:bg-gray-700"></select></div><div id="playground-model-wrap" class="hidden"><label class="block text-sm font-medium mb-1" for="playground-model">Model</label><select id="playground-model" class="border rounded-lg px-3 py-2 dark:bg-gray-700"></select></div></div>
+      <div id="playground-error" class="hidden rounded border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-200" role="alert"></div>
+      <div id="playground-schema-builder" class="space-y-3"></div>
+      <div class="flex flex-wrap gap-2"><button type="button" class="btn-secondary text-sm" onclick="decisionModels.playgroundPreset()">Outage preset</button><button type="button" class="btn-secondary text-sm" onclick="decisionModels.playgroundReset()">Reset</button><button type="button" class="btn-secondary text-sm" onclick="decisionModels.playgroundAddField()">Add field</button></div>
+      <div><label class="block text-sm font-medium mb-1" for="playground-schema">Schema JSON</label><textarea id="playground-schema" rows="10" spellcheck="false" class="font-mono text-xs w-full border rounded-lg px-3 py-2 dark:bg-gray-700" aria-describedby="playground-schema-help"></textarea><p id="playground-schema-help" class="text-xs text-gray-500 mt-1">Supported fields: choice/enum, boolean (nullable allowed), and bounded numeric score. Visual and JSON editors stay synchronized.</p></div>
+      <div><label class="block text-sm font-medium mb-1" for="playground-input">Test input JSON</label><textarea id="playground-input" rows="7" spellcheck="false" class="font-mono text-xs w-full border rounded-lg px-3 py-2 dark:bg-gray-700">{"incident":"Payment-service outage affecting checkout"}</textarea></div>
+      <div class="flex flex-wrap gap-2"><button type="button" class="btn-primary" id="playground-run" onclick="decisionModels.playgroundRun()">Run safe test</button><button type="button" class="btn-secondary" onclick="decisionModels.playgroundCopy()">Copy result</button></div>
+    </section>
+    <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"><h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-3">Result</h3><div id="playground-result" class="text-sm text-gray-500 dark:text-gray-400" aria-live="polite">No test has run. Input and raw provider responses are not retained.</div></section>
   </div>
-  <div id="decision-playground-context" class="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 p-4 text-sm text-indigo-900 dark:text-indigo-100" role="status"></div>
 </div>
 
 <div class="subpage" data-page="decision-activity">
