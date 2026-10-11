@@ -18,8 +18,9 @@ from typing import Any, Callable, Mapping, Protocol
 from backend.tools.lib.decision_adapters import DecisionCompatibilityError, OpenAIStructuredDecisionAdapter, validate_decision_compatibility
 from backend.tools.lib.model_route_adapters import DEFAULT_ROUTE_ADAPTER_REGISTRY, RouteAdapterRegistry
 from backend.tools.lib.model_routing_contracts import (
-    Operation, OperationRequirements, compatibility_for,
+    AdapterKey, Operation, OperationRequirements, compatibility_for,
 )
+from backend.tools.lib.systemone_decision_adapter import SystemOneQuestionsDecisionAdapter
 from backend.tools.lib.decision_models import (
     CONTRACT_VERSION, SCHEMA_VERSION, ContractValidationError, DecisionAdapter,
     DecisionCancellation, DecisionError, DecisionErrorCode, DecisionInvocation,
@@ -127,7 +128,9 @@ class DecisionRuntime:
                  rate_limiter: FixedWindowRateLimiter | None = None, metrics: MetricsSink | None = None,
                  logger: logging.Logger | None = None) -> None:
         self.db = db
-        self.adapter_factory = adapter_factory or OpenAIStructuredDecisionAdapter
+        # Keep injection available for provider-free tests, while production route
+        # selection remains explicit and keyed by the native protocol adapter.
+        self.adapter_factory = adapter_factory
         self.route_adapters = route_adapters or DEFAULT_ROUTE_ADAPTER_REGISTRY
         self.rate_limiter = rate_limiter or FixedWindowRateLimiter()
         self.metrics, self.logger = metrics, logger or logging.getLogger(__name__)
@@ -244,7 +247,14 @@ class DecisionRuntime:
                         assert adapter is not None
                         bounded_model = adapter.model_config(route, timeout=timeout)
                         validate_decision_compatibility(bounded_model, invocation)
-                    result = self.adapter_factory(bounded_model).decide(invocation)
+                    adapter_factory = self.adapter_factory
+                    if adapter_factory is None:
+                        adapter_factory = (
+                            SystemOneQuestionsDecisionAdapter
+                            if bounded_model.get("adapter_key") == AdapterKey.SYSTEMONE_QUESTIONS_V1.value
+                            else OpenAIStructuredDecisionAdapter
+                        )
+                    result = adapter_factory(bounded_model).decide(invocation)
                     result = replace(result, attempts=attempt + 1, fallback=FallbackMetadata(fallback, "previous_attempt_failed" if fallback else None) if fallback else None)
                     if result.error and result.error.code is DecisionErrorCode.CANCELLED:
                         # Cancellation is terminal: never retry or invoke fallback.
@@ -256,9 +266,10 @@ class DecisionRuntime:
                     if result.error is None:
                         result = validate_result(invocation.schema, result)
                         confidences = [field.confidence for field in result.fields if field.confidence is not None]
-                        if confidences and min(confidences) < float(profile["minimum_confidence"]):
+                        confidence_required = bool(profile.get("require_confidence", False))
+                        if (confidence_required and len(confidences) != len(result.fields)) or (confidences and min(confidences) < float(profile["minimum_confidence"])):
                             self._metric("decision_runtime.low_confidence", profile=request.profile_key)
-                            last = replace(result, error=_safe_error(DecisionErrorCode.PROVIDER_RESPONSE_INVALID, "Decision confidence was below the configured threshold."))
+                            last = replace(result, error=_safe_error(DecisionErrorCode.PROVIDER_RESPONSE_INVALID, "Decision confidence was missing or below the configured threshold."))
                         else:
                             self._success(result, request, started, fallback)
                             self._activity(request, result)

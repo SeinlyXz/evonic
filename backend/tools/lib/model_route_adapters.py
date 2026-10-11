@@ -44,6 +44,7 @@ class RouteAdapter:
             "base_url": route.provider.endpoint,
             "api_key": route.credentials.get("api_key"),
             "adapter_key": route.provider.adapter_key.value,
+            "endpoint": route.provider.endpoint,
             "enabled": route.enabled and route.provider.enabled,
             "timeout": timeout,
             "capabilities": route.capabilities.to_dict(),

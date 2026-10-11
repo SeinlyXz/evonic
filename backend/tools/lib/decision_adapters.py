@@ -97,11 +97,11 @@ def validate_decision_compatibility(model: Mapping[str, Any] | None, invocation:
             )
     adapter_key = model.get("adapter_key")
     if adapter_key:
-        if adapter_key != "openai.chat_completions.v1":
+        if adapter_key not in {"openai.chat_completions.v1", "systemone.questions.v1"}:
             raise DecisionCompatibilityError(
                 f"Model '{model.get('id')}' uses unsupported decision adapter '{adapter_key}'."
             )
-    elif model.get("api_format", "openai") not in {"openai"}:
+    elif model.get("api_format", "openai") not in {"openai", "systemone"}:
         raise DecisionCompatibilityError(
             f"Model '{model.get('id')}' uses unsupported decision adapter format '{model.get('api_format')}'."
         )

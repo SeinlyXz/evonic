@@ -1,7 +1,13 @@
 """DMSS Decision Profile bridge regression coverage (no command execution)."""
 from types import SimpleNamespace
 
-from backend.dmss_decision_profile import SafetyCommandOutcome
+from backend.dmss_decision_profile import (
+    PROFILE_KEY, SafetyCommandDecisionRunner, SafetyCommandOutcome,
+)
+from backend.tools.lib.decision_models import (
+    DecisionFieldResult, DecisionProfileRef, DecisionResult, ProviderMetadata,
+    TimingMetadata,
+)
 from backend.tools.lib.safety_pipeline import SafetyPipeline
 
 
@@ -55,3 +61,29 @@ def test_profile_enforce_maps_review_without_executing_command():
     result = pipeline.check("synthetic", "bash", {})
     assert result["level"] == "requires_approval"
     assert result["requires_approval"] is True
+
+
+class _Runtime:
+    def __init__(self, result):
+        self.result = result
+
+    def invoke(self, _request):
+        return self.result
+
+
+class _DB:
+    def __init__(self):
+        self.profile = {"enabled": True, "mode": "enforce", "minimum_confidence": .8}
+
+    def get_decision_profile(self, key):
+        return self.profile if key == PROFILE_KEY else None
+
+
+def test_missing_confidence_cannot_enable_dmss_enforcement():
+    profile = DecisionProfileRef(PROFILE_KEY, "decim/v1")
+    result = DecisionResult(profile, "decision-schema/v1", (DecisionFieldResult("decision", "allow"),),
+                            ProviderMetadata("systemone", "model"), TimingMetadata(1), 1)
+    runner = SafetyCommandDecisionRunner(runtime_factory=lambda: _Runtime(result), db_provider=_DB)
+    outcome = runner.decide("echo safe", "bash", "sandboxed_docker")
+    assert outcome.decision is None
+    assert outcome.fallback_reason == "low_confidence"

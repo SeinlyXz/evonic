@@ -96,6 +96,10 @@ class SafetyCommandDecisionRunner:
             field = values.get("decision")
             if set(values) != {"decision"} or field is None or field.value not in {"allow", "review", "block"}:
                 return SafetyCommandOutcome(True, mode=mode, fallback_reason="invalid_result")
+            # DMSS enforcement is fail-closed: a provider must supply bounded,
+            # independently meaningful confidence before it can influence policy.
+            if field.confidence is None or field.confidence < float(profile.get("minimum_confidence", 1.0)):
+                return SafetyCommandOutcome(True, mode=mode, fallback_reason="low_confidence")
             return SafetyCommandOutcome(
                 True, mode=mode, decision=field.value, confidence=field.confidence,
                 model_id=result.provider.model_id if result.provider else None,
