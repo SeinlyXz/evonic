@@ -122,6 +122,29 @@ def test_chat_messages_sync_across_tabs_without_content_polling():
         assert "markLastUserBubbleQueued($message)" in source
 
 
+def test_restart_ready_message_uses_the_realtime_chat_identity_contract():
+    """Startup notifications must be renderable before a browser history refresh."""
+    app = read_repo_file("app.py")
+    sessions = read_repo_file("templates/sessions.html")
+    detail = read_repo_file("templates/agent_detail.html")
+
+    start = app.index("# Web chat — inject directly as system message (no LLM).")
+    end = app.index("_log.info(\"'Evonic ready!' sent via web chat", start)
+    restart_ready = app[start:end]
+
+    assert "_message_id = db.add_chat_message(" in restart_ready
+    assert "'message_id': _message_id" in restart_ready
+    assert "'role': 'system'" in restart_ready
+    assert "'metadata': _metadata" in restart_ready
+    assert "event_stream.emit('message_received'" in restart_ready
+
+    # Both active chat UIs reject ID-less events, so startup must satisfy this
+    # contract rather than relying on the next history reload.
+    for source in (sessions, detail):
+        assert "!data.message_id" in source
+        assert "data.role || 'user'" in source
+
+
 def test_turn_split_duration_survives_durable_replay():
     turn = read_repo_file("static/js/chat-ui/turn.js")
     index = read_repo_file("static/js/chat-ui/index.js")

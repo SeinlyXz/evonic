@@ -442,17 +442,21 @@ if (not _reloader_active or _is_reloader_child) and not _smoke_test and not _tes
                         _log.warning("Channel %s not found, cannot send restart ready message",
                                      _channel_id)
                 elif _session_id and _agent_id:
-                    # Web chat — inject directly as system message (no LLM)
-                    # Write to SQLite DB so it appears in chat history
-                    db.add_chat_message(_session_id, 'system', 'Evonic ready!',
-                                        agent_id=_agent_id, metadata={'restart_ready': True})
-                    # Write to JSONL chatlog so it appears when polling
+                    # Web chat — inject directly as system message (no LLM).
+                    # Keep the same durable ID in history and SSE so a reconnecting
+                    # client can render and deduplicate this notification.
+                    _metadata = {'restart_ready': True}
+                    _message_id = db.add_chat_message(
+                        _session_id, 'system', 'Evonic ready!',
+                        agent_id=_agent_id, metadata=_metadata,
+                    )
+                    # Write to JSONL chatlog so it appears when polling.
                     from models.chatlog import chatlog_manager
                     _cl = chatlog_manager.get(_agent_id, _session_id)
                     _cl.append({'type': 'system', 'session_id': _session_id,
-                                'content': 'Evonic ready!',
-                                'metadata': {'restart_ready': True}})
-                    # Emit SSE event for any reconnected clients
+                                'content': 'Evonic ready!', 'metadata': _metadata,
+                                'message_id': _message_id})
+                    # Emit a renderable SSE event for any reconnected clients.
                     from backend.event_stream import event_stream
                     event_stream.emit('message_received', {
                         'agent_id': _agent_id,
@@ -460,6 +464,9 @@ if (not _reloader_active or _is_reloader_child) and not _smoke_test and not _tes
                         'external_user_id': _user_id,
                         'channel_id': None,
                         'message': 'Evonic ready!',
+                        'message_id': _message_id,
+                        'role': 'system',
+                        'metadata': _metadata,
                     })
                     _log.info("'Evonic ready!' sent via web chat (session=%s)", _session_id)
                 else:
