@@ -7,6 +7,8 @@ window.decisionModels = {
         await this.load();
         this.renderPlayground();
         this.bindPlayground();
+        this.bindActivity();
+        this.loadActivity();
     },
 
     async load() {
@@ -19,6 +21,7 @@ window.decisionModels = {
             this.profiles = profilesData.profiles || [];
             this.models = models || [];
             this.render();
+            this.populateActivityOptions();
         } catch (error) {
             status.textContent = "Could not load Decision Profiles. Refresh and try again.";
             status.className = "rounded border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-4 text-sm text-red-800 dark:text-red-200";
@@ -163,4 +166,74 @@ window.decisionModels = {
     async playgroundRun() { let schema, input; try { schema = this.playgroundSchema(); input = JSON.parse(document.getElementById("playground-input").value); if (!input || Array.isArray(input) || typeof input !== "object") throw new Error("input_context must be a JSON object"); } catch (error) { this.playgroundError(error.message || "Schema and input must be valid JSON objects."); return; } const direct = document.getElementById("playground-mode").value === "direct"; const payload = {mode: direct ? "direct" : "profile", input_context: input}; if (direct) Object.assign(payload, {model_id: document.getElementById("playground-model").value, schema}); else payload.profile_key = document.getElementById("playground-profile").value; const button = document.getElementById("playground-run"); button.disabled = true; button.textContent = "Running…"; this.playgroundError(""); try { const response = await apiPost("/api/admin/decision-playground/run", payload); if (!response.success) { this.playgroundError((response.error && ((response.error.path ? response.error.path + ": " : "") + response.error.message)) || "Test could not run."); return; } this.renderPlaygroundResult(response.result); } catch (_) { this.playgroundError("Test could not run. Refresh and try again."); } finally { button.disabled = false; button.textContent = "Run safe test"; } },
     renderPlaygroundResult(result) { const root = document.getElementById("playground-result"), error = result.error; if (error) { root.innerHTML = `<div class="text-red-700 dark:text-red-300"><strong>${this.escape(error.code)}</strong>: ${this.escape(error.message)}${error.retryable ? " You can try again." : ""}</div>`; return; } const fields = (result.fields || []).map(field => `<li class="rounded border border-gray-200 dark:border-gray-700 p-3"><div class="font-medium">${this.escape(field.key)}: <code>${this.escape(JSON.stringify(field.value))}</code></div><div class="text-xs text-gray-500">Confidence: ${field.confidence == null ? "unavailable" : this.escape(Math.round(field.confidence * 100) + "%")} · Candidates: ${field.candidates && field.candidates.length ? this.escape(JSON.stringify(field.candidates)) : "unavailable"} · Provider logits: ${field.provider_logits && field.provider_logits.length ? this.escape(JSON.stringify(field.provider_logits)) : "unavailable (not supplied by adapter)"}</div></li>`).join(""); root.innerHTML = `<div class="space-y-3"><div class="rounded bg-emerald-50 dark:bg-emerald-950/30 p-3 text-emerald-800 dark:text-emerald-200">Normalized decision completed.</div><ul class="space-y-2">${fields}</ul><details><summary class="cursor-pointer font-medium">Execution details</summary><pre class="mt-2 overflow-auto rounded bg-gray-100 dark:bg-gray-900 p-3 text-xs">${this.escape(JSON.stringify({profile: result.profile, provider: result.provider, timing: result.timing, attempts: result.attempts, fallback: result.fallback, warnings: result.warnings, candidate_scores: result.display && result.display.candidate_scores, provider_logits: result.display && result.display.provider_logits}, null, 2))}</pre></details><details><summary class="cursor-pointer font-medium">Normalized JSON</summary><pre class="mt-2 overflow-auto rounded bg-gray-100 dark:bg-gray-900 p-3 text-xs">${this.escape(JSON.stringify(result, null, 2))}</pre></details></div>`; this.lastPlaygroundResult = result; },
     async playgroundCopy() { if (!this.lastPlaygroundResult) return; try { await navigator.clipboard.writeText(JSON.stringify(this.lastPlaygroundResult, null, 2)); if (window.toast) toast.show("Normalized result copied", "success"); } catch (_) { this.playgroundError("Could not copy the result."); } },
+
+    bindActivity() {
+        const form = document.getElementById("decision-activity-filters");
+        if (!form || form.dataset.bound) return;
+        form.dataset.bound = "1";
+        form.addEventListener("submit", (event) => { event.preventDefault(); this.activityCursor = null; this.loadActivity(); });
+    },
+    activityFilters() {
+        const form = document.getElementById("decision-activity-filters");
+        const values = new FormData(form), params = new URLSearchParams({limit: "25"});
+        for (const [key, value] of values.entries()) {
+            if (!value) continue;
+            params.set(key, (key === "from" || key === "to") ? String(Date.parse(value) / 1000) : value);
+        }
+        return params;
+    },
+    populateActivityOptions() {
+        const profile = document.getElementById("decision-activity-profile"), model = document.getElementById("decision-activity-model");
+        if (profile) profile.innerHTML = '<option value="">All profiles</option>' + this.profiles.map((item) => `<option value="${this.escape(item.profile_key)}">${this.escape(item.display_name)} (${this.escape(item.profile_key)})</option>`).join("");
+        if (model) model.innerHTML = '<option value="">All models</option>' + this.models.map((item) => `<option value="${this.escape(item.id)}">${this.escape(item.name)} (${this.escape(item.id)})</option>`).join("");
+    },
+    activityStatus(message, kind = "neutral") {
+        const status = document.getElementById("decision-activity-status");
+        if (!status) return;
+        status.textContent = message;
+        status.className = kind === "error" ? "rounded border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-3 text-sm text-red-800 dark:text-red-200" : "text-sm text-gray-500 dark:text-gray-400";
+    },
+    async loadActivity(append = false) {
+        const list = document.getElementById("decision-activity-list"), more = document.getElementById("decision-activity-more");
+        if (!list) return;
+        if (!append) { this.activityCursor = null; this.activityEvents = []; list.innerHTML = ""; this.activityStatus("Loading activity…"); }
+        const params = this.activityFilters(); if (append && this.activityCursor) params.set("cursor", this.activityCursor);
+        try {
+            const response = await apiGet("/api/admin/decision-activity?" + params.toString());
+            const events = response.events || [];
+            this.activityEvents = append ? this.activityEvents.concat(events) : events;
+            this.activityCursor = response.next_cursor || null;
+            more.classList.toggle("hidden", !this.activityCursor);
+            if (!this.activityEvents.length) this.activityStatus("No matching activity. Events may not have been recorded yet, may have expired under retention policy, or may have been redacted.");
+            else { this.activityStatus(`${this.activityEvents.length} event${this.activityEvents.length === 1 ? "" : "s"} shown.`); list.innerHTML = this.activityEvents.map((event) => this.activityRow(event)).join(""); }
+        } catch (_) { more.classList.add("hidden"); this.activityStatus("Could not load Decision Activity. Refresh and try again.", "error"); }
+    },
+    activityRow(event) {
+        const badge = event.result_class === "error" ? "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300" : event.fallback_used ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300";
+        const state = event.result_class === "error" ? `Error: ${event.error_code || "unknown"}` : event.fallback_used ? "Fallback used" : "Success";
+        return `<button type="button" class="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 p-3 hover:border-indigo-400 dark:hover:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" onclick="decisionModels.openActivity('${this.escape(event.id)}')"><div class="flex flex-wrap items-center justify-between gap-2"><span class="font-medium text-gray-900 dark:text-gray-100">${this.escape(event.profile_key)} <span class="text-xs font-normal text-gray-500">${this.escape(event.profile_version)}</span></span><span class="rounded px-2 py-1 text-xs font-medium ${badge}">${this.escape(state)}</span></div><div class="mt-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-500 dark:text-gray-400"><span>${this.escape(event.source)}</span><span>${this.escape(event.model_id || "model unavailable")}</span><span>${event.latency_ms == null ? "latency unavailable" : this.escape(event.latency_ms + " ms")}</span><span>${this.escape(this.activityDate(event.created_at))}</span></div></button>`;
+    },
+    activityDate(value) { return value ? new Date(Number(value) * 1000).toLocaleString() : "time unavailable"; },
+    clearActivityFilters() { const form = document.getElementById("decision-activity-filters"); form.reset(); this.loadActivity(); },
+    async openActivity(id) {
+        const root = document.getElementById("decision-activity-detail"); root.classList.remove("hidden"); root.textContent = "Loading event…"; root.focus();
+        try { const response = await apiGet("/api/admin/decision-activity/" + encodeURIComponent(id)); this.renderActivityDetail(response.event); }
+        catch (_) { root.innerHTML = '<p class="text-red-700 dark:text-red-300">This event is unavailable. It may have expired or been redacted under retention policy.</p>'; }
+    },
+    renderActivityDetail(event) {
+        const root = document.getElementById("decision-activity-detail"), summary = event.outcome_summary || {};
+        const rows = [["Source", event.source], ["Profile", event.profile_key], ["Profile version", event.profile_version], ["Model", event.model_id], ["Adapter", event.adapter_key], ["Result", event.result_class], ["Typed error", event.error_code], ["Confidence", event.confidence == null ? "unavailable" : Math.round(event.confidence * 100) + "%"], ["Latency", event.latency_ms == null ? "unavailable" : event.latency_ms + " ms"], ["Attempts", event.attempts], ["Fallback", event.fallback_used ? `used${event.fallback_reason ? ": " + event.fallback_reason : ""}` : "not used"], ["Correlation ID", event.correlation_id || "unavailable"], ["Recorded", this.activityDate(event.created_at)]];
+        const profile = this.profiles.find((item) => item.profile_key === event.profile_key);
+        const rerun = event.rerun && event.rerun.allowed && event.source !== "production" && profile && event.rerun.input_context;
+        root.innerHTML = `<div class="flex flex-wrap justify-between gap-3"><div><h3 class="font-semibold text-gray-900 dark:text-gray-100">Activity detail</h3><p class="text-xs text-gray-500">Only bounded normalized metadata is shown.</p></div><button type="button" class="btn-secondary text-sm" onclick="decisionModels.openPlayground({profile: '${this.escape(event.profile_key)}'})">Open profile in Playground</button></div><dl class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">${rows.map(([key, value]) => `<div><dt class="text-gray-500 dark:text-gray-400">${this.escape(key)}</dt><dd class="font-medium text-gray-900 dark:text-gray-100 break-all">${this.escape(value == null ? "unavailable" : value)}</dd></div>`).join("")}</dl><div class="mt-4"><h4 class="font-medium">Normalized outcome summary</h4><pre class="mt-2 overflow-auto rounded bg-gray-100 dark:bg-gray-900 p-3 text-xs">${this.escape(JSON.stringify(summary, null, 2))}</pre></div><div class="mt-4 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 p-3 text-sm text-indigo-900 dark:text-indigo-100">${rerun ? `<button type="button" class="btn-primary text-sm" onclick="decisionModels.rerunActivity('${this.escape(event.id)}')">Rerun in Playground</button><p class="mt-2">This opens a draft only. Review it and explicitly choose Run safe test; it never runs automatically.</p>` : "Rerun unavailable: this event has no retained allowlisted input draft. Production inputs, raw provider data, and normalized outputs are never repurposed as test input."}</div>`;
+    },
+    async rerunActivity(id) {
+        const event = await apiGet("/api/admin/decision-activity/" + encodeURIComponent(id)).then((response) => response.event).catch(() => null);
+        const rerun = event && event.rerun;
+        if (!event || event.source === "production" || !rerun || !rerun.allowed || !rerun.input_context) return;
+        this.openPlayground({profile: event.profile_key});
+        document.getElementById("playground-input").value = JSON.stringify(rerun.input_context, null, 2);
+        document.getElementById("decision-playground-context").textContent = "Draft created from retained allowlisted test fields. Review before explicitly selecting Run safe test. It has not run automatically.";
+        document.getElementById("playground-run").focus();
+    },
 };

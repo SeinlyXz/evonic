@@ -31,9 +31,25 @@
 <div class="subpage" data-page="decision-activity">
   <div class="settings-pane-head">
     <h2 class="settings-pane-title">Decision Activity</h2>
-    <p class="settings-pane-desc">Decision activity history will appear here when runtime consumers are enabled.</p>
+    <p class="settings-pane-desc">Privacy-bounded diagnostic metadata. Inputs, provider responses, and credentials are never retained.</p>
   </div>
-  <p class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-sm text-gray-600 dark:text-gray-300">There is no activity to display yet.</p>
+  <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-4">
+    <form id="decision-activity-filters" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3" aria-label="Filter decision activity">
+      <label class="text-sm">Source<select name="source" class="mt-1 w-full border rounded-lg px-3 py-2 dark:bg-gray-700"><option value="">All sources</option><option value="production">Production</option><option value="playground">Playground</option><option value="profile_test">Profile Test</option></select></label>
+      <label class="text-sm">Profile<select name="profile_key" id="decision-activity-profile" class="mt-1 w-full border rounded-lg px-3 py-2 dark:bg-gray-700"><option value="">All profiles</option></select></label>
+      <label class="text-sm">Model<select name="model_id" id="decision-activity-model" class="mt-1 w-full border rounded-lg px-3 py-2 dark:bg-gray-700"><option value="">All models</option></select></label>
+      <label class="text-sm">Result<select name="result_class" class="mt-1 w-full border rounded-lg px-3 py-2 dark:bg-gray-700"><option value="">All results</option><option value="success">Success</option><option value="error">Error</option></select></label>
+      <label class="text-sm">Error class<input name="error_code" class="mt-1 w-full border rounded-lg px-3 py-2 dark:bg-gray-700" placeholder="e.g. timeout"></label>
+      <label class="text-sm">Fallback<select name="fallback_used" class="mt-1 w-full border rounded-lg px-3 py-2 dark:bg-gray-700"><option value="">Any</option><option value="true">Used</option><option value="false">Not used</option></select></label>
+      <label class="text-sm">Correlation ID<input name="correlation_id" class="mt-1 w-full border rounded-lg px-3 py-2 dark:bg-gray-700"></label>
+      <div class="grid grid-cols-2 gap-2"><label class="text-sm">From<input name="from" type="datetime-local" class="mt-1 w-full border rounded-lg px-2 py-2 dark:bg-gray-700"></label><label class="text-sm">To<input name="to" type="datetime-local" class="mt-1 w-full border rounded-lg px-2 py-2 dark:bg-gray-700"></label></div>
+      <div class="sm:col-span-2 xl:col-span-4 flex flex-wrap gap-2"><button type="submit" class="btn-primary">Apply filters</button><button type="button" class="btn-secondary" onclick="decisionModels.clearActivityFilters()">Clear</button></div>
+    </form>
+    <div id="decision-activity-status" class="text-sm text-gray-500 dark:text-gray-400" role="status">Loading activity…</div>
+    <div id="decision-activity-list" class="space-y-2" aria-live="polite"></div>
+    <div class="flex justify-between items-center gap-3"><p class="text-xs text-gray-500 dark:text-gray-400">Activity is retained only according to server policy. Redacted or expired events cannot be restored or rerun.</p><button type="button" id="decision-activity-more" class="btn-secondary text-sm hidden" onclick="decisionModels.loadActivity(true)">Load more</button></div>
+  </section>
+  <section id="decision-activity-detail" class="hidden mt-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5" tabindex="-1" aria-live="polite"></section>
 </div>
 
 <div id="decision-profile-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="decision-profile-modal-title">

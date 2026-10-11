@@ -71,3 +71,11 @@ The result panel separates:
 - a copyable normalized JSON envelope.
 
 Timeouts, malformed provider output, unsupported models/schemas, secret redaction, and rate limits are returned as actionable errors. Correct the reported issue and run a new test; sensitive inputs are not restored automatically.
+
+## Decision Activity and safe reruns
+
+Open **System Settings → Decision Models → Activity** to inspect the bounded diagnostic record for decision invocations. Filter by source (**Production**, **Playground**, or **Profile Test**), profile, model, success/error class, typed error, fallback use, correlation ID, and recorded time range. Results are cursor-paginated; an empty result can mean no matching events, expiry under the server retention policy, or redaction.
+
+The detail view shows only normalized outcome fields and diagnostic metadata: profile/policy version, adapter/model, confidence, latency, attempts, fallback state/reason, typed error, and correlation ID. It never displays invocation input, policy metadata, provider bodies, credentials, prompts, candidates, or logits that were not already part of the normalized result.
+
+**Rerun in Playground** is displayed only if an activity event includes a separately retained, allowlisted sanitized test draft and the referenced profile is still available. Selecting it creates a Playground draft and moves keyboard focus to **Run safe test**; it does **not** invoke a model. Production events and events without such a draft explicitly remain unavailable. Normalized output is not input and is never repurposed to reconstruct an invocation. Redacted and expired events cannot be restored or rerun.

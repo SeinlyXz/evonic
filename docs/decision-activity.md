@@ -8,7 +8,13 @@ Each event has an opaque ID, timestamp, source (`production`, `playground`, or `
 
 A detail event may include `outcome_summary`: a **strict allowlist snapshot** of normalized result field values only. The field name must match the Decision Schema-style lowercase key pattern, there are at most 32 fields, scalar strings are capped at 256 characters, and aggregate stored rows are capped at 12 KiB. Nested objects, arrays, provider candidates/logits, arbitrary payloads, and invalid keys are dropped. Keys resembling secret names are also dropped.
 
-The store never accepts or records raw `input_context`, policy metadata, full prompts, provider responses, credentials, free-form provider error text, or arbitrary rerun payloads. Safe reruns require the calling product to obtain its input through its own approved data path; Decision Activity is intentionally insufficient to reconstruct an invocation.
+The store never accepts or records raw `input_context`, policy metadata, full prompts, provider responses, credentials, free-form provider error text, or arbitrary rerun payloads. Decision Activity is intentionally insufficient to reconstruct an invocation.
+
+## Administration UI and safe reruns
+
+**System Settings → Decision Models → Activity** offers the same source, profile, model, result/error class, fallback, correlation ID, and time-range filters as the API. It uses opaque cursor pagination and presents loading, empty, error, redaction, and retention-aware states. The detail panel links to the selected profile's Playground configuration and displays only normalized outcome and diagnostic fields.
+
+The UI must never use `outcome_summary` as an input payload. It shows **Rerun in Playground** only if a future authorized source exposes a separately retained allowlisted `rerun.input_context` draft; selecting it creates a draft and still requires the administrator to explicitly select **Run safe test**. The current Activity repository never produces this field, so production events and normal retained events explain that rerun is unavailable instead of reconstructing sensitive or unavailable data.
 
 ## Runtime emission
 
