@@ -160,7 +160,7 @@ window.settingsModels = {
             Array.isArray(schemaVersions) && schemaVersions.includes("decision-schema/v1"),
         );
         const decisionBadge = decisionCompatible
-            ? '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-200">Decision ready</span>'
+            ? '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-100">Decision ready</span>'
             : '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Not decision compatible</span>';
 
         return `
