@@ -191,6 +191,36 @@ func TestLogFlusherFlushesAgainAfterIdle(t *testing.T) {
 	}
 }
 
+func TestLogFlusherClearSuppressesPendingFlush(t *testing.T) {
+	buf := &logBuffer{}
+	sink := &testSink{}
+	f := newLogFlusher(buf, flushInterval, sink.sink)
+	defer f.close()
+
+	// Queue a write so a flush is pending, then Clear before the coalescing
+	// window elapses. The pending notification must not resurrect (or emit)
+	// the already-cleared content: the async flush has to be a no-op.
+	buf.append([]byte("stale\n"))
+	f.notifyWrite()
+	buf.clear()
+
+	// Well past the coalescing window, the pending flush must not have fired.
+	time.Sleep(flushInterval + 150*time.Millisecond)
+	if n := sink.count(); n != 0 {
+		t.Fatalf("Clear left %d stale flush(es) pending, want 0", n)
+	}
+
+	// A later write must render only the fresh line, never the cleared one.
+	buf.append([]byte("fresh\n"))
+	f.notifyWrite()
+	waitForCount(t, sink, 1)
+
+	calls := sink.snapshot()
+	if calls[0] != "fresh" {
+		t.Fatalf("flush after Clear = %q, want %q (cleared content must not reappear)", calls[0], "fresh")
+	}
+}
+
 func TestLogFlusherCloseStopsGoroutineAndIsIdempotent(t *testing.T) {
 	buf := &logBuffer{}
 	f := newLogFlusher(buf, flushInterval, func(string) {})
