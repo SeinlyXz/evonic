@@ -74,6 +74,13 @@ record the same three numbers.
 ### 4. Command-line corroboration
 
 ```sh
+# Stack sample of the live process. `sample <pid> <seconds>` records where the
+# process spends time; inspect the per-thread sample counts / call graph in the
+# output file. With the fixed 100 ms ticker removed, the log-flusher goroutine
+# should no longer show a steady ~10 Hz wakeup pattern while the app is idle.
+PID="$(pgrep -x Evonet)"
+sample "$PID" 10 -file /tmp/evonet-sample.txt
+
 # Per-process CPU + wakeups sampled once a second for 30 s
 sudo powermetrics --samplers tasks -i 1000 -n 30 | grep -i -A2 -e evonet -e Evonet
 
