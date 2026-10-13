@@ -231,6 +231,15 @@ Plugins are event-driven extensions that hook into Evonic's event stream. Manage
 ./evonic plugin uninstall my_plugin
 ```
 
+### Cross-Agent Artifact Sharing
+
+The bundled **Artifact Share** plugin lets agents hand binary artifacts to one
+another safely. A share is delivered either as a direct host-local filesystem
+path (only when both agents run on the same Evonic host) or as a short-lived,
+single-use tokenized download URL; messages never carry binary data. See
+[`docs/artifact-sharing.md`](docs/artifact-sharing.md) for the decision matrix
+and the recipient download/copy procedures.
+
 ---
 
 ## Workplaces

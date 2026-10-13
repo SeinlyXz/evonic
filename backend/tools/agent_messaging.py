@@ -348,38 +348,18 @@ def _exec_send_agent_message(args: dict, agent_context: dict) -> dict:
                 )
             }
 
-    # Messaging ACL guard — super agents bypass entirely
-    if not agent_context.get('is_super'):
-        acl_raw = agent_context.get('messaging_acl')
-        if acl_raw:
-            try:
-                acl_list = json.loads(acl_raw) if isinstance(acl_raw, str) else acl_raw
-            except (json.JSONDecodeError, TypeError):
-                acl_list = []
-            if isinstance(acl_list, list) and acl_list:
-                acl_mode = agent_context.get('messaging_acl_mode', 'whitelist')
-                if acl_mode == 'whitelist' and target_id not in acl_list:
-                    _logger.warning(
-                        "ACL blocked: agent '%s' not allowed to message '%s' (not in whitelist).",
-                        sender_id, target_id,
-                    )
-                    return {
-                        'error': (
-                            f"Agent '{sender_id}' is not allowed to message '{target_id}' "
-                            f"(not in messaging whitelist)."
-                        )
-                    }
-                elif acl_mode == 'blacklist' and target_id in acl_list:
-                    _logger.warning(
-                        "ACL blocked: agent '%s' not allowed to message '%s' (in blacklist).",
-                        sender_id, target_id,
-                    )
-                    return {
-                        'error': (
-                            f"Agent '{sender_id}' is not allowed to message '{target_id}' "
-                            f"(in messaging blacklist)."
-                        )
-                    }
+    # Messaging ACL guard — super agents bypass entirely. Shared verbatim
+    # with the artifact-share tool via backend.tools.lib.messaging_acl so both
+    # delivery paths enforce exactly the same policy.
+    from backend.tools.lib.messaging_acl import check_messaging_acl as _check_messaging_acl
+
+    acl_error = _check_messaging_acl(agent_context, target_id)
+    if acl_error:
+        _logger.warning(
+            "ACL blocked: agent '%s' not allowed to message '%s' (messaging ACL).",
+            sender_id, target_id,
+        )
+        return {'error': acl_error}
 
     # Validate target agent
     target_agent = db.get_agent(target_id)
