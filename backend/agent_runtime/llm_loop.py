@@ -908,6 +908,11 @@ def run_tool_loop(agent: Dict[str, Any],
 
     # Create LLMClient with resolved model config.
     llm = LLMClient(model_config=agent_model_config) if agent_model_config else llm_client
+    # Reuse the conversation id as the OpenCode Go/Zen session so repeated
+    # turns in the same conversation share routing/prompt-cache state. Only
+    # set on a per-loop client to avoid mutating the shared fallback client.
+    if agent_model_config and session_id:
+        llm.session_id = session_id
 
     # ATG: give the compile_task_graph builtin access to the resolved LLM.
     # Compiler calls acquire llm_lock per call (same discipline as the main call).

@@ -9,6 +9,7 @@ including standard XML thinking tags, Gemma 4, and Qwen formats.
 import json
 import re
 import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
@@ -506,6 +507,12 @@ class LLMClient:
                 self.temperature = None
                 self.api_format = "openai"
         self._cached_model_name = None
+        # OpenCode Go/Zen require a stable session id (x-opencode-session) on
+        # inference requests for routing and prompt caching. Prefer an explicit
+        # conversation id supplied by the caller; otherwise fall back to a
+        # per-client id (see _opencode_session_id) so requests are still routed.
+        self.session_id = model_config.get("session_id") if model_config else None
+        self._generated_session_id = None
         self._codex_provider_id = self.provider or "codex"
         # Fallback model support: retried once when the primary call fails.
         # An explicit model_config means the caller chose this model, so no
@@ -821,6 +828,30 @@ class LLMClient:
             return None
         return self._fallback_client
 
+    def _is_opencode_provider(self) -> bool:
+        """Return True for OpenCode Go/Zen endpoints.
+
+        These gateways require a stable ``x-opencode-session`` header on
+        inference requests for routing and prompt caching, unlike plain
+        OpenAI-compatible providers.
+        """
+        provider = (self.provider or "").lower()
+        base_url = (self.base_url or "").lower()
+        return provider.startswith("opencode") or "opencode.ai" in base_url
+
+    def _opencode_session_id(self) -> str:
+        """Return a stable session id for OpenCode routing.
+
+        Uses the caller-supplied conversation id when available; otherwise
+        generates one per client instance so repeated turns on the same
+        client share a session.
+        """
+        if self.session_id:
+            return str(self.session_id)
+        if self._generated_session_id is None:
+            self._generated_session_id = uuid.uuid4().hex
+        return self._generated_session_id
+
     def _chat_completion_once(
         self,
         messages: List[Dict[str, Any]],
@@ -1056,6 +1087,8 @@ class LLMClient:
             }
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
+            if self._is_opencode_provider():
+                headers["x-opencode-session"] = self._opencode_session_id()
 
         try:
             from models.db import db as _db
