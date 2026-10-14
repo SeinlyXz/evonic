@@ -3188,8 +3188,20 @@ $(document).on('keydown', function (e) {
     chatUI.setPerspective(_chatPerspective);
     updateReplyPlaceholder();
 })();
-loadSessions();
+const _initialSessionsLoad = loadSessions();
 startSidebarPolling();
+
+// Bring the open session's row into view in the rail (e.g. after a page refresh)
+function scrollActiveSessionIntoView() {
+    const row = document.querySelector('#session-list .session-item.active');
+    if (!row) return;
+    // Scroll only the rail's own scroller so the rest of the page never jumps
+    let box = row.parentElement;
+    while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+    if (!box || box.scrollHeight <= box.clientHeight) return;
+    const b = box.getBoundingClientRect(), r = row.getBoundingClientRect();
+    box.scrollTop += (r.top + r.height / 2) - (b.top + b.height / 2);
+}
 
 // Auto-open last visited session on page load
 (async () => {
@@ -3197,9 +3209,10 @@ startSidebarPolling();
         const lastSession = sessionStorage.getItem(_LAST_SESSION_KEY);
         // On mobile the page opens on the list of sessions (like a chat app); the desktop keeps auto-opening the last one.
         if (lastSession && !isMobileLayout()) {
-            // Wait a brief moment for session list to load
-            await new Promise(r => setTimeout(r, 300));
-            selectSession(lastSession);
+            // Wait for the session list so the open row exists, then reveal it
+            try { await _initialSessionsLoad; } catch (_) {}
+            selectSession(lastSession);   // re-renders the rail synchronously with the row marked active
+            scrollActiveSessionIntoView();
         }
     } catch (_) {}
 })();
