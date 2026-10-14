@@ -220,6 +220,13 @@ def api_test_model(model_id):
         api_format = model.get("api_format", "openai")
         provider_id = model.get("provider", "")
 
+        if api_format == "claude_cli":
+            from backend.provider.claude_cli import get_status
+            status = get_status(force=True)
+            if status["logged_in"]:
+                return jsonify({"success": True, "message": f"Claude Code CLI {status['version']} ready"})
+            return jsonify({"success": False, "error": status["error"]})
+
         if api_format == "codex":
             from backend.provider.oauth_codex import get_valid_token
             token = get_valid_token(db, provider_id)

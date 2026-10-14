@@ -11,9 +11,11 @@ _SENSITIVE_KEYS = frozenset({"api_key", "refresh_token"})
 
 
 def _sanitize(provider: Dict[str, Any]) -> Dict[str, Any]:
-    provider["credential_configured"] = bool(provider.get("api_key")) or (
-        provider.get("credential_source") == "claude_code"
-    )
+    if provider.get("api_format") == "claude_cli":
+        from backend.provider.claude_cli import get_status
+        provider["credential_configured"] = get_status()["logged_in"]
+    else:
+        provider["credential_configured"] = bool(provider.get("api_key"))
     for key in _SENSITIVE_KEYS:
         provider.pop(key, None)
     return provider
@@ -97,6 +99,14 @@ def api_fetch_provider_models(provider_id):
     if not provider:
         return jsonify({"error": "Provider not found"}), 404
 
+    if provider.get("api_format") == "claude_cli":
+        from backend.provider.claude_cli import KNOWN_MODELS, get_status
+        if not get_status()["logged_in"]:
+            return jsonify({"success": False, "error": "Not connected. Run `claude auth login` first."}), 401
+        existing = {m["model_name"] for m in db.get_models_by_provider(provider_id)}
+        models = [dict(m, already_added=m["id"] in existing) for m in KNOWN_MODELS]
+        return jsonify({"success": True, "models": models, "total": len(models)})
+
     base_url = provider.get("base_url", "").rstrip("/")
     if not base_url:
         return jsonify({"success": False, "error": "Provider has no base_url configured"}), 400
@@ -117,11 +127,11 @@ def api_fetch_provider_models(provider_id):
             return jsonify({"success": False, "error": "Not connected. Click Connect first."}), 401
         headers["Authorization"] = f"Bearer {token}"
     elif api_format == "anthropic":
-        from backend.provider.claude_code import auth_headers, resolve_credential
-        token, oauth = resolve_credential(db, provider_id)
+        from backend.provider.claude_code import auth_headers, resolve_api_key
+        token = resolve_api_key(db, provider_id)
         if not token:
             return jsonify({"success": False, "error": "Not connected. Set up credentials first."}), 401
-        headers = auth_headers(token, oauth)
+        headers = auth_headers(token)
     else:
         api_key = provider.get("api_key")
         if api_key:
@@ -201,6 +211,13 @@ def api_test_provider(provider_id):
     if not provider:
         return jsonify({"error": "Provider not found"}), 404
 
+    if provider.get("api_format") == "claude_cli":
+        from backend.provider.claude_cli import get_status
+        status = get_status(force=True)
+        if status["logged_in"]:
+            return jsonify({"success": True, "message": f"Claude Code CLI {status['version']} ready"})
+        return jsonify({"success": False, "error": status["error"]})
+
     base_url = provider.get("base_url", "").rstrip("/")
     if not base_url:
         return jsonify({"success": False, "error": "Provider has no base_url configured"}), 400
@@ -219,11 +236,11 @@ def api_test_provider(provider_id):
             return jsonify({"success": False, "error": "Not connected. Click Connect first."}), 401
         headers["Authorization"] = f"Bearer {token}"
     elif api_format == "anthropic":
-        from backend.provider.claude_code import auth_headers, resolve_credential
-        token, oauth = resolve_credential(db, provider_id)
+        from backend.provider.claude_code import auth_headers, resolve_api_key
+        token = resolve_api_key(db, provider_id)
         if not token:
             return jsonify({"success": False, "error": "Not connected. Set up credentials first."}), 401
-        headers = auth_headers(token, oauth)
+        headers = auth_headers(token)
     else:
         api_key = provider.get("api_key")
         if api_key:
@@ -300,6 +317,8 @@ def api_add_model_from_provider(provider_id):
         "enabled": 1,
         "api_format": provider.get("api_format", "openai"),
     }
+    if provider.get("api_format") in ("claude_cli", "anthropic"):
+        model_data["vision_supported"] = 1
 
     try:
         new_id = db.create_model(model_data)

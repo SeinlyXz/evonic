@@ -586,6 +586,12 @@ class LLMClient:
         """Test connection to the model endpoint."""
         if self.api_format == "codex":
             return self._test_codex_connection()
+        if self.api_format == "claude_cli":
+            from backend.provider.claude_cli import get_status
+            status = get_status(force=True)
+            if status["logged_in"]:
+                return {"success": True, "message": f"Claude Code CLI {status['version']} ready"}
+            return {"success": False, "error": status["error"]}
         try:
             if self.api_format == "ollama":
                 models_url = f"{self.base_url}/tags"
@@ -715,6 +721,67 @@ class LLMClient:
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "success": True,
+        }
+
+    def _claude_cli_chat_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        log_file: Optional[str] = None,
+        tool_choice: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run the completion through the official ``claude -p`` CLI."""
+        from backend.provider.claude_cli import send_request
+
+        result = send_request(
+            model=self.model,
+            messages=messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            thinking=bool(self.thinking),
+            thinking_budget=self.thinking_budget,
+            timeout=self.timeout,
+        )
+        duration_ms = result.get("duration_ms", 0)
+
+        if not result.get("success"):
+            log_api_call(messages, None, duration_ms, error=result.get("error", ""), log_file=log_file)
+            return {
+                "response": {"error": _format_llm_error(result.get("error_type", "unknown_error"))},
+                "duration_ms": duration_ms,
+                "success": False,
+                "error_type": result.get("error_type", "unknown_error"),
+                "error_detail": result.get("error", ""),
+            }
+
+        response = result["response"]
+        message = response["choices"][0]["message"]
+        response_text = message.get("content", "")
+        log_api_call(messages, response_text, duration_ms, log_file=log_file)
+
+        usage = response["usage"]
+        from backend.llm_usage_events import record_llm_usage
+        record_llm_usage(
+            model=self.model,
+            provider=self.provider or "claude-code",
+            prompt_tokens=usage["prompt_tokens"],
+            completion_tokens=usage["completion_tokens"],
+            total_tokens=usage["total_tokens"],
+            cached_tokens=usage["prompt_tokens_details"]["cached_tokens"],
+            reasoning_tokens=0,
+            usage_details_available=True,
+            duration_ms=duration_ms,
+            messages=messages,
+            response_text=response_text,
+        )
+        return {
+            "response": response,
+            "request_payload": {"model": self.model, "messages": messages, "tools": tools},
+            "duration_ms": duration_ms,
+            "prompt_tokens": usage["prompt_tokens"],
+            "completion_tokens": usage["completion_tokens"],
+            "total_tokens": usage["total_tokens"],
             "success": True,
         }
 
@@ -895,6 +962,9 @@ class LLMClient:
             retry count via llm_max_retries setting (DB default: 5).
         """
         provider_messages = _normalize_system_messages(messages)
+        if self.api_format == "claude_cli":
+            return self._claude_cli_chat_completion(
+                provider_messages, tools, log_file, tool_choice)
         if self.api_format == "codex":
             return self._codex_chat_completion(
                 provider_messages, tools, temperature, max_tokens, log_file,
@@ -908,16 +978,10 @@ class LLMClient:
         )
         is_anthropic = self.api_format == "anthropic"
         anthropic_token = self.api_key
-        anthropic_oauth = False
-        if is_anthropic:
-            from backend.provider.claude_code import is_oauth_token, resolve_credential
-            if getattr(self, "_model_api_key_override", False):
-                anthropic_oauth = is_oauth_token(anthropic_token or "")
-            else:
-                from models.db import db as _provider_db
-                anthropic_token, anthropic_oauth = resolve_credential(
-                    _provider_db, self.provider or "anthropic"
-                )
+        if is_anthropic and not getattr(self, "_model_api_key_override", False):
+            from backend.provider.claude_code import resolve_api_key
+            from models.db import db as _provider_db
+            anthropic_token = resolve_api_key(_provider_db, self.provider or "anthropic")
         # Cerebras is a strict OpenAI-compatible validator: it rejects the
         # non-standard reasoning_content field on input messages (unlike
         # OpenCode Go / MiniMax / DeepSeek, which require it round-tripped).
@@ -1037,11 +1101,6 @@ class LLMClient:
             }
             if system_msgs:
                 payload["system"] = "\n\n".join(system_msgs) if len(system_msgs) > 1 else system_msgs[0]
-            if anthropic_oauth:
-                from backend.provider.claude_code import SYSTEM_PREFIX
-                payload["system"] = SYSTEM_PREFIX + (
-                    "\n\n" + payload["system"] if payload.get("system") else ""
-                )
             if effective_temperature is not None:
                 payload["temperature"] = effective_temperature
             # Transform OpenAI tools -> Anthropic tools format
@@ -1079,7 +1138,7 @@ class LLMClient:
 
         if is_anthropic:
             from backend.provider.claude_code import auth_headers
-            headers = auth_headers(anthropic_token or "", anthropic_oauth)
+            headers = auth_headers(anthropic_token or "")
         else:
             headers = {
                 "Content-Type": "application/json",
