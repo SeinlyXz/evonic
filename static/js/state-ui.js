@@ -98,13 +98,12 @@
     function planTreeHtml(pf) {
         var parts = String(pf).split('/').filter(Boolean);
         var file = parts.pop();
-        var h = '<button type="button" class="st-plan" onclick="openPlanModal(\'' + esc(pf) + '\')" title="' + esc(pf) + ' — click to open plan">' + ICON.file + '<span class="st-plan-name">' + esc(file) + '</span></button>';
-        h = '<ul><li>' + h + '</li></ul>';
-        for (var i = parts.length - 1; i >= 0; i--) {
-            h = '<li><div class="st-tree-dir">' + ICON.folder + '<span>' + esc(parts[i]) + '</span></div>' + h + '</li>';
-            if (i > 0) h = '<ul>' + h + '</ul>';
-        }
-        return '<div class="st-tree">' + (parts.length ? '<ul>' + h + '</ul>' : h) + '</div>';
+        var dir = parts.join('/');
+        // one plan at a time: a single card with the file name; the folder is only shown when it is not the default "plan"
+        return '<button type="button" class="st-plan-card" onclick="openPlanModal(\'' + esc(pf) + '\')" title="' + esc(pf) + ' \u2014 click to open plan">' +
+            '<span class="st-plan-ic">' + ICON.file + '</span>' +
+            '<span class="st-plan-txt"><span class="st-plan-name">' + esc(file) + '</span>' + (dir && dir !== 'plan' ? '<span class="st-plan-path">' + esc(dir) + '/</span>' : '') + '</span>' +
+            '<span class="st-plan-go">' + ICON.chev + '</span></button>';
     }
 
     /** Plan file tree only — the mode (plan / execute) lives in the card header, see setModeChip(). */
@@ -181,7 +180,7 @@
             var badge = isStale ? '<span class="st-chip amber" style="padding:0 .375rem;font-size:.625rem" title="This task has been in progress for a while">stale</span>' : '';
             return '<li class="st-task ' + kind + '">' + icon + '<span class="' + (active ? 'task-active-text' : '') + '" style="min-width:0;flex:1">' + textOf(t) + '</span>' + badge + '</li>';
         };
-        var h = '<div class="st-sec"><div class="st-sec-h">' + ICON.tasks + '<span>Tasks</span><span class="st-sec-r" title="' + done.length + ' of ' + d.tasks.length + ' done">' + pct + '%</span></div>';
+        var h = '<div class="st-sec"><div class="st-sec-h">' + ICON.tasks + '<span>Tasks</span><span class="st-sec-r" title="' + done.length + ' of ' + d.tasks.length + ' done">' + pct + '% · ' + done.length + '/' + d.tasks.length + '</span></div>';
         h += '<div class="st-tasks-progress"><div class="st-meter"><div style="width:' + pct + '%;background:#22c55e"></div></div></div>';
         if (done.length) {
             h += '<details class="st-done" ' + (global._stTasksDoneOpen ? 'open' : '') + ' ontoggle="_stTasksDoneOpen = this.open">'
