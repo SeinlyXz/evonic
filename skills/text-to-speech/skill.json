@@ -30,6 +30,10 @@
           "label": "OpenRouter"
         },
         {
+          "value": "elevenlabs",
+          "label": "ElevenLabs"
+        },
+        {
           "value": "mock",
           "label": "Deterministic Mock"
         }
@@ -622,6 +626,131 @@
       "advanced": true
     },
     {
+      "name": "elevenlabs_enabled",
+      "label": "Enabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable ElevenLabs speech synthesis using the configured credential.",
+      "provider": "elevenlabs"
+    },
+    {
+      "name": "elevenlabs_api_key",
+      "label": "ElevenLabs API Key",
+      "type": "secret",
+      "default": "",
+      "description": "Write-only ElevenLabs API key used only by the ElevenLabs provider.",
+      "provider": "elevenlabs"
+    },
+    {
+      "name": "elevenlabs_model",
+      "label": "ElevenLabs TTS Model",
+      "type": "select",
+      "default": "eleven_v4",
+      "description": "Approved ElevenLabs model. Eleven v3/v4 follow inline audio tags in the text such as [whispers] or [sighs].",
+      "provider": "elevenlabs",
+      "options": [
+        {
+          "value": "eleven_v4",
+          "label": "eleven_v4 — Eleven v4, most expressive, 90+ languages"
+        },
+        {
+          "value": "eleven_v4_turbo",
+          "label": "eleven_v4_turbo — Eleven v4 Turbo, lower latency"
+        },
+        {
+          "value": "eleven_v3",
+          "label": "eleven_v3 — Eleven v3, expressive with audio tags"
+        },
+        {
+          "value": "eleven_multilingual_v2",
+          "label": "eleven_multilingual_v2 — Multilingual v2, stable"
+        },
+        {
+          "value": "eleven_flash_v2_5",
+          "label": "eleven_flash_v2_5 — Flash v2.5, fastest"
+        },
+        {
+          "value": "eleven_turbo_v2_5",
+          "label": "eleven_turbo_v2_5 — Turbo v2.5"
+        }
+      ],
+      "empty_label": "— Default —"
+    },
+    {
+      "name": "elevenlabs_voice",
+      "label": "ElevenLabs Default Voice",
+      "type": "string",
+      "default": "o5s6XRBkPSTD4syv6mZg",
+      "description": "Voice ID used when the agent does not pick one. Agents may pick any voice in this list, this default, or an \"Other Allowed Voice\". Library voices require a paid ElevenLabs plan.",
+      "provider": "elevenlabs",
+      "options": [
+        {
+          "value": "o5s6XRBkPSTD4syv6mZg",
+          "label": "Arunika — Indonesian, female, TV voice over (library voice, paid plan)"
+        },
+        {
+          "value": "RWiGLY9uXI70QL540WNd",
+          "label": "Putra — Indonesian, male, smooth (library voice, paid plan)"
+        },
+        {
+          "value": "q8qwd1jY2jS3AWOBeq25",
+          "label": "Pratama — Indonesian, male, confident (library voice, paid plan)"
+        },
+        {
+          "value": "I7sakys8pBZ1Z5f0UhT9",
+          "label": "Putri Maharani — Indonesian (Javanese), female (library voice, paid plan)"
+        },
+        {
+          "value": "Xb7hH8MSUJpSbSDYk0k2",
+          "label": "Alice — British, female, educator (premade)"
+        },
+        {
+          "value": "JBFqnCBsd6RMkjVDRZzb",
+          "label": "George — British, male, storyteller (premade)"
+        },
+        {
+          "value": "EXAVITQu4vr4xnSDxMaL",
+          "label": "Sarah — American, female (premade)"
+        },
+        {
+          "value": "pNInz6obpgDQGcFmaJgB",
+          "label": "Adam — American, male (premade)"
+        },
+        {
+          "value": "onwK4e9ZLuTAKqWW03F9",
+          "label": "Daniel — British, male, broadcaster (premade)"
+        }
+      ],
+      "allow_custom": true,
+      "empty_label": "— Default —"
+    },
+    {
+      "name": "elevenlabs_language_code",
+      "label": "ElevenLabs Language Code",
+      "type": "string",
+      "default": "",
+      "description": "Optional ISO 639-1 language code (e.g. id for Indonesian) to enforce. Leave empty to auto-detect.",
+      "provider": "elevenlabs"
+    },
+    {
+      "name": "elevenlabs_allowed_voices",
+      "label": "Other Allowed Voices",
+      "type": "string",
+      "default": "",
+      "description": "Comma-separated extra ElevenLabs voice IDs agents may use, beyond the voices in the dropdown. Agents cannot use any other voice.",
+      "provider": "elevenlabs",
+      "advanced": true
+    },
+    {
+      "name": "elevenlabs_timeout_seconds",
+      "label": "ElevenLabs Timeout (seconds)",
+      "type": "number",
+      "default": 120,
+      "description": "Bounded request timeout, from 1 through 300 seconds.",
+      "provider": "elevenlabs",
+      "advanced": true
+    },
+    {
       "name": "allow_agent_overrides",
       "label": "Allow Agents To Choose Provider, Model and Voice",
       "type": "boolean",
@@ -686,6 +815,11 @@
           "id": "openrouter",
           "label": "OpenRouter",
           "description": "Cloud speech synthesis through OpenRouter (OpenAI, Mistral Voxtral, Gemini and more) with an administrator-approved model."
+        },
+        {
+          "id": "elevenlabs",
+          "label": "ElevenLabs",
+          "description": "Cloud speech synthesis through ElevenLabs (Eleven v4/v3 with audio tags, Indonesian and 70+ languages)."
         },
         {
           "id": "mock",

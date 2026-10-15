@@ -54,7 +54,7 @@ def test_manifest_and_tools_are_consistent():
     assert tools[0]["function"]["name"] == "generate_speech"
     assert (BACKEND_DIR / "tools" / "generate_speech.py").exists()
     ids = {p["id"] for p in manifest["settings_ui"]["provider_selector"]["providers"]}
-    assert ids == {"google-gemini", "openai", "openrouter", "mock"}
+    assert ids == {"google-gemini", "openai", "openrouter", "elevenlabs", "mock"}
     for variable in manifest["variables"]:
         if variable.get("provider"):
             assert variable["provider"] in ids
@@ -192,6 +192,108 @@ def test_openrouter_enforces_model_allowlist_and_sends_mp3(tts_tool, monkeypatch
     assert hinted["status"] == "success"
     assert "instructions" not in captured["body"]
     assert hinted["warnings"] == ["instructions were ignored: the selected provider does not support them."]
+
+
+def _elevenlabs_config(**overrides):
+    config = {"allow_agent_overrides": True, "default_provider": "elevenlabs", "elevenlabs_enabled": True, "elevenlabs_api_key": "xi-key"}
+    config.update(overrides)
+    return config
+
+
+def test_elevenlabs_sends_mp3_request_with_voice_settings(tts_tool, monkeypatch):
+    providers = tts_tool._providers
+    captured = {}
+
+    def fake_request(self, method, path, *, body=None, headers=None, max_bytes=0):
+        captured.update(method=method, path=path, body=json.loads(body), headers=headers)
+        return b"ID3\x04\x00\x00" + b"\x00" * 64, "audio/mpeg"
+
+    monkeypatch.setattr(providers.elevenlabs.BoundedHttpClient, "request", fake_request)
+    config = _elevenlabs_config()
+    monkeypatch.setattr("backend.skills_manager.skills_manager.get_skill_config", lambda _id: config)
+
+    result = tts_tool.execute({"id": "el"}, {"text": "Halo [whispers] dunia"})
+    assert result["status"] == "success", result
+    assert result["artifact"]["mime_type"] == "audio/mpeg"
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/v1/text-to-speech/o5s6XRBkPSTD4syv6mZg?output_format=mp3_44100_128"
+    assert captured["headers"]["xi-api-key"] == "xi-key"
+    assert captured["headers"]["Accept"] == "audio/*"
+    assert captured["body"] == {"text": "Halo [whispers] dunia", "model_id": "eleven_v4"}
+
+    config["elevenlabs_language_code"] = "id"
+    fast = tts_tool.execute({"id": "el"}, {"text": "hi", "model": "eleven_v3", "voice": "JBFqnCBsd6RMkjVDRZzb", "speed": 2.0})
+    assert fast["status"] == "success", fast
+    assert captured["path"].startswith("/v1/text-to-speech/JBFqnCBsd6RMkjVDRZzb?")
+    assert captured["body"] == {"text": "hi", "model_id": "eleven_v3", "language_code": "id", "voice_settings": {"speed": 1.2}}
+    tts_tool.execute({"id": "el"}, {"text": "hi", "speed": 0.5})
+    assert captured["body"]["voice_settings"] == {"speed": 0.7}
+
+    config["elevenlabs_language_code"] = "Indonesian!"
+    assert tts_tool.execute({"id": "el"}, {"text": "hi"})["error_code"] == "provider_configuration"
+
+
+def test_elevenlabs_enforces_voice_and_model_allowlists(tts_tool, monkeypatch):
+    providers = tts_tool._providers
+    captured = {}
+
+    def fake_request(self, method, path, *, body=None, headers=None, max_bytes=0):
+        captured.update(path=path)
+        return b"ID3\x04\x00\x00" + b"\x00" * 64, "audio/mpeg"
+
+    monkeypatch.setattr(providers.elevenlabs.BoundedHttpClient, "request", fake_request)
+    config = _elevenlabs_config()
+    monkeypatch.setattr("backend.skills_manager.skills_manager.get_skill_config", lambda _id: config)
+
+    rejected = tts_tool.execute({"id": "ev"}, {"text": "hi", "voice": "CustomVoice123"})
+    assert rejected["error_code"] == "invalid_request"
+    assert "Approved voices:" in rejected["error"] and "o5s6XRBkPSTD4syv6mZg" in rejected["error"]
+    assert tts_tool.execute({"id": "ev"}, {"text": "hi", "voice": "../x"})["error_code"] == "invalid_request"
+    assert tts_tool.execute({"id": "ev"}, {"text": "hi", "model": "eleven_unknown"})["error_code"] == "invalid_request"
+
+    config["elevenlabs_allowed_voices"] = "CustomVoice123, OtherVoice"
+    ok = tts_tool.execute({"id": "ev"}, {"text": "hi", "voice": "CustomVoice123"})
+    assert ok["status"] == "success", ok
+    assert captured["path"].startswith("/v1/text-to-speech/CustomVoice123?")
+
+
+def test_elevenlabs_wav_wraps_pcm(tts_tool, monkeypatch):
+    providers = tts_tool._providers
+    captured = {}
+
+    def fake_request(self, method, path, *, body=None, headers=None, max_bytes=0):
+        captured.update(path=path)
+        return b"\x01\x00" * 2400 + b"\x01", "audio/pcm"
+
+    monkeypatch.setattr(providers.elevenlabs.BoundedHttpClient, "request", fake_request)
+    monkeypatch.setattr("backend.skills_manager.skills_manager.get_skill_config", lambda _id: _elevenlabs_config())
+
+    result = tts_tool.execute({"id": "ew"}, {"text": "hi", "output_format": "wav"})
+    assert result["status"] == "success", result
+    assert captured["path"].endswith("?output_format=pcm_24000")
+    assert result["artifact"]["mime_type"] == "audio/wav"
+    assert result["artifact"]["duration_seconds"] == 0.1
+
+
+def test_elevenlabs_detail_error_message_is_surfaced(tts_tool, monkeypatch):
+    import io
+    from urllib.error import HTTPError
+
+    network = tts_tool._providers.network
+
+    def run(body):
+        def fake_open(_self, request, timeout=0):
+            raise HTTPError(request.full_url, 402, "x", {}, io.BytesIO(body))
+        monkeypatch.setattr(network, "build_opener", lambda *_a: type("O", (), {"open": fake_open})())
+        return tts_tool.execute({"id": "ee"}, {"text": "hi"})
+
+    monkeypatch.setattr(network.BoundedHttpClient, "_url_for_path", lambda self, path: "https://api.elevenlabs.io" + path)
+    monkeypatch.setattr("backend.skills_manager.skills_manager.get_skill_config", lambda _id: _elevenlabs_config())
+
+    nested = run(b'{"detail":{"code":"paid_plan_required","message":"Free users cannot use library voices via the API."}}')
+    assert "Provider said: Free users cannot use library voices via the API." in nested["error"]
+    flat = run(b'{"detail":"Model eleven_x not found"}')
+    assert "Provider said: Model eleven_x not found" in flat["error"]
 
 
 def test_provider_4xx_message_is_surfaced_but_5xx_is_generic(tts_tool, monkeypatch):

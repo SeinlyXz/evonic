@@ -10,6 +10,7 @@ from .base import (
     SpeechRequest,
     SpeechResult,
 )
+from .elevenlabs import ElevenLabsSpeechProvider
 from .google import GoogleGeminiSpeechProvider
 from .mock import DeterministicMockSpeechProvider
 from .openai import OpenAISpeechProvider
@@ -19,6 +20,7 @@ from .registry import SpeechProviderRegistry, provider_registry
 __all__ = [
     "AudioArtifact",
     "DeterministicMockSpeechProvider",
+    "ElevenLabsSpeechProvider",
     "GoogleGeminiSpeechProvider",
     "OpenAISpeechProvider",
     "OpenRouterSpeechProvider",
