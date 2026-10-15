@@ -867,13 +867,35 @@ class SchemaMixin:
                     ),
                     (
                         "anthropic",
-                        "Anthropic / Claude Code",
+                        "Anthropic API",
                         "https://api.anthropic.com/v1",
                         "anthropic",
                         "api_key",
                         "api_key",
                     ),
+                    (
+                        "claude-code",
+                        "Claude Code (CLI)",
+                        "",
+                        "claude_cli",
+                        "",
+                        "",
+                    ),
                 ],
+            )
+            # Evonic no longer stores or uses Claude OAuth tokens. Drop any
+            # subscription credential saved by earlier versions; API keys are kept.
+            cursor.execute(
+                "UPDATE providers SET api_key = '', refresh_token = '', "
+                "token_expires_at = 0, auth_type = 'api_key', "
+                "credential_source = 'api_key' "
+                "WHERE api_format = 'anthropic' "
+                "AND (auth_type = 'oauth' OR credential_source <> 'api_key' "
+                "OR api_key LIKE 'sk-ant-o%')"
+            )
+            cursor.execute(
+                "UPDATE providers SET name = 'Anthropic API' "
+                "WHERE id = 'anthropic' AND name = 'Anthropic / Claude Code'"
             )
             cursor.execute(
                 "UPDATE providers SET credential_source = "

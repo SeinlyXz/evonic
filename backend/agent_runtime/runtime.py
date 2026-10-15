@@ -2069,7 +2069,21 @@ class AgentRuntime:
             # required by read_attachment. This also repairs legacy message text
             # that omitted the ID when restored from JSONL.
             _att = msg.pop('attachment_info', None) or msg.get('attachment_info')
-            if _att and isinstance(_att, dict):
+            _atts = msg.pop('attachment_infos', None) or []
+            _atts = [i for i in _atts if isinstance(i, dict)]
+            if len(_atts) > 1 or (_atts and not _att):
+                # Several attachments in one message: note every one, not just the
+                # first (the singular key is only set for a single attachment).
+                _text = msg.get('content', '') or ''
+                _atts = [i for i in _atts
+                         if f"Attachment ID: {i.get('attachment_id')}" not in _text]
+                if _atts:
+                    msg['content'] = _text.rstrip() + _ctx.build_attachment_notes(
+                        _atts,
+                        has_describe_image=_has_describe_image,
+                        audio_enabled=bool(agent.get('audio_enabled')),
+                    )
+            elif _att and isinstance(_att, dict):
                 _ctx.append_attachment_note(
                     msg,
                     _att,

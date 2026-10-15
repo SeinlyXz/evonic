@@ -970,6 +970,20 @@ def run_tool_loop(agent: Dict[str, Any],
             _patched.append(_msg)
         messages = _patched
 
+    # Vision-capable models read recent image attachments natively (on a copy of
+    # the messages; the canonical history stays text-only). Opt out per agent
+    # with the ``image_input_mode=describe`` variable.
+    if _vision_supported:
+        try:
+            from backend.agent_runtime import native_images
+            if native_images.native_mode_enabled(
+                    agent_model_config, db.get_agent_variables_dict(db_agent_id)):
+                messages = native_images.attach_native_images(
+                    messages, session_id, db_agent_id, db)
+        except Exception:
+            _logger.warning("Native image attachment failed; falling back to describe_image",
+                            exc_info=True)
+
     timeout_retries = 0
     MIN_IMAGE_RETRIES = 3
     max_timeout_retries = int(db.get_setting('agent_timeout_retries', str(MAX_TIMEOUT_RETRIES)))
