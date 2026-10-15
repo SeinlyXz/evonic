@@ -54,6 +54,9 @@ def _upstream_message(exc: HTTPError) -> str:
     try:
         body = json.loads(exc.read(4096))
         message = body.get("error", {}).get("message") if isinstance(body.get("error"), dict) else body.get("error")
+        if message is None and "detail" in body:  # ElevenLabs: {"detail": {"message": ...}} or {"detail": "..."}
+            detail = body["detail"]
+            message = detail.get("message") if isinstance(detail, dict) else detail
     except Exception:
         return ""
     if not isinstance(message, str):

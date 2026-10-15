@@ -79,12 +79,14 @@ class SpeechProviderRegistry:
             raise SpeechGenerationError(SafeErrorCode.INVALID_REQUEST, "The selected provider does not support style instructions.")
 
 
+from .elevenlabs import ElevenLabsSpeechProvider
 from .google import GoogleGeminiSpeechProvider
 from .mock import DeterministicMockSpeechProvider
 from .openai import OpenAISpeechProvider
 from .openrouter import OpenRouterSpeechProvider
 
 provider_registry = SpeechProviderRegistry()
+provider_registry.register(ElevenLabsSpeechProvider())
 provider_registry.register(GoogleGeminiSpeechProvider())
 provider_registry.register(OpenAISpeechProvider())
 provider_registry.register(OpenRouterSpeechProvider())

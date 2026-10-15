@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Features
+
+- Added an ElevenLabs provider to the text-to-speech skill (Eleven v4 by default, with Indonesian voices).
+
 ## [1.4.0] - 2026-10-10
 
 ### Features
