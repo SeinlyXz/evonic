@@ -97,8 +97,13 @@ def test_llm_client_routes_claude_cli_format():
         "choices": [{"message": {"role": "assistant", "content": "yo"}, "finish_reason": "stop"}],
         "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4,
                   "prompt_tokens_details": {"cached_tokens": 0}}}}
-    with patch("backend.provider.claude_cli.send_request", return_value=fake):
+    # Resolving the model against its seeded "claude-code" provider must not
+    # coerce the direct CLI format into an HTTP adapter (which would send the
+    # request to an empty OpenAI URL).
+    assert client.api_format == "claude_cli"
+    with patch("backend.provider.claude_cli.send_request", return_value=fake) as send:
         result = client.chat_completion([{"role": "user", "content": "hi"}])
+    assert send.called
     assert result["success"] and client.extract_content(result) == "yo"
 
 
