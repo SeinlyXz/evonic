@@ -7,6 +7,8 @@
 <style>
 footer { display: none; }
 main { align-items: flex-start !important; }
+/* Plan file modal: rendered Markdown preview */
+#plan-editor-preview.recap-prose { font-size: 0.875rem; line-height: 1.65; }
 /* ! turns the composer itself into a bright red terminal-shell state. */
 #chat-input.chat-bash-input {
     caret-color: #e0576f;
@@ -10177,6 +10179,52 @@ window.addEventListener('popstate', function () {
 <script>
 let _planEditorFetchedFor = null;
 let _planEditorOriginal = null;
+let _planEditorTab = 'preview';
+let _planEditorLoading = false;
+
+// Render raw Markdown into the preview pane (uses the globally-loaded `marked`)
+function renderPlanPreview(md) {
+    var preview = document.getElementById('plan-editor-preview');
+    if (!preview) return;
+    if (_planEditorLoading) {
+        preview.innerHTML = '<p class="text-gray-400 dark:text-gray-500 italic">Loading plan...</p>';
+        return;
+    }
+    if (!md || !md.trim()) {
+        preview.innerHTML = '<p class="text-gray-400 dark:text-gray-500 italic">Plan file is empty.</p>';
+        return;
+    }
+    preview.innerHTML = marked.parse(md);
+}
+
+// Switch between the rendered "Preview" and raw "Edit" tabs
+function switchPlanTab(tab) {
+    _planEditorTab = (tab === 'edit') ? 'edit' : 'preview';
+    var preview = document.getElementById('plan-editor-preview');
+    var textarea = document.getElementById('plan-editor-textarea');
+    var saveBtn = document.getElementById('plan-editor-save-btn');
+    var previewTab = document.getElementById('plan-editor-tab-preview');
+    var editTab = document.getElementById('plan-editor-tab-edit');
+
+    var activeCls = 'px-3 py-1.5 text-xs font-medium rounded-md transition-colors bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-gray-200 dark:ring-gray-700';
+    var inactiveCls = 'px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700';
+
+    if (_planEditorTab === 'preview') {
+        renderPlanPreview(textarea.value);
+        preview.classList.remove('hidden');
+        textarea.classList.add('hidden');
+        if (saveBtn) saveBtn.classList.add('hidden');
+        if (previewTab) previewTab.className = activeCls;
+        if (editTab) editTab.className = inactiveCls;
+    } else {
+        preview.classList.add('hidden');
+        textarea.classList.remove('hidden');
+        if (saveBtn) saveBtn.classList.remove('hidden');
+        if (previewTab) previewTab.className = inactiveCls;
+        if (editTab) editTab.className = activeCls;
+        if (!textarea.disabled) setTimeout(function() { textarea.focus(); }, 50);
+    }
+}
 
 function openPlanModal(planFile) {
     const backdrop = document.getElementById('plan-editor-backdrop');
@@ -10184,7 +10232,8 @@ function openPlanModal(planFile) {
     const title = document.getElementById('plan-editor-title');
     const textarea = document.getElementById('plan-editor-textarea');
     const saveBtn = document.getElementById('plan-editor-save-btn');
-    const cancelBtn = document.getElementById('plan-editor-cancel-btn');
+
+    _planEditorTab = 'preview';
 
     // Show modal immediately with loading state
     backdrop.classList.remove('hidden');
@@ -10196,9 +10245,6 @@ function openPlanModal(planFile) {
     saveBtn.disabled = true;
     saveBtn.classList.add('opacity-50');
 
-    // Focus the textarea after transition
-    setTimeout(function() { textarea.focus(); }, 100);
-
     // Fetch plan file content from API (cache per file to avoid re-fetch)
     if (_planEditorFetchedFor === planFile) {
         textarea.value = _planEditorOriginal || '';
@@ -10206,8 +10252,13 @@ function openPlanModal(planFile) {
         textarea.classList.remove('opacity-50');
         saveBtn.disabled = false;
         saveBtn.classList.remove('opacity-50');
+        _planEditorLoading = false;
+        switchPlanTab('preview');
         return;
     }
+
+    _planEditorLoading = true;
+    switchPlanTab('preview');
 
     var sid = _chatSessionId ? '&session_id=' + encodeURIComponent(_chatSessionId) : '';
     var url = '/api/agents/' + encodeURIComponent(AGENT_ID) + '/plan-file?session_id=' + encodeURIComponent(_chatSessionId);
@@ -10229,9 +10280,13 @@ function openPlanModal(planFile) {
             textarea.classList.remove('opacity-50');
             saveBtn.disabled = false;
             saveBtn.classList.remove('opacity-50');
-            textarea.focus();
+            _planEditorLoading = false;
+            switchPlanTab('preview');
         })
         .catch(function(err) {
+            _planEditorLoading = false;
+            var preview = document.getElementById('plan-editor-preview');
+            if (preview) preview.innerHTML = '<p class="text-red-500 dark:text-red-400">⚠️ Failed to load plan file: ' + (err.message || 'Unknown error') + '</p>';
             textarea.value = '';
             textarea.placeholder = '⚠️ Failed to load plan file: ' + (err.message || 'Unknown error');
             _planEditorFetchedFor = null;
@@ -10242,6 +10297,8 @@ function openPlanModal(planFile) {
 function closePlanModal() {
     document.getElementById('plan-editor-backdrop').classList.add('hidden');
     document.getElementById('plan-editor-modal').classList.add('hidden');
+    _planEditorTab = 'preview';
+    _planEditorLoading = false;
 }
 
 function savePlanFile() {
@@ -10406,10 +10463,16 @@ document.addEventListener('keydown', function(e) {
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
+        <!-- Tabs -->
+        <div class="flex items-center gap-1 px-5 py-2 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 bg-gray-50 dark:bg-gray-900">
+            <button id="plan-editor-tab-preview" type="button" onclick="switchPlanTab('preview')" class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-gray-200 dark:ring-gray-700">Preview</button>
+            <button id="plan-editor-tab-edit" type="button" onclick="switchPlanTab('edit')" class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">Edit</button>
+        </div>
         <!-- Editor Body -->
         <div class="flex-1 min-h-0 flex flex-col p-5">
+            <div id="plan-editor-preview" class="recap-prose max-w-none flex-1 min-h-0 overflow-y-auto"></div>
             <textarea id="plan-editor-textarea"
-                class="flex-1 w-full min-h-[350px] p-4 text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-colors"
+                class="hidden flex-1 w-full min-h-0 p-4 text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-colors"
                 placeholder="Loading plan..."
                 spellcheck="false"></textarea>
         </div>
