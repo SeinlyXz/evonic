@@ -1,6 +1,7 @@
 {# Settings console nav rail — section items. Search lives in the page header (global).
    Desktop: sticky vertical rail. Mobile: sticky horizontal pill bar.
-   General is a group whose sub-pages are separate panes. Routing: SettingsNav in static/js/settings-core.js. #}
+   General is a group whose sub-pages are separate panes. Routing: SettingsNav in static/js/settings-core.js.
+   Also rendered on /system/safety, where static/js/safety.js turns the section buttons into links back to /system. #}
 
 <aside class="settings-nav" aria-label="Settings sections">
     <div class="settings-nav-group" id="nav-group-general">
@@ -32,7 +33,8 @@
             <button type="button" class="settings-nav-item" data-section="decision-activity"><i data-lucide="activity"></i><span>Activity</span></button>
         </div>
     </div>
-    <a href="/system/safety" class="settings-nav-item"
+    {% set on_safety = request.path.startswith('/system/safety') %}
+    <a href="/system/safety" class="settings-nav-item{{ ' active' if on_safety }}"{{ ' aria-current="page"'|safe if on_safety }}
        title="Safety: HMADS rules + DMSS decision model (System > Safety)">
         <i data-lucide="shield-check"></i><span>Safety</span>
     </a>
