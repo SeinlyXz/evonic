@@ -68,9 +68,20 @@ func (c *Client) Run() {
 	for c.running.Load() {
 		connectedAt := time.Now()
 		if err := c.connect(); err != nil {
-			log.Printf("[evonet] Connection failed: %v", err)
+			// A dial cancelled by Stop() is an expected outcome, not a failure.
+			if c.running.Load() {
+				log.Printf("[evonet] Connection failed: %v", err)
+			}
 		} else {
 			log.Printf("[evonet] Connected to %s (home: %s)", c.cfg.ServerURL, c.cfg.HomeName)
+			// A stop may have been requested while the dial was in flight (the
+			// dial itself is cancelled by Stop, but it can still win the race).
+			// Never adopt a connection we are already trying to abandon, or the
+			// process would sit in messageLoop() forever with running == false.
+			if !c.running.Load() {
+				c.Stop()
+				return
+			}
 			if c.OnConnected != nil {
 				c.OnConnected()
 			}
@@ -143,6 +154,24 @@ func newDialer() *websocket.Dialer {
 	return &dialer
 }
 
+// dialContext returns a context that is cancelled as soon as the client is
+// stopped. Feed it to DialContext so an in-flight connect attempt is abandoned
+// immediately instead of holding shutdown for the whole TCP/TLS handshake.
+func (c *Client) dialContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	if c.stopCh == nil {
+		return ctx, cancel
+	}
+	go func() {
+		select {
+		case <-c.stopCh:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
 func (c *Client) connect() error {
 	url := c.wsURL()
 	header := http.Header{}
@@ -157,7 +186,9 @@ func (c *Client) connect() error {
 	// safely re-send an in-flight request after a reconnect (exactly-once).
 	header.Set("X-Evonet-Caps", "idempotent-replay")
 
-	conn, _, err := newDialer().Dial(url, header)
+	ctx, cancel := c.dialContext()
+	defer cancel()
+	conn, _, err := newDialer().DialContext(ctx, url, header)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", url, err)
 	}

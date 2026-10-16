@@ -72,8 +72,8 @@ cd dist && shasum -a 256 -c checksums.txt
 Upload the archives and `checksums.txt` to the matching GitHub Release:
 
 ```bash
-gh release create v1.2.7 dist/evonet-*.zip dist/checksums.txt \
-  --repo anvie/evonic --title "Evonet v1.2.7" --generate-notes
+gh release create v1.2.8 dist/evonet-*.zip dist/checksums.txt \
+  --repo anvie/evonic --title "Evonet v1.2.8" --generate-notes
 ```
 
 The macOS GUI archive contains an ad-hoc-signed `Evonet.app`; it is not Developer ID signed or notarized, so users must right-click → Open on first launch (see the Gatekeeper note below).
