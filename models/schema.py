@@ -382,7 +382,7 @@ class SchemaMixin:
                 ("enabled", "BOOLEAN DEFAULT 1"),
                 ("default_model_id", "TEXT"),
                 ("sandbox_enabled", "BOOLEAN DEFAULT 0"),
-                ("attachments_enabled", "BOOLEAN DEFAULT 0"),
+                ("attachments_enabled", "BOOLEAN DEFAULT 1"),
                 ("attachment_max_size_mb", "INTEGER DEFAULT 20"),
                 ("send_file_allowed_path_regex", "TEXT DEFAULT ''"),
                 ("audio_enabled", "BOOLEAN DEFAULT 0"),
