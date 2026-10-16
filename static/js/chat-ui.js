@@ -1283,7 +1283,7 @@ function buildToolResultDetail(ev) {
     if (ev.error) {
         let msg = typeof ev.error === 'string' && ev.error.length > 1 ? ev.error : null;
         if (!msg && typeof ev.result === 'string') msg = ev.result;
-        if (!msg && ev.result && typeof ev.result === 'object') msg = ev.result.error || ev.result.message || null;
+        if (!msg && ev.result && typeof ev.result === 'object') msg = _extractToolError(ev.result) || ev.result.message || null;
         if (!msg) msg = 'Tool error';
         return $('<div class="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 font-mono whitespace-pre-wrap">').text(msg);
     }
