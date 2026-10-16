@@ -226,8 +226,6 @@ def _resolve_provider(args: Mapping[str, Any], config: Mapping[str, Any]):
     provider = provider_registry.resolve(explicit, default)
     if not _provider_enabled(provider.id, config):
         raise ImageGenerationError(SafeErrorCode.PROVIDER_DISABLED, "The selected image provider is not enabled for this skill.")
-    if provider.is_local and not _boolean(config.get("allow_local_providers")):
-        raise ImageGenerationError(SafeErrorCode.PROVIDER_DISABLED, "Local image providers are not enabled for this skill.")
     return provider
 
 
@@ -240,7 +238,10 @@ def _validated_filename(filename: str, mime_type: str, index: int) -> str:
     stem, supplied_extension = os.path.splitext(filename)
     if supplied_extension.lower() != extension:
         filename = f"{stem}{extension}"
-    return f"generated-{index + 1}-{filename}"
+    # Providers commonly use deterministic filenames. Add a nanosecond Unix
+    # timestamp so repeated requests can coexist while retaining the provider
+    # filename for human recognition and sortable creation order.
+    return f"generated-{index + 1}-{time.time_ns()}-{filename}"
 
 
 def _is_public_https_url(value: str) -> bool:

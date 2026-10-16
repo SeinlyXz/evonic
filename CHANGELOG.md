@@ -6,6 +6,41 @@
 
 ### Features
 
+- Added an ElevenLabs provider to the text-to-speech skill (Eleven v4 by default, with Indonesian voices).
+
+## [1.4.0] - 2026-10-10
+
+### Features
+
+- Refreshed the application experience across chat, agent, session, evaluation, dashboard, user, and settings pages with a new dark palette, mobile navigation, keyboard shortcuts, toasts, comboboxes, state panels, and generated default agent avatars.
+- Added System > Safety as a consolidated configuration surface, including persistent policy controls, a provider-neutral decision-model safety guard, provider health status, activity telemetry, and a bounded DMSS diagnostic tester with ready-to-submit sample payloads.
+- Added image generation through the ComfyUI provider, including portrait and landscape sizes, workflow-template support, prompt injection, and provider discovery.
+- Added a text-to-speech skill supporting Google Gemini, OpenAI, and OpenRouter providers.
+- Added durable `/goal` state visible to agents, semantic session-summary compaction, active monitor conditions in chat state, and proactive context compaction based on model capacity and provider token usage.
+- Added a session state header, theme presets, refreshed Safety and Users settings, and other usability improvements to the administration interface.
+
+### Bug Fixes
+
+- Fixed direct-channel pairing approval, increased pairing-code entropy, and stabilized pairing tests.
+- Fixed stale agent turns and Kanban task-resume handling; paused Kanban boards now prevent scans.
+- Fixed WhatsApp bridge shutdown and restart handling, dark-mode disconnect banners, structured tool-error rendering, session-summary editing, binary artifact write chunking, and image artifact filename collisions.
+- Fixed ComfyUI workflow-name handling and metadata generation; added cross-platform launcher locking and Windows virtual-environment detection.
+- Improved DMSS settings and diagnostic behavior, including endpoint controls, dark-mode presentation, failure-path handling, and KPI spacing.
+- Improved tool-result renderer dependency loading and Explorer compatibility with shell `rg` wrappers.
+
+### Tests
+
+- Expanded Safety and DMSS API/UI coverage, including diagnostic timeout, HTTP error, malformed-response, rate-limit, and empty-payload paths.
+- Added regression coverage for pairing, renderer tool-result helpers, theme-aware disconnect banners, and Kanban task resume behavior.
+
+### Release Notes
+
+- The DMSS provider endpoint remains an administrator-configured integration. The residual endpoint egress risk was reviewed and explicitly accepted for this release because changes require authenticated administrative access.
+
+## [1.3.0] - 2026-10-05
+
+### Features
+
 - Kanban board: task title text now flashes solid yellow and fades back to its original color (1s default) every time the assigned agent calls a tool, driven by the durable `kanban` realtime (SSE) channel.
 - Plugin detail pages now turn every `<slug>_tab.html` a plugin ships in its `templates/` directory into an extra tab (label = the humanised slug) and call `window.tabInit_<slug>()` when the tab is opened, so plugins can add an admin page to their own detail view without a navbar entry or a core change. Used by the tiyasancloud *Manage* tab.
 

@@ -503,7 +503,7 @@ class TelegramChannel(BaseChannel):
                     # User is fully approved — fall through to normal processing
                 else:
                     # Step 2: User NOT in allowlist — try pairing-code auto-approve
-                    from backend.channels.pairing import extract_pair_code, format_pair_code as fmt_code
+                    from backend.channels.pairing import extract_pair_code
                     raw_code = extract_pair_code(text) if text else None
                     if raw_code:
                         pending = db.get_pending_approval_by_code(raw_code)
@@ -522,27 +522,28 @@ class TelegramChannel(BaseChannel):
                                         "✅ You're now approved! Welcome aboard. How can I help you today?"
                                     )
                             return
-                        else:
+                        # Unmatched code — fall through so the sender is registered
+                        # as a pending approval and stays approvable from the modal.
+
+                    # No live pairing code (or an unmatched one) — make sure the
+                    # sender has a pending approval visible in the channel modal.
+                    existing = db.get_pending_approvals(self.channel_id)
+                    already_pending = any(
+                        p.get('external_user_id') == user_id for p in existing
+                    )
+                    if not already_pending:
+                        allowed, pair_code = self._check_allowlist(user_id, user_name)
+                        if not allowed and pair_code:
                             await update.message.reply_text(
-                                "❌ That pairing code is invalid or has expired. "
-                                "Please ask the administrator for a new one."
+                                "👋 You're not yet approved to chat here. "
+                                "Please ask the administrator for a pairing code, then send it in this chat."
                             )
-                            return
-                    else:
-                        # No pairing code in message — check if pending approval already exists
-                        existing = db.get_pending_approvals(self.channel_id)
-                        already_pending = any(
-                            p.get('external_user_id') == user_id for p in existing
+                    elif raw_code:
+                        await update.message.reply_text(
+                            "❌ That pairing code is invalid or has expired. "
+                            "Please ask the administrator for a new one."
                         )
-                        if not already_pending:
-                            allowed, pair_code = self._check_allowlist(user_id, user_name)
-                            if not allowed and pair_code:
-                                formatted = fmt_code(pair_code)
-                                await update.message.reply_text(
-                                    "👋 You're not yet approved to chat here. "
-                                    "Please ask the administrator for a pairing code, then send it in this chat."
-                                )
-                        return
+                    return
 
                 # Establish session_id early — needed for attachment storage paths.
                 from models.db import db

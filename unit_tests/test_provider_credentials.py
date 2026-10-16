@@ -16,8 +16,10 @@ def test_subscription_providers_are_seeded():
 
     codex = db.get_provider("openai-codex")
     claude = db.get_provider("anthropic")
+    cli = db.get_provider("claude-code")
     assert (codex["api_format"], codex["credential_source"]) == ("codex", "")
     assert (claude["api_format"], claude["credential_source"]) == ("anthropic", "api_key")
+    assert cli["api_format"] == "claude_cli"
 
 
 def test_legacy_codex_route_never_selects_anthropic_oauth():
@@ -83,48 +85,33 @@ def test_codex_device_flow_rejects_invalid_json():
     assert result == {"error": "OpenAI returned an invalid device code response."}
 
 
-def test_claude_chooses_freshest_valid_store():
-    from backend.provider.claude_code import read_claude_code_credentials
-
-    now = int(time.time() * 1000)
-    keychain = {"access_token": "old", "expires_at_ms": now + 120_000, "source": "macos_keychain"}
-    file_creds = {"access_token": "new", "expires_at_ms": now + 240_000, "source": "claude_credentials_file"}
-    with patch("backend.provider.claude_code._read_keychain", return_value=keychain), \
-         patch("backend.provider.claude_code._read_file", return_value=file_creds):
-        assert read_claude_code_credentials()["access_token"] == "new"
-
-
-def test_claude_existing_login_links_without_copying_secret():
-    from backend.provider.claude_code import use_claude_code_credentials
+def test_anthropic_api_key_rejects_subscription_tokens():
+    from backend.provider.claude_code import save_api_key
     from models.db import db
 
-    creds = {
-        "access_token": "secret-not-for-db",
-        "refresh_token": "refresh-not-for-db",
-        "expires_at_ms": int(time.time() * 1000) + 3600_000,
-        "source": "macos_keychain",
-    }
-    with patch("backend.provider.claude_code.read_claude_code_credentials", return_value=creds):
-        result = use_claude_code_credentials(db, "anthropic")
-
-    provider = db.get_provider("anthropic")
-    assert result["success"]
-    assert provider["credential_source"] == "claude_code"
-    assert provider["api_key"] == provider["refresh_token"] == ""
+    for token in ("sk-ant-oat01-abc", "sk-ant-ort01-abc", "cc-abc", "eyJabc", ""):
+        assert "error" in save_api_key(db, "anthropic", token)
+    assert save_api_key(db, "anthropic", "sk-ant-api03-real")["success"]
+    assert db.get_provider("anthropic")["api_key"] == "sk-ant-api03-real"
 
 
-def test_claude_oauth_headers_match_claude_code_identity():
-    from backend.provider.claude_code import SYSTEM_PREFIX, auth_headers
+def test_anthropic_headers_are_plain_api_key_headers():
+    from backend.provider.claude_code import auth_headers
 
-    with patch("backend.provider.claude_code.claude_code_version", return_value="9.9.9"):
-        headers = auth_headers("token", oauth=True)
-    assert headers["Authorization"] == "Bearer token"
-    assert headers["anthropic-beta"] == "claude-code-20250219,oauth-2025-04-20"
-    assert headers["user-agent"] == "claude-code/9.9.9 (external, cli)"
-    assert headers["x-app"] == "cli"
-    assert "x-api-key" not in headers
-    assert SYSTEM_PREFIX.startswith("You are Claude Code")
-    assert auth_headers("api-key", oauth=False)["x-api-key"] == "api-key"
+    headers = auth_headers("sk-ant-api03-real")
+    assert headers["x-api-key"] == "sk-ant-api03-real"
+    assert "Authorization" not in headers
+    assert "anthropic-beta" not in headers
+    assert "x-app" not in headers
+    assert "user-agent" not in {k.lower() for k in headers}
+
+
+def test_claude_oauth_machinery_is_gone():
+    from backend.provider import claude_code
+
+    for name in ("start_oauth_flow", "complete_oauth_flow", "read_claude_code_credentials",
+                 "use_claude_code_credentials", "SYSTEM_PREFIX", "OAUTH_BETAS"):
+        assert not hasattr(claude_code, name)
 
 
 def test_provider_api_never_returns_tokens():

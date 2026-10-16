@@ -17,7 +17,7 @@ def _evaluate_summary(path: Path, result: dict) -> str:
     if not node:
         pytest.skip("A working Node.js runtime is required for the tool result renderer test")
     source = path.read_text()
-    start = source.index("function _summarizeToolResultValue(value) {")
+    start = source.index("function _truncateToolResultText(value, maxLength = 240) {")
     end = source.index("function _renderRunpyResult(r) {")
     summary_functions = source[start:end]
     script = f"""{summary_functions}
@@ -45,3 +45,17 @@ def test_tool_result_summary_limits_scalar_array_output():
     result = {"reason_code": ["ONE", "TWO", "THREE", "FOUR", "FIVE"]}
 
     assert _evaluate_summary(MODULE, result) == "reason_code: ONE, TWO, THREE, FOUR, …"
+
+
+def test_tool_result_summary_prefers_nested_error_message():
+    result = {
+        "status": "error",
+        "error": {
+            "code": "provider_error",
+            "message": "The image provider rejected the request.",
+        },
+    }
+    expected = "error: provider_error: The image provider rejected the request."
+
+    assert _evaluate_summary(MODULE, result) == expected
+    assert _evaluate_summary(BUNDLE, result) == expected

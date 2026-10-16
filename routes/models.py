@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 import requests
 from flask import Blueprint, jsonify, request
 
+from backend.tools.lib.model_routing_contracts import ContractValidationError, parse_capabilities
 from models.db import db
 
 _logger = logging.getLogger(__name__)
@@ -61,9 +62,20 @@ def api_create_model():
             }
         ), 400
 
-    # Validate type
-    if data["type"] not in ("remote", "local"):
-        return jsonify({"success": False, "error": "type must be remote or local"}), 400
+    # Type is descriptive locality metadata only; retain legacy values without
+    # allowing it to determine endpoint, protocol, or authentication behavior.
+    if not isinstance(data["type"], str) or not data["type"].strip():
+        return jsonify({"success": False, "error": "type must be descriptive text"}), 400
+
+    if "base_url" in data or "api_key" in data:
+        return jsonify({"success": False, "error": "new models must inherit endpoint and credentials from their provider"}), 400
+    try:
+        data["capabilities"] = parse_capabilities(data.get("capabilities") or {
+            "version": "model-capabilities/v1", "operations": {"chat": "advertised"},
+            "schema_versions": [], "confidence": "unsupported", "data_egress": ["public"],
+        }).to_dict()
+    except ContractValidationError as e:
+        return jsonify({"success": False, "error": str(e), "code": e.code, "path": e.path}), 400
 
     # Validate provider exists in DB
     provider = db.get_provider(data["provider"])
@@ -92,6 +104,7 @@ def api_create_model():
                 "model_max_concurrent": data.get("model_max_concurrent", 3),
                 "vision_supported": data.get("vision_supported", 0),
                 "context_window": data.get("context_window", 0),
+                "capabilities": data.get("capabilities", {}),
             }
         )
     except ValueError as e:
@@ -120,12 +133,16 @@ def api_update_model(model_id):
         return jsonify({"success": False, "error": "Model not found"}), 404
     model_id = model["id"]
 
-    # If api_key is sent as empty string, remove it from updates to
-    # preserve the existing value. This prevents accidental overwrite
-    # when the edit modal shows an empty api_key field (for security,
-    # the GET endpoint never returns the actual api_key).
-    if "api_key" in data and not data["api_key"]:
-        del data["api_key"]
+    # Model connection values are migration compatibility data only. Existing
+    # overrides remain readable by the resolver but administration cannot add or
+    # alter them after the provider-owned connection migration.
+    if "base_url" in data or "api_key" in data:
+        return jsonify({"success": False, "error": "model endpoint and credentials are legacy compatibility fields; edit the provider instead"}), 400
+    if "capabilities" in data:
+        try:
+            data["capabilities"] = parse_capabilities(data["capabilities"]).to_dict()
+        except ContractValidationError as e:
+            return jsonify({"success": False, "error": str(e), "code": e.code, "path": e.path}), 400
 
     # If setting as default, unset other defaults
     if data.get("is_default"):
@@ -160,8 +177,9 @@ def api_delete_model(model_id):
     model = db.get_model_by_id(model_id)
     if not model:
         return jsonify({"success": False, "error": "Model not found"}), 404
+    references = db.get_model_references(model["id"])
     db.delete_model(model["id"])
-    return jsonify({"success": True})
+    return jsonify({"success": True, "affected_references": references})
 
 
 @models_bp.route("/api/models/<path:model_id>/clone", methods=["POST"])
@@ -175,8 +193,6 @@ def api_clone_model(model_id):
         "name": f"Copy of {source['name']}",
         "type": source.get("type"),
         "provider": source.get("provider"),
-        "base_url": source.get("base_url"),
-        "api_key": source.get("api_key"),
         "model_name": source.get("model_name"),
         "max_tokens": source.get("max_tokens", 32768),
         "timeout": source.get("timeout", 60),
@@ -188,6 +204,8 @@ def api_clone_model(model_id):
         "model_max_concurrent": source.get("model_max_concurrent", 1),
         "api_format": source.get("api_format", "openai"),
         "vision_supported": source.get("vision_supported", 0),
+        "context_window": source.get("context_window", 0),
+        "capabilities": source.get("capabilities", {}),
     }
     new_id = db.create_model(clone_data)
     return jsonify({"success": True, "model_id": new_id})
@@ -219,6 +237,13 @@ def api_test_model(model_id):
         model = db.resolve_model_config(model)
         api_format = model.get("api_format", "openai")
         provider_id = model.get("provider", "")
+
+        if api_format == "claude_cli":
+            from backend.provider.claude_cli import get_status
+            status = get_status(force=True)
+            if status["logged_in"]:
+                return jsonify({"success": True, "message": f"Claude Code CLI {status['version']} ready"})
+            return jsonify({"success": False, "error": status["error"]})
 
         if api_format == "codex":
             from backend.provider.oauth_codex import get_valid_token

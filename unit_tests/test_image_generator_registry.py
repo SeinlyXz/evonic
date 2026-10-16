@@ -37,13 +37,13 @@ def test_skill_manifest_registers_disabled_lazy_generation_tool():
     assert manifest["default_enabled"] is False
     assert manifest["lazy_tools"] is True
     assert manifest["tools_file"] == "tools.json"
-    assert [tool["function"]["name"] for tool in tools] == ["generate_image"]
+    assert [tool["function"]["name"] for tool in tools] == ["generate_image", "list_providers"]
     assert tools[0]["function"]["parameters"]["required"] == ["prompt"]
+    assert tools[1]["function"]["parameters"]["properties"] == {}
 
     variables = {variable["name"]: variable for variable in manifest["variables"]}
     assert variables["default_provider"]["default"] == ""
     assert "allowed_providers" not in variables
-    assert variables["allow_local_providers"]["type"] == "boolean"
     assert variables["automatic1111_enabled"]["default"] is False
     assert variables["comfyui_enabled"]["default"] is False
     assert variables["google_gemini_enabled"]["default"] is True
@@ -52,11 +52,10 @@ def test_skill_manifest_registers_disabled_lazy_generation_tool():
     assert variables["max_concurrent_requests"]["default"] == 1
     assert variables["images_per_day"]["default"] == 20
     assert variables["automatic1111_endpoint"]["default"] == ""
-    assert variables["automatic1111_trusted_hosts"]["default"] == ""
     assert variables["provider_api_key"]["type"] == "secret"
     assert variables["google_gemini_api_key"]["type"] == "secret"
     assert variables["google_gemini_model"]["choices"] == ["gemini-2.5-flash-image", "gemini-3.1-flash-image"]
-    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "google-gemini", "mock", "openrouter"]
+    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "comfyui", "google-gemini", "mock", "openrouter"]
 
 
 def test_registry_resolves_explicit_and_default_provider():
@@ -115,3 +114,9 @@ def test_registry_rejects_unsafe_artifact_output():
     with pytest.raises(ImageGenerationError) as error:
         registry.generate(ImageGenerationRequest(prompt="test"), {}, default_provider_id="unsafe")
     assert error.value.code is SafeErrorCode.ARTIFACT_INVALID
+
+
+def test_all_providers_share_the_common_portrait_and_landscape_sizes():
+    common_sizes = ("768x1024", "768x1344", "832x1248", "1024x768", "1344x768", "1248x832")
+    for provider in provider_registry.list():
+        assert all(size in provider.capabilities.supported_sizes for size in common_sizes), provider.id

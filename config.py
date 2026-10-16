@@ -164,6 +164,12 @@ if not _SECRET_KEY_ENV:
 SECRET_KEY = _SECRET_KEY_ENV
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = _get_env_int("PORT", 8080, min_val=1, max_val=65535)
+
+# Default avatars for agents without an uploaded image (generated from the agent's name, Boring Avatars style).
+# AVATAR_STYLE: initials | marble | beam | pixel | sunset | ring | bauhaus.  AVATAR_COLORS: comma-separated #RRGGBB list
+# (empty = the built-in palette).
+AVATAR_STYLE = os.getenv("AVATAR_STYLE", "initials").strip().lower() or "initials"
+AVATAR_COLORS = [c.strip() for c in os.getenv("AVATAR_COLORS", "").split(",") if c.strip()]
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
 # External service manager. When unset, Evonic manages its own process.
@@ -268,7 +274,12 @@ EVONIC_PUBLIC_URL = os.getenv("EVONIC_PUBLIC_URL", "").strip()
 
 AGENT_MAX_TOOL_ITERATIONS = _get_env_int("AGENT_MAX_TOOL_ITERATIONS", 100, min_val=1, max_val=1000)
 EVAL_MAX_TOOL_ITERATIONS = _get_env_int("EVAL_MAX_TOOL_ITERATIONS", 30, min_val=1, max_val=500)
+# Bounded continuation budget for an active `/goal` (see backend.goal_runtime).
+# Keeps an unfinished or impossible goal from looping the agent forever.
+AGENT_MAX_GOAL_NUDGES = _get_env_int("AGENT_MAX_GOAL_NUDGES", 5, min_val=0, max_val=50)
 AGENT_MAX_TOOL_RESULT_CHARS = _get_env_int("AGENT_MAX_TOOL_RESULT_CHARS", 8000, min_val=1, max_val=1_048_576)
+# Stream the model's reasoning to the browser live (OpenAI-compatible endpoints). Set AGENT_STREAM_THINKING=0 to fall back to one non-streaming call per step.
+AGENT_STREAM_THINKING = _get_env_bool("AGENT_STREAM_THINKING", True)
 # Maximum time the agent loop waits for each parallel tool, measured from
 # submission. Running Python threads cannot be terminated, so expired workers
 # are abandoned while pending work is cancelled during non-blocking cleanup.
@@ -284,6 +295,10 @@ if ACTIVE_CONTEXT_MODE not in ("off", "shadow", "enforced"):
     ACTIVE_CONTEXT_MODE = "off"
 ACTIVE_CONTEXT_SOFT_TOKENS = _get_env_int(
     "ACTIVE_CONTEXT_SOFT_TOKENS", 12000, min_val=0, max_val=10_000_000)
+# When the active model declares a context window, start projecting completed
+# tool-call groups before the request consumes this share of that capacity.
+ACTIVE_CONTEXT_CAPACITY_PERCENT = _get_env_int(
+    "ACTIVE_CONTEXT_CAPACITY_PERCENT", 85, min_val=1, max_val=100)
 ACTIVE_CONTEXT_RECENT_GROUPS = _get_env_int(
     "ACTIVE_CONTEXT_RECENT_GROUPS", 2, min_val=0, max_val=100)
 ACTIVE_CONTEXT_RECEIPT_MAX_CHARS = _get_env_int(
@@ -352,6 +367,16 @@ WHATSAPP_NATURAL_FORMATTING_ENABLED = _get_env_bool("WHATSAPP_NATURAL_FORMATTING
 SESSION_ARCHIVE = _get_env_bool("EVONIC_SESSION_ARCHIVE", False)
 
 AGENT_MAX_SUMMARIZE_BATCH = _get_env_int("AGENT_MAX_SUMMARIZE_BATCH", 20, min_val=1, max_val=500)
+
+# Hard character cap for a persisted session summary. Enforced by *semantic*
+# compaction (see backend/agent_runtime/summary_compactor.py) — never by naive
+# mid-text truncation. Stale/irrelevant details are dropped first so the summary
+# stays useful as it condenses.
+AGENT_MAX_SUMMARY_CHARS = _get_env_int("AGENT_MAX_SUMMARY_CHARS", 2000, min_val=200, max_val=100_000)
+
+# Max LLM compaction attempts before the deterministic line-level fallback runs.
+AGENT_SUMMARY_COMPACT_ATTEMPTS = _get_env_int("AGENT_SUMMARY_COMPACT_ATTEMPTS", 2, min_val=0, max_val=5)
+
 AGENT_TIMEOUT_RETRIES = _get_env_int("AGENT_TIMEOUT_RETRIES", 2, min_val=0, max_val=20)
 AGENT_QUEUE_WORKERS = _get_env_int("AGENT_QUEUE_WORKERS", 5, min_val=1, max_val=32)
 AGENT_SIDEBAR_LIMIT = _get_env_int("AGENT_SIDEBAR_LIMIT", 10, min_val=1, max_val=500)

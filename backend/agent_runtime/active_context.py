@@ -75,6 +75,18 @@ class ActiveContextProjection:
     completed_groups: int
     compacted_groups: int
     retained_groups: int
+    # Context-usage signal attribution (task #842).  ``provider_prompt_tokens``
+    # is the provider-reported prompt size of the previous request (0 when the
+    # provider gave no usage block); ``usage_signal`` is the effective signal
+    # compared against the threshold (the max of provider and local estimate,
+    # so an under-counting local estimator can no longer mask a full window);
+    # ``trigger_source`` names which signal crossed the threshold; and
+    # ``no_eligible_groups`` flags the case where the threshold was reached but
+    # nothing could be compacted (diagnostic, request still sent as-is).
+    provider_prompt_tokens: int = 0
+    usage_signal: int = 0
+    trigger_source: Optional[str] = None
+    no_eligible_groups: bool = False
 
     @property
     def saved_tokens(self) -> int:
@@ -92,6 +104,10 @@ class ActiveContextProjection:
             "completed_groups": self.completed_groups,
             "compacted_groups": self.compacted_groups,
             "retained_groups": self.retained_groups,
+            "provider_prompt_tokens": self.provider_prompt_tokens,
+            "usage_signal": self.usage_signal,
+            "trigger_source": self.trigger_source,
+            "no_eligible_groups": self.no_eligible_groups,
         }
 
 
@@ -108,6 +124,29 @@ def normalize_mode(mode: Any) -> str:
     """Return a supported mode, defaulting invalid input to safe ``off``."""
     value = str(mode or "off").strip().lower()
     return value if value in _VALID_MODES else "off"
+
+
+def resolve_soft_token_threshold(
+    fallback_tokens: Any,
+    context_window: Any = None,
+    capacity_percent: Any = 85,
+) -> int:
+    """Choose the active-context trigger from the selected model's capacity.
+
+    A model context window is an input capacity, so it is the appropriate basis
+    for deciding when to shrink the request before a provider rejects it.  The
+    established fixed threshold remains the safe fallback for models that do not
+    declare a usable context window.
+    """
+    try:
+        fallback = max(0, int(fallback_tokens))
+        window = int(context_window or 0)
+        percent = int(capacity_percent)
+    except (TypeError, ValueError):
+        return max(0, int(fallback_tokens or 0))
+    if window <= 0 or not 1 <= percent <= 100:
+        return fallback
+    return max(1, window * percent // 100)
 
 
 def validate_tool_pairs(
@@ -274,13 +313,24 @@ def project_active_context(
     recent_completed_groups: int = 2,
     receipt_max_chars: int = 4000,
     soft_token_threshold: int = 12000,
+    provider_prompt_tokens: Optional[int] = None,
 ) -> ActiveContextProjection:
     """Build a deterministic bounded projection, failing open on every error.
 
     Only complete, successful, explicitly classified groups older than the recent
     frontier are eligible. The canonical sequence is never mutated.
+
+    The threshold is compared against the larger of the local token estimate and
+    the provider-reported prompt size of the previous request
+    (``provider_prompt_tokens``).  The provider number is the ground truth of
+    what the model actually counted, so it is the primary signal; the local
+    estimate remains the fallback when the provider gave no usage block.
     """
     normalized_mode = normalize_mode(mode)
+    try:
+        provider_tokens = max(0, int(provider_prompt_tokens or 0))
+    except (TypeError, ValueError):
+        provider_tokens = 0
     try:
         canonical_copy = copy.deepcopy(list(canonical_messages))
     except Exception as exc:
@@ -298,11 +348,25 @@ def project_active_context(
             completed_groups=0,
             compacted_groups=0,
             retained_groups=0,
+            provider_prompt_tokens=provider_tokens,
+            usage_signal=provider_tokens,
         )
     try:
         canonical_tokens = estimate_context_tokens(canonical_copy, list(tools or []))
     except Exception:
         canonical_tokens = 0
+    threshold = max(0, int(soft_token_threshold))
+    # Provider-reported usage is primary; the local estimate is the fallback.
+    # Comparing the max of both means an under-counting local estimator can no
+    # longer keep compaction from triggering on a nearly full window (#842).
+    usage_signal = max(canonical_tokens, provider_tokens)
+    triggered = normalized_mode != "off" and usage_signal >= threshold
+    trigger_source = None
+    if triggered:
+        provider_hit = provider_tokens >= threshold
+        local_hit = canonical_tokens >= threshold
+        trigger_source = ("both" if provider_hit and local_hit
+                          else "provider" if provider_hit else "local")
     base = dict(
         mode=normalized_mode,
         canonical_tokens=canonical_tokens,
@@ -310,8 +374,12 @@ def project_active_context(
         completed_groups=0,
         compacted_groups=0,
         retained_groups=0,
+        provider_prompt_tokens=provider_tokens,
+        usage_signal=usage_signal,
+        trigger_source=trigger_source,
+        no_eligible_groups=False,
     )
-    if normalized_mode == "off" or canonical_tokens < max(0, int(soft_token_threshold)):
+    if not triggered:
         return ActiveContextProjection(
             messages=canonical_copy, applied=False, failed_open=False, error=None,
             projected_tokens=canonical_tokens, **base,
@@ -328,11 +396,14 @@ def project_active_context(
         compactable = [group for group in groups if group.start not in frontier and _eligible(group)]
         compact_starts = {group.start for group in compactable}
         if not compactable:
+            # Threshold reached but nothing eligible: the request goes out
+            # unchanged.  Flag it so the caller can surface a diagnostic.
             return ActiveContextProjection(
                 messages=canonical_copy, applied=False, failed_open=False, error=None,
                 projected_tokens=canonical_tokens, completed_groups=len(groups),
-                retained_groups=len(groups), **{k: v for k, v in base.items()
-                                               if k not in {"completed_groups", "retained_groups"}},
+                retained_groups=len(groups), no_eligible_groups=True,
+                **{k: v for k, v in base.items()
+                   if k not in {"completed_groups", "retained_groups", "no_eligible_groups"}},
             )
 
         entries = [_receipt_line(groups.index(group) + 1, group) for group in compactable]
@@ -366,6 +437,9 @@ def project_active_context(
             completed_groups=len(groups),
             compacted_groups=len(compactable),
             retained_groups=len(groups) - len(compactable),
+            provider_prompt_tokens=provider_tokens,
+            usage_signal=usage_signal,
+            trigger_source=trigger_source,
         )
     except Exception as exc:
         return ActiveContextProjection(
@@ -380,4 +454,7 @@ def project_active_context(
             completed_groups=0,
             compacted_groups=0,
             retained_groups=0,
+            provider_prompt_tokens=provider_tokens,
+            usage_signal=usage_signal,
+            trigger_source=trigger_source,
         )

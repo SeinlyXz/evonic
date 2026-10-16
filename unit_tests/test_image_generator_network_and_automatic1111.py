@@ -19,9 +19,7 @@ from providers.network import BoundedHttpClient, SafeEndpoint, configured_endpoi
 
 def _config(**overrides):
     config = {
-        "allow_local_providers": True,
         "automatic1111_endpoint": "http://127.0.0.1:7860/api",
-        "automatic1111_trusted_hosts": "127.0.0.1",
         "automatic1111_timeout_seconds": 60,
         "automatic1111_steps": 20,
     }
@@ -29,19 +27,13 @@ def _config(**overrides):
     return config
 
 
-def test_local_endpoint_requires_explicit_opt_in_and_exact_trusted_host(monkeypatch):
+def test_local_endpoint_is_accepted_without_extra_gates(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [(None, None, None, None, ("127.0.0.1", 0))])
 
-    with pytest.raises(ImageGenerationError) as disabled:
-        configured_endpoint(_config(allow_local_providers=False), "automatic1111", local=True)
-    assert disabled.value.code is SafeErrorCode.PERMISSION_DENIED
-
-    with pytest.raises(ImageGenerationError) as untrusted:
-        configured_endpoint(_config(automatic1111_trusted_hosts="localhost"), "automatic1111", local=True)
-    assert untrusted.value.code is SafeErrorCode.PERMISSION_DENIED
-
+    # Enabling the provider is the only gate; no opt-in flag or trusted-host list.
     endpoint = configured_endpoint(_config(), "automatic1111", local=True)
     assert endpoint.base_url == "http://127.0.0.1:7860/api"
+    assert endpoint.allow_private_network is True
 
 
 def test_cloud_endpoint_requires_https_and_public_dns(monkeypatch):
@@ -87,6 +79,23 @@ def test_automatic1111_uses_only_fixed_request_schema(monkeypatch):
                     "n_iter": 1, "steps": 20, "negative_prompt": "blur", "seed": 7},
     }
     assert result.artifacts[0].data == png
+
+
+def test_automatic1111_sends_portrait_dimensions(monkeypatch):
+    provider = Automatic1111Provider()
+    captured = {}
+    png = b"\x89PNG\r\n\x1a\nvalid"
+
+    class Client:
+        def json(self, method, path, payload=None):
+            captured.update(method=method, path=path, payload=payload)
+            return {"images": [base64.b64encode(png).decode()]}
+
+    monkeypatch.setattr(provider, "_client", lambda _config: Client())
+    provider.generate(ImageGenerationRequest(prompt="a lighthouse at night", size="768x1344"), _config())
+
+    assert captured["payload"]["width"] == 768
+    assert captured["payload"]["height"] == 1344
 
 
 def test_automatic1111_rejects_invalid_image_payload(monkeypatch):

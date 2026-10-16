@@ -41,7 +41,7 @@ def _response(image: bytes = _PNG):
 
 
 def test_google_provider_is_registered_without_enabling_it_by_default():
-    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "google-gemini", "mock", "openrouter"]
+    assert [provider.id for provider in provider_registry.list()] == ["automatic1111", "comfyui", "google-gemini", "mock", "openrouter"]
     assert GoogleGeminiProvider.id == "google-gemini"
     assert GoogleGeminiProvider.is_local is False
 
@@ -73,6 +73,32 @@ def test_google_provider_translates_only_the_fixed_google_request(monkeypatch):
     assert result.provider_id == "google-gemini"
     assert result.model == "gemini-2.5-flash-image"
     assert result.artifacts[0].data == _PNG
+
+
+@pytest.mark.parametrize("size,aspect_ratio", [
+    ("768x1024", "3:4"),
+    ("768x1344", "9:16"),
+    ("832x1248", "2:3"),
+    ("1024x768", "4:3"),
+    ("1344x768", "16:9"),
+    ("1248x832", "3:2"),
+])
+def test_google_provider_sends_native_aspect_ratio_for_portrait_and_landscape_sizes(monkeypatch, size, aspect_ratio):
+    provider = GoogleGeminiProvider()
+    captured = {}
+
+    class Client:
+        def json(self, method, path, payload=None, *, headers=None):
+            captured.update(method=method, path=path, payload=payload, headers=headers)
+            return _response()
+
+    monkeypatch.setattr(provider, "_client", lambda _config: Client())
+    provider.generate(ImageGenerationRequest(prompt="A portrait subject", size=size), _config())
+
+    assert captured["payload"]["generationConfig"] == {
+        "responseModalities": ["TEXT", "IMAGE"],
+        "imageConfig": {"aspectRatio": aspect_ratio},
+    }
 
 
 def test_google_provider_requires_administrator_credential_before_request(monkeypatch):

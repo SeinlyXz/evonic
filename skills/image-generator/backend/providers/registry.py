@@ -91,12 +91,14 @@ class ImageProviderRegistry:
 # ``allowed_providers``. The local adapter additionally requires the global local
 # provider opt-in and an exact trusted-host configuration.
 from .automatic1111 import Automatic1111Provider
+from .comfyui import ComfyUiProvider
 from .google import GoogleGeminiProvider
 from .mock import DeterministicMockProvider
 from .openrouter import OpenRouterProvider
 
 provider_registry = ImageProviderRegistry()
 provider_registry.register(Automatic1111Provider())
+provider_registry.register(ComfyUiProvider())
 provider_registry.register(GoogleGeminiProvider())
 provider_registry.register(DeterministicMockProvider())
 provider_registry.register(OpenRouterProvider())
