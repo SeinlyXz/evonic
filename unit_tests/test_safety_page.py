@@ -53,7 +53,7 @@ def test_safety_page_embeds_hmads_and_dmss_surfaces():
 
     # DMSS dashboard (migrated from the legacy Decim Safety page)
     assert "tbl-events-body" in html
-    assert "dmss-state-badge" in html
+    assert "kpi-status-card" in html
     assert "kpi-fallback" in html
 
     # Static assets are wired
@@ -132,8 +132,8 @@ def test_dmss_tester_offers_ready_to_submit_samples():
         assert f'data-sample="{sample}"' in html
     assert html.count('class="sf-tester-sample"') >= 4
     # Bumped asset versions so the new wiring/CSS is not served stale.
-    assert "js/safety.js?v=5" in html
-    assert "css/safety.css?v=5" in html
+    assert "js/safety.js?v=11" in html
+    assert "css/safety.css?v=13" in html
 
 
 def test_dmss_endpoint_is_plaintext_and_primary_buttons_are_dark_mode_readable():

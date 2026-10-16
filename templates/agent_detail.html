@@ -7507,7 +7507,8 @@ function getVisibleChatCommands() {
     return chatCommands.filter(command => command.name.toLowerCase().includes(match[1].toLowerCase()));
 }
 
-function selectChatCommand(command, showHint) {
+// chatInputChanged() re-renders the parameter hint for the chosen command (hidden for no-arg ones).
+function selectChatCommand(command) {
     const input = document.getElementById('chat-input');
     if (!input || !command) return;
     input.value = `/${command.name} `;
@@ -7515,10 +7516,6 @@ function selectChatCommand(command, showHint) {
     chatInputChanged(input);
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
-    if (showHint) {
-        const hint = document.getElementById('chat-command-hint');
-        if (hint) hint.classList.remove('hidden');
-    }
 }
 
 function chatInputKeydown(event) {
@@ -7558,7 +7555,7 @@ function chatInputKeydown(event) {
             const value = document.getElementById('chat-input').value;
             const executeNoArgs = value.trimStart().replace(/^\//, '') === command.name;
             if (executeNoArgs && !command.accepts_args) sendChat();
-            else selectChatCommand(choices[chatCommandIndex < 0 ? 0 : chatCommandIndex], true);
+            else selectChatCommand(command);
             return;
         }
         if (event.key === 'Escape') {
