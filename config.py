@@ -164,6 +164,12 @@ if not _SECRET_KEY_ENV:
 SECRET_KEY = _SECRET_KEY_ENV
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = _get_env_int("PORT", 8080, min_val=1, max_val=65535)
+
+# Default avatars for agents without an uploaded image (generated from the agent's name, Boring Avatars style).
+# AVATAR_STYLE: initials | marble | beam | pixel | sunset | ring | bauhaus.  AVATAR_COLORS: comma-separated #RRGGBB list
+# (empty = the built-in palette).
+AVATAR_STYLE = os.getenv("AVATAR_STYLE", "initials").strip().lower() or "initials"
+AVATAR_COLORS = [c.strip() for c in os.getenv("AVATAR_COLORS", "").split(",") if c.strip()]
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
 # External service manager. When unset, Evonic manages its own process.
@@ -226,9 +232,54 @@ CONNECTOR_PING_INTERVAL = _get_env_int("CONNECTOR_PING_INTERVAL", 30, min_val=5,
 CONNECTOR_PING_TIMEOUT = _get_env_int("CONNECTOR_PING_TIMEOUT", 10, min_val=1, max_val=60)
 CONNECTOR_PAIRING_CODE_TTL = _get_env_int("CONNECTOR_PAIRING_CODE_TTL", 300, min_val=60, max_val=3600)  # seconds
 
+# ---- Cross-agent binary artifact sharing (task #806) --------------------------
+# Enables the `share_artifact` tool and the artifact-share download plugin.
+# Runtime precedence for every value below is: system setting (app_settings
+# table, editable in the UI) -> environment variable -> the default here.
+# The env vars document the supported overrides; the authoritative defaults
+# also live in backend/tools/lib/artifact_delivery.py.
+
+# Global kill switch. When disabled, both the sender tool and the token
+# download endpoint fail closed.
+ARTIFACT_SHARE_ENABLED = _get_env_bool("ARTIFACT_SHARE_ENABLED", True)
+
+# Lifetime of a tokenized download URL, in seconds. Default and expected value
+# is 300 seconds (5 minutes); the helper clamps to a sane 30..3600 range.
+ARTIFACT_SHARE_TOKEN_TTL = _get_env_int("ARTIFACT_SHARE_TOKEN_TTL", 300, min_val=30, max_val=3600)
+
+# Maximum size (MB) of an artifact that may be shared over a download URL.
+# Host-local direct-path shares use the same bound for consistency.
+ARTIFACT_SHARE_MAX_MB = _get_env_int("ARTIFACT_SHARE_MAX_MB", 100, min_val=1, max_val=10240)
+
+# Server-side spool that holds opaque snapshots of shared artifacts until they
+# are downloaded or expire. Defaults under APP_ROOT/data/spool/artifact_share.
+ARTIFACT_SHARE_SPOOL_DIR = os.getenv(
+    "ARTIFACT_SHARE_SPOOL_DIR",
+    os.path.join(APP_ROOT, "data", "spool", "artifact_share"),
+)
+
+# Maximum total bytes the spool may hold before new shares are refused (MB).
+ARTIFACT_SHARE_SPOOL_QUOTA_MB = _get_env_int(
+    "ARTIFACT_SHARE_SPOOL_QUOTA_MB", 2048, min_val=1, max_val=1048576)
+
+# Optional comma-separated allowlist of artifact file extensions that may be
+# shared (e.g. ".pdf,.png,.zip"). Empty means "allow any type".
+ARTIFACT_SHARE_ALLOWED_EXTENSIONS = os.getenv("ARTIFACT_SHARE_ALLOWED_EXTENSIONS", "").strip()
+
+# Public base URL used to build token download links. Must be set to the
+# externally reachable origin (no trailing slash) in production; when unset the
+# helper falls back to http://127.0.0.1:8080.
+EVONIC_PUBLIC_URL = os.getenv("EVONIC_PUBLIC_URL", "").strip()
+
+
 AGENT_MAX_TOOL_ITERATIONS = _get_env_int("AGENT_MAX_TOOL_ITERATIONS", 100, min_val=1, max_val=1000)
 EVAL_MAX_TOOL_ITERATIONS = _get_env_int("EVAL_MAX_TOOL_ITERATIONS", 30, min_val=1, max_val=500)
+# Bounded continuation budget for an active `/goal` (see backend.goal_runtime).
+# Keeps an unfinished or impossible goal from looping the agent forever.
+AGENT_MAX_GOAL_NUDGES = _get_env_int("AGENT_MAX_GOAL_NUDGES", 5, min_val=0, max_val=50)
 AGENT_MAX_TOOL_RESULT_CHARS = _get_env_int("AGENT_MAX_TOOL_RESULT_CHARS", 8000, min_val=1, max_val=1_048_576)
+# Stream the model's reasoning to the browser live (OpenAI-compatible endpoints). Set AGENT_STREAM_THINKING=0 to fall back to one non-streaming call per step.
+AGENT_STREAM_THINKING = _get_env_bool("AGENT_STREAM_THINKING", True)
 # Maximum time the agent loop waits for each parallel tool, measured from
 # submission. Running Python threads cannot be terminated, so expired workers
 # are abandoned while pending work is cancelled during non-blocking cleanup.
@@ -244,6 +295,10 @@ if ACTIVE_CONTEXT_MODE not in ("off", "shadow", "enforced"):
     ACTIVE_CONTEXT_MODE = "off"
 ACTIVE_CONTEXT_SOFT_TOKENS = _get_env_int(
     "ACTIVE_CONTEXT_SOFT_TOKENS", 12000, min_val=0, max_val=10_000_000)
+# When the active model declares a context window, start projecting completed
+# tool-call groups before the request consumes this share of that capacity.
+ACTIVE_CONTEXT_CAPACITY_PERCENT = _get_env_int(
+    "ACTIVE_CONTEXT_CAPACITY_PERCENT", 85, min_val=1, max_val=100)
 ACTIVE_CONTEXT_RECENT_GROUPS = _get_env_int(
     "ACTIVE_CONTEXT_RECENT_GROUPS", 2, min_val=0, max_val=100)
 ACTIVE_CONTEXT_RECEIPT_MAX_CHARS = _get_env_int(
@@ -312,6 +367,16 @@ WHATSAPP_NATURAL_FORMATTING_ENABLED = _get_env_bool("WHATSAPP_NATURAL_FORMATTING
 SESSION_ARCHIVE = _get_env_bool("EVONIC_SESSION_ARCHIVE", False)
 
 AGENT_MAX_SUMMARIZE_BATCH = _get_env_int("AGENT_MAX_SUMMARIZE_BATCH", 20, min_val=1, max_val=500)
+
+# Hard character cap for a persisted session summary. Enforced by *semantic*
+# compaction (see backend/agent_runtime/summary_compactor.py) — never by naive
+# mid-text truncation. Stale/irrelevant details are dropped first so the summary
+# stays useful as it condenses.
+AGENT_MAX_SUMMARY_CHARS = _get_env_int("AGENT_MAX_SUMMARY_CHARS", 2000, min_val=200, max_val=100_000)
+
+# Max LLM compaction attempts before the deterministic line-level fallback runs.
+AGENT_SUMMARY_COMPACT_ATTEMPTS = _get_env_int("AGENT_SUMMARY_COMPACT_ATTEMPTS", 2, min_val=0, max_val=5)
+
 AGENT_TIMEOUT_RETRIES = _get_env_int("AGENT_TIMEOUT_RETRIES", 2, min_val=0, max_val=20)
 AGENT_QUEUE_WORKERS = _get_env_int("AGENT_QUEUE_WORKERS", 5, min_val=1, max_val=32)
 AGENT_SIDEBAR_LIMIT = _get_env_int("AGENT_SIDEBAR_LIMIT", 10, min_val=1, max_val=500)

@@ -61,6 +61,9 @@ SIMULATION_OUTBOUND_DENYLIST: frozenset = frozenset({
     # Outbound messaging / delivery.
     "send_agent_message", "send_channel_message", "send_notification",
     "escalate_to_user", "send_file",
+    # Cross-agent artifact sharing: mints durable download state / exposes a
+    # host path, so it must not run for real inside a simulation.
+    "share_artifact",
     # Durable memory writes.
     "remember", "evomem", "memorize", "save_memory", "forget_memory",
     # Remote / external state.
@@ -251,6 +254,9 @@ def _synthetic_message(fn_name: str, args: dict) -> str:
         return "Escalation delivered to the originating user (simulated)."
     if fn_name == "send_file":
         return f"File '{a.get('file_path') or ''}' sent (simulated)."
+    if fn_name == "share_artifact":
+        target = a.get("recipient_agent_id") or a.get("recipient") or "agent"
+        return f"Artifact share issued to '{target}' (simulated)."
     if fn_name in ("remember", "memorize", "save_memory", "evomem"):
         return "Memory stored (simulated)."
     if fn_name == "forget_memory":

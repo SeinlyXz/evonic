@@ -11,6 +11,7 @@ from .base import (
     SafeErrorCode,
 )
 from .automatic1111 import Automatic1111Provider
+from .comfyui import ComfyUiProvider
 from .google import GoogleGeminiProvider
 from .mock import DeterministicMockProvider
 from .openrouter import OpenRouterProvider
@@ -18,6 +19,7 @@ from .registry import ImageProviderRegistry, provider_registry
 
 __all__ = [
     "Automatic1111Provider",
+    "ComfyUiProvider",
     "DeterministicMockProvider",
     "GoogleGeminiProvider",
     "ImageArtifact",

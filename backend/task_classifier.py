@@ -376,7 +376,20 @@ def classify_task(user_message: str) -> str:
         _logger.info("Task classified as %s (heuristic)", result)
         return result
 
-    # LLM classification
+    # An enabled Decision Profile replaces the legacy classifier only after its
+    # structured result has passed the shared runtime checks.  ``None`` means
+    # disabled, missing, shadow, low-confidence, malformed, timed-out, or failed
+    # and deliberately falls through to the historic classifier below.
+    try:
+        from backend.agent_decisions import get_builtin_decision_runner, task_complexity_input
+        decision = get_builtin_decision_runner().decide(
+            "agent.task_complexity", task_complexity_input(text))
+        if decision and decision.get("complexity") in {"trivial", "complex"}:
+            return decision["complexity"]
+    except Exception:
+        _logger.debug("Decision Profile task complexity unavailable; using legacy classifier", exc_info=True)
+
+    # Legacy LLM classification.
     try:
         client = _get_classifier_client()
         _t0 = time.time()

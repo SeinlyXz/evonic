@@ -561,6 +561,13 @@ class RealtimeStore:
                 (now + RETENTION_MS, turn_id),
             )
             conn.execute('DELETE FROM active_turns WHERE turn_id = ?', (turn_id,))
+            # Live-thinking previews are redundant once the turn is over: the
+            # full `thinking` events carry the same text.
+            conn.execute(
+                "DELETE FROM realtime_events WHERE turn_id = ? "
+                "AND event_type IN ('thinking_delta', 'thinking_reset')",
+                (turn_id,),
+            )
         with self._condition:
             self._condition.notify_all()
 

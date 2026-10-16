@@ -67,13 +67,27 @@ _notifier_paused: bool = False       # global notifier pause flag (UI toggle)
 
 
 def _is_notifier_paused() -> bool:
-    return _notifier_paused
+    """Return whether all automatic Kanban delivery is suspended."""
+    with _state_lock:
+        return _notifier_paused
 
 
-def _set_notifier_paused(paused: bool):
+def _set_notifier_paused(paused: bool) -> bool:
+    """Atomically set the scanner pause state and return the effective value."""
     global _notifier_paused
-    _notifier_paused = paused
-    _log(f'Notifier {"paused" if paused else "resumed"} via UI toggle')
+    with _state_lock:
+        _notifier_paused = bool(paused)
+        effective_state = _notifier_paused
+    _log(f'Notifier {"paused" if effective_state else "resumed"} via UI toggle')
+    return effective_state
+
+
+def _skip_if_notifier_paused(scan_name: str, sdk=None) -> bool:
+    """Prevent paused scanners from reading or delivering any work."""
+    if not _is_notifier_paused():
+        return False
+    _log(f'Notifier is paused — skipping {scan_name}', 'info', sdk)
+    return True
 
 # ── Allowed tools while a task is pending (before activate) ──────────────────
 KANBAN_ALLOWED_TOOLS = {
@@ -428,6 +442,11 @@ def _notify_agent(agent_id: str, task: dict, channel_type: str, sdk=None, force:
                      "Trigger Agents" button to force immediate delivery.
     """
 
+    # A board-wide pause stops every agent trigger, including manual routes that
+    # otherwise use force/force_delay to bypass scheduling safeguards.
+    if _skip_if_notifier_paused('agent notification', sdk):
+        return {'success': False, 'reason': 'paused'}
+
     # Task delay check — bypassed when force_delay=True (e.g. user clicked Trigger Agents)
     if not force_delay:
         if _is_task_delayed(task, _load_config()):
@@ -757,6 +776,8 @@ def _emit_task_idle(agent_id: str, grace_seconds: int = 3) -> None:
 def _notify_agent_followup(agent_id: str, task: dict, merged_content: str,
                            channel_type: str, sdk=None,
                            prior_content: str = None, comment_author: str = None) -> bool:
+    if _skip_if_notifier_paused('comment follow-up notification', sdk):
+        return False
     if comment_author is None:
         comment_author = _get_owner_name()
     """Notify an agent that a completed task needs follow-up based on user comment(s).
@@ -868,6 +889,9 @@ def _notify_stale_task(agent_id: str, task: dict, channel_type: str, sdk=None):
     Bypasses pick/approve since the task is already in-progress in the DB.
     Sets _active_tasks directly so tool guards work correctly.
     """
+    if _skip_if_notifier_paused('stale-task notification', sdk):
+        return
+
     task_id = task['id']
     task_ref = f'#{task_id}'
     title = task['title']
@@ -909,6 +933,22 @@ def _notify_stale_task(agent_id: str, task: dict, channel_type: str, sdk=None):
     except Exception:
         pass
 
+    # Snapshot whatever we are about to overwrite so a delivery that does not
+    # actually resume the task can be rolled back cleanly. Without this a
+    # deduplicated or merely-injected reminder would strand `_active_tasks`
+    # (blocking every later stale scan) and clobber the agent's persisted
+    # mode/plan/focus.
+    with _state_lock:
+        prev_active = _active_tasks.get(agent_id)
+        prev_since = _task_state_since.get(agent_id)
+        prev_pending = _pending_tasks.get(agent_id)
+        prev_paused = _paused_tasks.get(agent_id)
+    try:
+        from models.db import db as _mdb_state
+        prev_state_content = _mdb_state.get_agent_state(agent_id=agent_id)
+    except Exception:
+        prev_state_content = None
+
     # Mark as active directly — task is already in-progress, skip pick/approve
     with _state_lock:
         _active_tasks[agent_id] = str(task_id)
@@ -917,7 +957,34 @@ def _notify_stale_task(agent_id: str, task: dict, channel_type: str, sdk=None):
         _paused_tasks.pop(agent_id, None)
 
     # Pre-set agent to execute mode when autopilot is ON
-    _pre_set_execute_mode(agent_id, task, sdk)
+    mode_preset = _pre_set_execute_mode(agent_id, task, sdk)
+
+    def _rollback_reservation():
+        with _state_lock:
+            if prev_active is None:
+                _active_tasks.pop(agent_id, None)
+            else:
+                _active_tasks[agent_id] = prev_active
+            if prev_since is None:
+                _task_state_since.pop(agent_id, None)
+            else:
+                _task_state_since[agent_id] = prev_since
+            if prev_pending is not None:
+                _pending_tasks[agent_id] = prev_pending
+            if prev_paused is not None:
+                _paused_tasks[agent_id] = prev_paused
+        if mode_preset and prev_state_content is not None:
+            try:
+                from models.db import db as _mdb_state
+                _mdb_state.upsert_agent_state(prev_state_content, agent_id=agent_id)
+            except Exception:
+                pass
+
+    try:
+        dedup_max_age = int(_load_config().get(
+            'STALE_REMINDER_DEDUP_MAX_AGE_SECONDS', 300))
+    except Exception:
+        dedup_max_age = 300
 
     from backend.agent_runtime.notifier import notify_agent
     result = notify_agent(
@@ -926,18 +993,34 @@ def _notify_stale_task(agent_id: str, task: dict, channel_type: str, sdk=None):
         message=body,
         channel_type=channel_type,
         dedup=True,
+        dedup_max_age_seconds=dedup_max_age,
     )
-    if result['success']:
+    # A reminder only counts as delivered when the runtime actually processed the
+    # turn. A deduplicated send, a failure, or a bare hand-off to a live loop
+    # (injected/buffered/async) leaves the task unresolved, so release the
+    # reservation and let a later scan retry instead of pinning the agent active.
+    if result.get('success') and result.get('delivery') == 'runtime':
         _log(f'Sent stale task reminder to agent {agent_id} for task {task_id}', 'info', sdk)
+        return
+    if result.get('success'):
+        _log(
+            f'Stale task reminder for agent {agent_id} task {task_id} was only '
+            f'queued (delivery={result.get("delivery")!r}) without a confirmed '
+            f'resume — releasing reservation to retry',
+            'warn', sdk,
+        )
     elif result.get('reason') == 'deduplicated':
         _log(f'Skipped duplicate stale reminder for agent {agent_id} task {task_id}', 'info', sdk)
     else:
         _log(f'Failed to send stale task reminder to agent {agent_id}: {result.get("reason")}', 'error', sdk)
-        _active_tasks.pop(agent_id, None)
+    _rollback_reservation()
 
 
 def _scan_stale_tasks(sdk=None):
     """Scan for in-progress tasks the agent is no longer tracking and re-notify."""
+    if _skip_if_notifier_paused('stale-task scan', sdk):
+        return
+
     config = _load_config()
     eligible = _get_kanban_skill_agents()
     if not eligible:
@@ -1015,14 +1098,14 @@ def _scan_and_notify(sdk=None) -> dict:
     Returns a dict with result details so callers (esp. the UI) can show
     which agents were notified and which were skipped and why.
     """
+    results = {'notified': 0, 'failed': 0, 'details': []}
+    if _skip_if_notifier_paused('new-task scan', sdk):
+        results['paused'] = True
+        return results
+
     config = _load_config()
     eligible = _get_kanban_skill_agents()
-    results = {'notified': 0, 'failed': 0, 'details': []}
     if not eligible:
-        return results
-    if _notifier_paused:
-        _log('Notifier is paused — skipping scan', 'info', sdk)
-        results['paused'] = True
         return results
 
     channel_type = config.get('CHANNEL_TYPE', 'telegram')
@@ -1127,6 +1210,9 @@ def _scan_comments_for_followup(sdk=None):
     LLM classifier; if a comment requests corrections or additional work the task
     is reopened to in-progress and the agent is notified.
     """
+    if _skip_if_notifier_paused('new-comment scan', sdk):
+        return
+
     config = _load_config()
     eligible = _get_kanban_skill_agents()
     if not eligible:
@@ -2241,8 +2327,7 @@ def on_schedule_fired(event, sdk):
     """Route scheduled events to the appropriate scan function."""
     if event.get('owner_type') != 'plugin' or event.get('owner_id') != PLUGIN_ID:
         return
-    if _notifier_paused:
-        _log('Notifier is paused — skipping scheduled scan', 'info', sdk)
+    if _skip_if_notifier_paused('scheduled scan', sdk):
         return
     if event.get('name') == _STALE_SCHEDULE_NAME:
         _scan_stale_tasks(sdk)

@@ -11,15 +11,17 @@ window.settingsGeneral = {
         pane.dataset.loading = "1";
 
         // Theme reflects local preference instantly, no fetch needed
-        this._updateThemeButtons(localStorage.getItem("evonic-theme") || "system");
+        this._updateThemeButtons(EvTheme.get().mode);
+        this._renderPresets();
 
         try {
-            const [general, models, defaultModel, classifier, cmpModel] = await Promise.all([
+            const [general, models, defaultModel, classifier, cmpModel, decisionProfiles] = await Promise.all([
                 apiGet("/api/settings/general"),
                 ModelsCache.get(),
                 apiGet("/api/settings/default-model").catch(() => null),
                 apiGet("/api/settings/task-classifier").catch(() => null),
                 apiGet("/api/settings/cmp-model").catch(() => null),
+                apiGet("/api/admin/decision-profiles").catch(() => ({profiles: []})),
             ]);
             if (!general || general.error) {
                 throw new Error((general && general.error) || "Failed to load settings");
@@ -34,6 +36,8 @@ window.settingsGeneral = {
                 kbOrganizerModelId: general.kb_organizer_model_id || "",
                 classifierModelId: classifier ? classifier.model_id || "" : "",
                 cmpModelId: cmpModel ? cmpModel.model_id || "" : "",
+                taskDecisionProfile: this._profile(decisionProfiles.profiles, "agent.task_complexity"),
+                cmpDecisionProfile: this._profile(decisionProfiles.profiles, "agent.path_boundary"),
             });
             const clsToggle = document.getElementById("task-classifier-toggle");
             if (clsToggle && classifier) clsToggle.checked = !!classifier.enabled;
@@ -75,6 +79,7 @@ window.settingsGeneral = {
         set("max-concurrent-llm-global-input", s.max_concurrent_llm_global);
         set("agent-queue-workers-input", s.agent_queue_workers);
         set("max-tool-iterations-input", s.max_tool_iterations);
+        set("max-goal-nudges-input", s.max_goal_nudges);
         set("agent-sidebar-limit-input", s.agent_sidebar_limit);
         set("kb-organizer-nightly-time-input", s.kb_organizer_nightly_time);
         check("public-history-toggle", s.public_history);
@@ -88,6 +93,10 @@ window.settingsGeneral = {
         set("whatsapp-typing-speed-input", s.whatsapp_typing_chars_per_second);
         set("whatsapp-max-typing-delay-input", s.whatsapp_max_typing_delay_seconds);
         set("whatsapp-outbound-limit-input", s.whatsapp_max_outbound_per_minute);
+    },
+
+    _profile(profiles, key) {
+        return (profiles || []).find((profile) => profile.profile_key === key) || null;
     },
 
     _currentSelectValues() {
@@ -104,6 +113,18 @@ window.settingsGeneral = {
             kbOrganizerModelId: val("kb-organizer-model-select"),
             classifierModelId: val("task-classifier-model-select"),
             cmpModelId: val("cmp-model-select"),
+            taskDecisionProfile: this._profileFromSelect("agent.task_complexity", "task-classifier-decision-model-select"),
+            cmpDecisionProfile: this._profileFromSelect("agent.path_boundary", "cmp-decision-model-select"),
+        };
+    },
+
+    _profileFromSelect(key, selectId) {
+        const select = document.getElementById(selectId);
+        return {
+            profile_key: key,
+            primary_model_id: select ? select.value : "",
+            enabled: !!(select && select.value),
+            mode: select && select.value ? "enforce" : "off",
         };
     },
 
@@ -123,6 +144,28 @@ window.settingsGeneral = {
         };
 
         const enabled = models.filter((m) => m.enabled);
+        // Uses the same canonical model-capabilities/v1 vocabulary as the registry.
+        const decisionCompatible = enabled.filter((model) => {
+            const operations = (model.capabilities && model.capabilities.operations) || {};
+            const schemaVersions = (model.capabilities && model.capabilities.schema_versions) || [];
+            return Boolean(
+                operations.decision && operations.decision !== "unsupported" &&
+                operations.strict_output && operations.strict_output !== "unsupported" &&
+                Array.isArray(schemaVersions) && schemaVersions.includes("decision-schema/v1"),
+            );
+        });
+        fill(
+            "task-classifier-decision-model-select",
+            decisionCompatible,
+            current.taskDecisionProfile && current.taskDecisionProfile.primary_model_id,
+            "Use legacy Task Classifier",
+        );
+        fill(
+            "cmp-decision-model-select",
+            decisionCompatible,
+            current.cmpDecisionProfile && current.cmpDecisionProfile.primary_model_id,
+            "Use legacy CMP classifier",
+        );
         fill("default-model-select", models, current.defaultModelId, "— Select model —");
         fill(
             "default-model-fallback-select",
@@ -196,6 +239,47 @@ window.settingsGeneral = {
             }
         });
 
+        const saveBuiltinDecisionProfile = async (profileKey, selectId) => {
+            const select = document.getElementById(selectId);
+            const current = await apiGet("/api/admin/decision-profiles/" + encodeURIComponent(profileKey));
+            const profile = current && current.profile;
+            if (!profile) throw new Error("Built-in Decision Profile is unavailable");
+            const modelId = select ? select.value : "";
+            const payload = {
+                ...profile,
+                revision: profile.revision,
+                enabled: !!modelId,
+                mode: modelId ? "enforce" : "off",
+                primary_model_id: modelId || profile.primary_model_id,
+            };
+            const res = await apiPut("/api/admin/decision-profiles/" + encodeURIComponent(profileKey), payload);
+            if (!res || !res.success) {
+                const error = res && res.error;
+                throw new Error((error && error.message) || "Save failed");
+            }
+        };
+        const bindDecisionProfileSelect = (profileKey, selectId) => {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            select.addEventListener("change", async () => {
+                const row = select.closest(".setting-row");
+                const status = row && row.querySelector(".save-status");
+                if (status) status.textContent = "Saving…";
+                try {
+                    await saveBuiltinDecisionProfile(profileKey, selectId);
+                    if (status) status.textContent = "Saved";
+                } catch (error) {
+                    // Restore the saved configuration after a rejected change.
+                    const latest = await apiGet("/api/admin/decision-profiles/" + encodeURIComponent(profileKey)).catch(() => null);
+                    if (latest && latest.profile) select.value = latest.profile.primary_model_id || "";
+                    if (status) status.textContent = "Failed to save";
+                    if (window.toast) toast.show(error.message, "error");
+                }
+            });
+        };
+        bindDecisionProfileSelect("agent.task_complexity", "task-classifier-decision-model-select");
+        bindDecisionProfileSelect("agent.path_boundary", "cmp-decision-model-select");
+
         // Public history: guarded by an explicit confirm modal when enabling
         AutoSave.registerGuard("public_history", (enabling) => {
             if (!enabling) return Promise.resolve(true);
@@ -218,35 +302,52 @@ window.settingsGeneral = {
     /* ---- Theme ---- */
 
     setTheme(theme) {
-        if (this._systemSchemeListener) {
-            this._systemSchemeListener.removeEventListener("change", this._applySystemTheme);
-            this._systemSchemeListener = null;
-        }
-        const html = document.documentElement;
-        if (theme === "dark") {
-            html.classList.add("dark");
-        } else if (theme === "light") {
-            html.classList.remove("dark");
-        } else {
-            this._applySystemTheme();
-            if (window.matchMedia) {
-                this._systemSchemeListener = window.matchMedia("(prefers-color-scheme: dark)");
-                this._systemSchemeListener.addEventListener("change", this._applySystemTheme);
-            }
-        }
-        html.style.backgroundColor = html.classList.contains("dark") ? "#0f172a" : "#f5f5f5";
-        localStorage.setItem("evonic-theme", theme);
+        EvTheme.set({ mode: theme });
         this._updateThemeButtons(theme);
+        this._renderPresets();
         const seg = document.getElementById("theme-segmented");
         AutoSave.save("theme", theme, seg);
     },
 
-    _applySystemTheme() {
-        const html = document.documentElement;
-        const dark =
-            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-        html.classList.toggle("dark", dark);
-        html.style.backgroundColor = dark ? "#0f172a" : "#f5f5f5";
+    /** Pick a preset. Choosing one from the family that is not showing switches the mode so the change is visible
+     *  (unless the mode is "system", which keeps following the OS). */
+    setPreset(id) {
+        const preset = EvTheme.PRESETS.find((p) => p.id === id);
+        if (!preset) return;
+        const opts = {};
+        opts[preset.mode] = id;
+        const mode = EvTheme.get().mode;
+        if (mode !== "system" && mode !== preset.mode) opts.mode = preset.mode;
+        EvTheme.set(opts);
+        this._updateThemeButtons(EvTheme.get().mode);
+        this._renderPresets();
+    },
+
+    _renderPresets() {
+        const st = EvTheme.get();
+        ["dark", "light"].forEach((family) => {
+            const grid = document.getElementById("theme-presets-" + family);
+            if (!grid) return;
+            grid.innerHTML = EvTheme.PRESETS.filter((p) => p.mode === family)
+                .map((p) => {
+                    const sw = p.swatch;
+                    const selected = st[family] === p.id;
+                    const active = selected && st.isDark === (family === "dark");
+                    return (
+                        '<button type="button" class="theme-card' + (selected ? " selected" : "") + (active ? " active" : "") + '"' +
+                        ' role="radio" aria-checked="' + selected + '" data-id="' + p.id + '"' +
+                        ' onclick="settingsGeneral.setPreset(\'' + p.id + '\')" title="' + p.name + (selected && !active ? " (used in " + family + " mode)" : "") + '">' +
+                        '<span class="theme-swatch" style="background:' + sw.bg + ';border-color:' + sw.border + '">' +
+                        '<span class="theme-swatch-bar" style="background:' + sw.surface + ';border-color:' + sw.border + '">' +
+                        '<i style="background:' + sw.text + '"></i><i style="background:' + sw.text + ';opacity:.45"></i></span>' +
+                        '<span class="theme-swatch-dot" style="background:' + sw.accent + '"></span>' +
+                        "</span>" +
+                        '<span class="theme-card-name">' + p.name + "</span>" +
+                        "</button>"
+                    );
+                })
+                .join("");
+        });
     },
 
     _updateThemeButtons(theme) {

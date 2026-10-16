@@ -42,6 +42,28 @@ def _audit_ip():
 _SENSITIVE_AGENT_KEYS = frozenset({'workspace'})
 
 
+def _normalize_active_goal(goal: Any) -> Optional[Dict[str, Any]]:
+    """Return the bounded, UI-safe form of a session's active goal.
+
+    Legacy goals stored a raw ``text`` field; normalization upgrades them to the
+    current ``title``/``summary`` representation so the Session State panel never
+    renders an unbounded instruction verbatim.
+    """
+    if not isinstance(goal, dict):
+        return None
+    from backend.active_goal import normalize_active_goal
+    normalized = normalize_active_goal(goal)
+    if not normalized:
+        return None
+    # ``raw_instruction`` is audit-only and must not be sent to the browser.
+    return {
+        'id': normalized.get('id'),
+        'title': normalized.get('title'),
+        'summary': normalized.get('summary'),
+        'updated_at': normalized.get('updated_at'),
+    }
+
+
 
 def _sanitize_agent(agent: Dict[str, Any]) -> Dict[str, Any]:
     """Strip sensitive fields (workspace) from an agent dict before API response."""
@@ -639,6 +661,23 @@ def api_set_agent_variables(agent_id):
     return jsonify({'success': True})
 
 
+@agents_bp.route('/api/agents/<agent_id>/variables/<key>/reveal', methods=['POST'])
+def api_reveal_agent_variable(agent_id, key):
+    """Return the real value of ONE secret variable, on an explicit user action (the eye button).
+
+    GET /variables keeps masking secrets; this is a deliberate POST (never cached, never part of a list response) so a
+    value only leaves the server when someone asks to see that specific key.
+    """
+    if not db.get_agent(agent_id):
+        return jsonify({'error': 'Agent not found'}), 404
+    for v in db.get_agent_variables(agent_id):
+        if v.get('key') == key and v.get('is_secret'):
+            resp = jsonify({'key': key, 'value': v.get('value') or ''})
+            resp.headers['Cache-Control'] = 'no-store'
+            return resp
+    return jsonify({'error': 'Secret variable not found'}), 404
+
+
 @agents_bp.route('/api/agents/<agent_id>/variables/<key>', methods=['DELETE'])
 def api_delete_agent_variable(agent_id, key):
     if not db.get_agent(agent_id):
@@ -1169,15 +1208,17 @@ def api_get_avatar(agent_id):
         # 'private' because the avatar route is auth-gated.
         resp.headers['Cache-Control'] = 'private, max-age=300, must-revalidate'
         return resp
-    # Return the default avatar as an inline SVG served from a static string.
-    # This SVG is fully controlled server-side and contains no user content.
-    default_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
-  <rect width="40" height="40" rx="20" fill="#e0e7ff"/>
-  <path d="M20 8a5 5 0 100 10 5 5 0 000-10zm-8 18.5a8 8 0 0116 0" fill="#4f46e5"/>
-</svg>'''
+    # No uploaded avatar: serve a generated one. It is derived deterministically from the agent's
+    # name (same name -> same shapes, different name -> different shapes) and is built only from
+    # numbers and palette colours, so it contains no user content.
+    from backend.avatar_generator import generate_avatar_svg
     from flask import Response
-    return Response(default_svg, mimetype='image/svg+xml',
-                    headers={'Cache-Control': 'public, max-age=3600'})
+    import config as _cfg
+    svg = generate_avatar_svg(agent.get('name') or agent_id,
+                              variant=_cfg.AVATAR_STYLE, colors=_cfg.AVATAR_COLORS or None)
+    # Short freshness: the default style is configurable (AVATAR_STYLE), so don't pin an old look in caches.
+    return Response(svg, mimetype='image/svg+xml',
+                    headers={'Cache-Control': 'private, max-age=30, must-revalidate'})
 
 
 @agents_bp.route('/api/agents/<agent_id>/avatar', methods=['POST'])
@@ -2022,6 +2063,10 @@ def api_chat_agent_state(agent_id):
             'states': state.states,
             'focus': state.focus,
             'focus_reason': state.focus_reason,
+            # Goal state is session-scoped and intentionally compact. Expose the
+            # bounded title/summary so the Session State panel can show that work
+            # is still evaluated against a goal without rendering the raw request.
+            'active_goal': _normalize_active_goal(merged.get('active_goal')),
             'active_model': _resolve_active_model(),
             'loaded_skills': loaded_skills,
         }
@@ -2105,9 +2150,16 @@ def api_chat_agent_state(agent_id):
         except Exception:
             pass
         payload['background_processes'] = background_processes
+        # Monitors can also watch a log file or shell condition without a
+        # tracked background job, so surface the complete active list separately.
+        try:
+            from backend.agent_runtime import monitors
+            payload['monitors'] = monitors.list_for_session(agent_id, session_id)
+        except Exception:
+            payload['monitors'] = []
 
-    # Context monitor: tokens consumed by the last LLM call vs the model's
-    # context window (model.context_window, falling back to the global
+    # Context monitor: prompt tokens in the last LLM request vs the model's
+    # input context window (model.context_window, falling back to the global
     # llm_context_length setting; unknown window → max/percent are null).
     # After session clear, context_usage is gone from session state — fall back
     # to the compiled context token count (system prompt + tool definitions).
@@ -2115,8 +2167,7 @@ def api_chat_agent_state(agent_id):
         _cu = merged.get('context_usage') if isinstance(merged, dict) else None
         _used = None
         if _cu and (_cu.get('prompt_tokens') or 0) > 0:
-            _used = _cu.get('total_tokens') or (
-                (_cu.get('prompt_tokens') or 0) + (_cu.get('completion_tokens') or 0))
+            _used = _cu.get('prompt_tokens')
         if _used is None:
             # Fallback: compute compiled context token count
             try:

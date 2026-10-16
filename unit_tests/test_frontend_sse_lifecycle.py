@@ -71,7 +71,7 @@ def test_sessions_refresh_restores_active_turn_from_durable_stream():
     assert "_completeSessionTurn(doneSeq, payload.thinking_duration)" in sessions
     assert "afterSeq = Math.max(afterSeq, _sessionTurn.lastSeq, _sessionTurn.terminalSeq);" in sessions
     assert "es.addEventListener('history_resync_required'" in sessions
-    assert "selectSession(sessionId).finally" in sessions
+    assert "selectSession(sessionId, {keepView: true}).finally" in sessions
 
     error_handler = sessions[
         sessions.index("es.onerror = () =>"):
@@ -120,6 +120,29 @@ def test_chat_messages_sync_across_tabs_without_content_polling():
         assert "pollForResponse" not in source
         assert "data.turn_id" in source
         assert "markLastUserBubbleQueued($message)" in source
+
+
+def test_restart_ready_message_uses_the_realtime_chat_identity_contract():
+    """Startup notifications must be renderable before a browser history refresh."""
+    app = read_repo_file("app.py")
+    sessions = read_repo_file("templates/sessions.html")
+    detail = read_repo_file("templates/agent_detail.html")
+
+    start = app.index("# Web chat — inject directly as system message (no LLM).")
+    end = app.index("_log.info(\"'Evonic ready!' sent via web chat", start)
+    restart_ready = app[start:end]
+
+    assert "_message_id = db.add_chat_message(" in restart_ready
+    assert "'message_id': _message_id" in restart_ready
+    assert "'role': 'system'" in restart_ready
+    assert "'metadata': _metadata" in restart_ready
+    assert "event_stream.emit('message_received'" in restart_ready
+
+    # Both active chat UIs reject ID-less events, so startup must satisfy this
+    # contract rather than relying on the next history reload.
+    for source in (sessions, detail):
+        assert "!data.message_id" in source
+        assert "data.role || 'user'" in source
 
 
 def test_turn_split_duration_survives_durable_replay():
@@ -172,8 +195,8 @@ def test_realtime_assets_are_cache_busted_and_legacy_buffers_are_gone():
     runtime = read_repo_file("backend/agent_runtime/runtime.py")
 
     assert "realtime.js') }}?v=3" in base
-    assert "chat-ui.js') }}?v=64" in detail
-    assert "chat-ui.js') }}?v=64" in sessions
+    assert "chat-ui.js') }}?v=69" in detail
+    assert "chat-ui.js') }}?v=69" in sessions
     assert "get_session_events" not in agents
     assert "register_web_listener" not in event_stream
     assert "_session_chat_seq" not in event_stream

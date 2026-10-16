@@ -30,7 +30,6 @@ class SafeEndpoint:
     base_url: str
     timeout_seconds: int
     allow_private_network: bool = False
-    trusted_hosts: tuple[str, ...] = ()
 
 
 def _is_unroutable(address: str) -> bool:
@@ -55,12 +54,6 @@ def _resolve_host(host: str, port: int) -> set[str]:
     return addresses
 
 
-def _trusted_hosts(value: Any) -> tuple[str, ...]:
-    if not isinstance(value, str):
-        return ()
-    return tuple(sorted({host.strip().lower().rstrip(".") for host in value.split(",") if host.strip()}))
-
-
 def bounded_timeout(value: Any) -> int:
     """Validate a provider timeout against the shared outbound-request bound."""
     try:
@@ -76,8 +69,9 @@ def configured_endpoint(config: Mapping[str, Any], prefix: str, *, local: bool) 
     """Read and validate a fixed provider endpoint from administrator settings.
 
     Public/cloud endpoints must be HTTPS and resolve only to public addresses.
-    Local endpoints require both the skill-wide opt-in and an exact host listed
-    in ``<prefix>_trusted_hosts``.  Agent tool arguments never reach this code.
+    Local endpoints may use HTTP and private addresses; the administrator-set
+    endpoint is itself the trust anchor.  Agent tool arguments never reach this
+    code.
     """
     raw_url = config.get(f"{prefix}_endpoint")
     if not isinstance(raw_url, str) or not raw_url.strip():
@@ -88,30 +82,19 @@ def configured_endpoint(config: Mapping[str, Any], prefix: str, *, local: bool) 
     if parsed.scheme not in {"http", "https"}:
         raise ImageGenerationError(SafeErrorCode.PROVIDER_CONFIGURATION, "The configured provider endpoint is invalid.")
     host = parsed.hostname.lower().rstrip(".")
-    allow_private = bool(config.get("allow_local_providers")) and local
-    trusted_hosts = _trusted_hosts(config.get(f"{prefix}_trusted_hosts"))
-    if local:
-        if not allow_private or host not in trusted_hosts:
-            raise ImageGenerationError(SafeErrorCode.PERMISSION_DENIED, "The local provider endpoint is not approved by an administrator.")
-    elif parsed.scheme != "https":
+    if not local and parsed.scheme != "https":
         raise ImageGenerationError(SafeErrorCode.PROVIDER_CONFIGURATION, "Cloud provider endpoints must use HTTPS.")
 
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     addresses = _resolve_host(host, port)
-    if local:
-        # Local adapters may only target their exact approved hostname.  Reject
-        # public-to-private mixing, which can otherwise conceal a DNS mistake.
-        if host not in trusted_hosts:
-            raise ImageGenerationError(SafeErrorCode.PERMISSION_DENIED, "The local provider endpoint is not approved by an administrator.")
-    elif any(_is_unroutable(address) for address in addresses):
+    if not local and any(_is_unroutable(address) for address in addresses):
         raise ImageGenerationError(SafeErrorCode.PERMISSION_DENIED, "The configured cloud endpoint is not publicly routable.")
 
     normalized_path = parsed.path.rstrip("/")
     return SafeEndpoint(
         base_url=f"{parsed.scheme}://{parsed.netloc}{normalized_path}",
         timeout_seconds=bounded_timeout(config.get(f"{prefix}_timeout_seconds")),
-        allow_private_network=allow_private,
-        trusted_hosts=trusted_hosts,
+        allow_private_network=local,
     )
 
 

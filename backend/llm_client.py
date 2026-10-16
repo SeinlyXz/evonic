@@ -9,7 +9,8 @@ including standard XML thinking tags, Gemma 4, and Qwen formats.
 import json
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+import uuid
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
 
@@ -280,6 +281,147 @@ def _convert_multimodal_to_claude(messages: List[Dict[str, Any]]) -> List[Dict[s
     return result
 
 
+def _iter_sse_lines(response: Any):
+    """Yield raw lines from a streamed response as soon as they arrive.
+
+    ``response.iter_lines()`` reads 512-byte blocks, so on servers that do not use
+    chunked transfer encoding every small SSE event is held back until the block
+    fills (or the stream ends) and the "live" text arrives all at once.  This reads
+    whatever bytes are available (``read1``) and splits lines itself.  Test doubles
+    without a real ``raw`` fall back to ``iter_lines()``.
+    """
+    raw = getattr(response, "raw", None)
+    read1 = getattr(raw, "read1", None)
+    if read1 is None:
+        yield from response.iter_lines()
+        return
+    try:
+        raw.decode_content = True
+    except Exception:
+        pass
+    buf = b""
+    while True:
+        chunk = read1(8192)
+        if not chunk:
+            break
+        buf += chunk
+        while True:
+            nl = buf.find(b"\n")
+            if nl < 0:
+                break
+            line, buf = buf[:nl], buf[nl + 1:]
+            yield line.rstrip(b"\r")
+    if buf:
+        yield buf.rstrip(b"\r")
+
+
+def _consume_openai_stream(
+    response: Any,
+    on_delta: Optional[Callable[[str, str], None]] = None,
+) -> Dict[str, Any]:
+    """Consume an OpenAI-compatible SSE chat-completion stream.
+
+    Reassembles the deltas into ONE response dict shaped exactly like a
+    non-streaming ``chat.completion`` (``choices[0].message`` with ``content``,
+    ``reasoning_content`` and ``tool_calls``, ``finish_reason``, ``usage``), so
+    everything downstream is unaware the request was streamed.
+
+    ``on_delta(kind, text)`` is called as text arrives; ``kind`` is
+    ``"thinking"`` for reasoning deltas (``reasoning_content`` / ``reasoning``).
+
+    A frame carrying an ``error`` object returns ``{"error": ...}`` (handled by
+    the caller like a non-streaming error body).  A stream that ends without a
+    ``finish_reason`` and without ``[DONE]`` is a dropped connection and raises
+    ``requests.exceptions.ConnectionError`` so the caller's retry path applies.
+    """
+    content_parts: List[str] = []
+    reasoning_parts: List[str] = []
+    tool_calls: Dict[int, Dict[str, Any]] = {}
+    finish_reason = None
+    usage = None
+    model = None
+    resp_id = None
+    done = False
+
+    for raw in _iter_sse_lines(response):
+        if not raw:
+            continue
+        line = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        if line.startswith(":"):          # SSE comment / keep-alive
+            continue
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            done = True
+            break
+        try:
+            frame = json.loads(data)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(frame, dict):
+            continue
+        if frame.get("error"):
+            return {"error": frame["error"]}
+        model = frame.get("model") or model
+        resp_id = frame.get("id") or resp_id
+        if frame.get("usage"):
+            usage = frame["usage"]
+        choices = frame.get("choices") or []
+        if not choices:
+            continue
+        choice = choices[0] or {}
+        if choice.get("finish_reason"):
+            finish_reason = choice["finish_reason"]
+        delta = choice.get("delta") or {}
+
+        reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+        if reasoning:
+            reasoning_parts.append(reasoning)
+            if on_delta:
+                try:
+                    on_delta("thinking", reasoning)
+                except Exception:
+                    pass
+        text = delta.get("content")
+        if text:
+            content_parts.append(text)
+        for tc in delta.get("tool_calls") or []:
+            idx = tc.get("index")
+            if idx is None:
+                idx = len(tool_calls) if tc.get("id") else (max(tool_calls) if tool_calls else 0)
+            slot = tool_calls.setdefault(idx, {
+                "id": "", "type": "function", "function": {"name": "", "arguments": ""},
+            })
+            if tc.get("id"):
+                slot["id"] = tc["id"]
+            fn = tc.get("function") or {}
+            if fn.get("name"):
+                slot["function"]["name"] += fn["name"]
+            if fn.get("arguments"):
+                slot["function"]["arguments"] += fn["arguments"]
+
+    if not done and finish_reason is None:
+        raise requests.exceptions.ConnectionError("LLM stream ended unexpectedly")
+
+    message: Dict[str, Any] = {
+        "role": "assistant",
+        "content": "".join(content_parts),
+    }
+    if reasoning_parts:
+        message["reasoning_content"] = "".join(reasoning_parts)
+    if tool_calls:
+        message["tool_calls"] = [tool_calls[i] for i in sorted(tool_calls)]
+    result: Dict[str, Any] = {
+        "id": resp_id,
+        "model": model,
+        "choices": [{"index": 0, "message": message, "finish_reason": finish_reason or "stop"}],
+    }
+    if usage:
+        result["usage"] = usage
+    return result
+
+
 class LLMClient:
     """Client for OpenAI-compatible LLM chat completion APIs.
 
@@ -326,6 +468,7 @@ class LLMClient:
             self.max_tokens = model_config.get("max_tokens")
             self.temperature = model_config.get("temperature")
             self.api_format = model_config.get("api_format", "openai")
+            self.adapter_key = model_config.get("adapter_key")
         else:
             try:
                 from models.db import db
@@ -344,6 +487,7 @@ class LLMClient:
                     self.max_tokens = dm.get("max_tokens")
                     self.temperature = dm.get("temperature")
                     self.api_format = dm.get("api_format", "openai")
+                    self.adapter_key = dm.get("adapter_key")
                 else:
                     self.base_url = None
                     self.api_key = None
@@ -354,6 +498,7 @@ class LLMClient:
                     self.max_tokens = None
                     self.temperature = None
                     self.api_format = "openai"
+                    self.adapter_key = None
             except Exception:
                 self.base_url = None
                 self.api_key = None
@@ -364,7 +509,14 @@ class LLMClient:
                 self.max_tokens = None
                 self.temperature = None
                 self.api_format = "openai"
+                self.adapter_key = None
         self._cached_model_name = None
+        # OpenCode Go/Zen require a stable session id (x-opencode-session) on
+        # inference requests for routing and prompt caching. Prefer an explicit
+        # conversation id supplied by the caller; otherwise fall back to a
+        # per-client id (see _opencode_session_id) so requests are still routed.
+        self.session_id = model_config.get("session_id") if model_config else None
+        self._generated_session_id = None
         self._codex_provider_id = self.provider or "codex"
         # Fallback model support: retried once when the primary call fails.
         # An explicit model_config means the caller chose this model, so no
@@ -438,6 +590,12 @@ class LLMClient:
         """Test connection to the model endpoint."""
         if self.api_format == "codex":
             return self._test_codex_connection()
+        if self.api_format == "claude_cli":
+            from backend.provider.claude_cli import get_status
+            status = get_status(force=True)
+            if status["logged_in"]:
+                return {"success": True, "message": f"Claude Code CLI {status['version']} ready"}
+            return {"success": False, "error": status["error"]}
         try:
             if self.api_format == "ollama":
                 models_url = f"{self.base_url}/tags"
@@ -570,6 +728,67 @@ class LLMClient:
             "success": True,
         }
 
+    def _claude_cli_chat_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        log_file: Optional[str] = None,
+        tool_choice: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run the completion through the official ``claude -p`` CLI."""
+        from backend.provider.claude_cli import send_request
+
+        result = send_request(
+            model=self.model,
+            messages=messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            thinking=bool(self.thinking),
+            thinking_budget=self.thinking_budget,
+            timeout=self.timeout,
+        )
+        duration_ms = result.get("duration_ms", 0)
+
+        if not result.get("success"):
+            log_api_call(messages, None, duration_ms, error=result.get("error", ""), log_file=log_file)
+            return {
+                "response": {"error": _format_llm_error(result.get("error_type", "unknown_error"))},
+                "duration_ms": duration_ms,
+                "success": False,
+                "error_type": result.get("error_type", "unknown_error"),
+                "error_detail": result.get("error", ""),
+            }
+
+        response = result["response"]
+        message = response["choices"][0]["message"]
+        response_text = message.get("content", "")
+        log_api_call(messages, response_text, duration_ms, log_file=log_file)
+
+        usage = response["usage"]
+        from backend.llm_usage_events import record_llm_usage
+        record_llm_usage(
+            model=self.model,
+            provider=self.provider or "claude-code",
+            prompt_tokens=usage["prompt_tokens"],
+            completion_tokens=usage["completion_tokens"],
+            total_tokens=usage["total_tokens"],
+            cached_tokens=usage["prompt_tokens_details"]["cached_tokens"],
+            reasoning_tokens=0,
+            usage_details_available=True,
+            duration_ms=duration_ms,
+            messages=messages,
+            response_text=response_text,
+        )
+        return {
+            "response": response,
+            "request_payload": {"model": self.model, "messages": messages, "tools": tools},
+            "duration_ms": duration_ms,
+            "prompt_tokens": usage["prompt_tokens"],
+            "completion_tokens": usage["completion_tokens"],
+            "total_tokens": usage["total_tokens"],
+            "success": True,
+        }
+
     def _test_codex_connection(self) -> Dict[str, Any]:
         """Test connection to Codex via OAuth token."""
         try:
@@ -597,6 +816,7 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         log_file: Optional[str] = None,
         tool_choice: Optional[str] = None,
+        stream_callback: Optional[Callable[[str, str], None]] = None,
     ) -> Dict[str, Any]:
         """Send a chat completion, retrying once on the fallback model.
 
@@ -619,6 +839,7 @@ class LLMClient:
             max_tokens=max_tokens,
             log_file=log_file,
             tool_choice=tool_choice,
+            stream_callback=stream_callback,
         )
         if result.get("success") or not self._allow_fallback:
             return result
@@ -635,6 +856,7 @@ class LLMClient:
             max_tokens=max_tokens,
             log_file=log_file,
             tool_choice=tool_choice,
+            stream_callback=stream_callback,
         )
         if not fallback_result.get("success"):
             return result
@@ -677,6 +899,30 @@ class LLMClient:
             return None
         return self._fallback_client
 
+    def _is_opencode_provider(self) -> bool:
+        """Return True for OpenCode Go/Zen endpoints.
+
+        These gateways require a stable ``x-opencode-session`` header on
+        inference requests for routing and prompt caching, unlike plain
+        OpenAI-compatible providers.
+        """
+        provider = (self.provider or "").lower()
+        base_url = (self.base_url or "").lower()
+        return provider.startswith("opencode") or "opencode.ai" in base_url
+
+    def _opencode_session_id(self) -> str:
+        """Return a stable session id for OpenCode routing.
+
+        Uses the caller-supplied conversation id when available; otherwise
+        generates one per client instance so repeated turns on the same
+        client share a session.
+        """
+        if self.session_id:
+            return str(self.session_id)
+        if self._generated_session_id is None:
+            self._generated_session_id = uuid.uuid4().hex
+        return self._generated_session_id
+
     def _chat_completion_once(
         self,
         messages: List[Dict[str, Any]],
@@ -686,6 +932,7 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         log_file: Optional[str] = None,
         tool_choice: Optional[str] = None,
+        stream_callback: Optional[Callable[[str, str], None]] = None,
     ) -> Dict[str, Any]:
         """Send chat completion request to OpenAI-compatible endpoint.
 
@@ -704,6 +951,10 @@ class LLMClient:
                 uses self.max_tokens (doubled when thinking is active).
             log_file: Optional path for API call logging.
             tool_choice: Optional function name that the provider must call.
+            stream_callback: Optional ``callback(kind, text)`` for live deltas
+                (``kind`` is ``"thinking"``, or ``"reset"`` when a retry starts
+                over).  Only the OpenAI-compatible path streams; other providers
+                ignore it and return the usual single response.
 
         Returns:
             Dict with response, duration_ms, token counts, success flag,
@@ -715,29 +966,33 @@ class LLMClient:
             retry count via llm_max_retries setting (DB default: 5).
         """
         provider_messages = _normalize_system_messages(messages)
-        if self.api_format == "codex":
+        if self.api_format == "claude_cli":
+            return self._claude_cli_chat_completion(
+                provider_messages, tools, log_file, tool_choice)
+
+        # The persisted versioned adapter is authoritative. Legacy api_format is
+        # retained only as a compatibility alias while existing records migrate.
+        # ``getattr`` keeps hand-built/partial clients (tests, dry runs) working
+        # exactly like clients constructed through ``__init__``.
+        adapter_key = getattr(self, "adapter_key", None) or {
+            "codex": "codex.responses.v1",
+            "ollama": "ollama.chat.v1",
+            "anthropic": "anthropic.messages.v1",
+        }.get(self.api_format, "openai.chat_completions.v1")
+        if adapter_key == "codex.responses.v1":
             return self._codex_chat_completion(
                 provider_messages, tools, temperature, max_tokens, log_file,
                 tool_choice)
 
-        is_ollama_fmt = self.api_format == "ollama" or (
-            self.base_url and "ollama.com" in self.base_url
-        )
-        is_claude = (self.model or "").lower().startswith("claude") or (
-            self.base_url and "anthropic.com" in self.base_url
-        )
-        is_anthropic = self.api_format == "anthropic"
+        is_ollama_fmt = adapter_key == "ollama.chat.v1"
+        is_anthropic = adapter_key == "anthropic.messages.v1"
+        # Claude-specific request options are protocol-driven, not hostname-driven.
+        is_claude = is_anthropic
         anthropic_token = self.api_key
-        anthropic_oauth = False
-        if is_anthropic:
-            from backend.provider.claude_code import is_oauth_token, resolve_credential
-            if getattr(self, "_model_api_key_override", False):
-                anthropic_oauth = is_oauth_token(anthropic_token or "")
-            else:
-                from models.db import db as _provider_db
-                anthropic_token, anthropic_oauth = resolve_credential(
-                    _provider_db, self.provider or "anthropic"
-                )
+        if is_anthropic and not getattr(self, "_model_api_key_override", False):
+            from backend.provider.claude_code import resolve_api_key
+            from models.db import db as _provider_db
+            anthropic_token = resolve_api_key(_provider_db, self.provider or "anthropic")
         # Cerebras is a strict OpenAI-compatible validator: it rejects the
         # non-standard reasoning_content field on input messages (unlike
         # OpenCode Go / MiniMax / DeepSeek, which require it round-tripped).
@@ -828,6 +1083,7 @@ class LLMClient:
         if is_claude:
             processed_messages = _convert_multimodal_to_claude(processed_messages)
 
+        use_stream = False
         if is_ollama_fmt:
             payload = {
                 "model": self.model,
@@ -856,11 +1112,6 @@ class LLMClient:
             }
             if system_msgs:
                 payload["system"] = "\n\n".join(system_msgs) if len(system_msgs) > 1 else system_msgs[0]
-            if anthropic_oauth:
-                from backend.provider.claude_code import SYSTEM_PREFIX
-                payload["system"] = SYSTEM_PREFIX + (
-                    "\n\n" + payload["system"] if payload.get("system") else ""
-                )
             if effective_temperature is not None:
                 payload["temperature"] = effective_temperature
             # Transform OpenAI tools -> Anthropic tools format
@@ -884,6 +1135,10 @@ class LLMClient:
                 "max_tokens": max_tokens,
                 "stream": False,
             }
+            if stream_callback is not None:
+                payload["stream"] = True
+                payload["stream_options"] = {"include_usage": True}
+                use_stream = True
             if effective_temperature is not None:
                 payload["temperature"] = effective_temperature
             if tools:
@@ -894,7 +1149,7 @@ class LLMClient:
 
         if is_anthropic:
             from backend.provider.claude_code import auth_headers
-            headers = auth_headers(anthropic_token or "", anthropic_oauth)
+            headers = auth_headers(anthropic_token or "")
         else:
             headers = {
                 "Content-Type": "application/json",
@@ -902,6 +1157,8 @@ class LLMClient:
             }
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
+            if self._is_opencode_provider():
+                headers["x-opencode-session"] = self._opencode_session_id()
 
         try:
             from models.db import db as _db
@@ -915,9 +1172,24 @@ class LLMClient:
         for attempt in range(1 + max_retries):
             try:
                 start_time = time.time()
+                if use_stream and attempt > 0:
+                    try:
+                        stream_callback("reset", "")   # new attempt: drop the partial live text
+                    except Exception:
+                        pass
                 response = requests.post(
-                    url, json=payload, headers=headers, timeout=(10, self.timeout)
+                    url, json=payload, headers=headers, timeout=(10, self.timeout),
+                    stream=use_stream,
                 )
+                if use_stream and response.status_code in (400, 422):
+                    # Provider rejects stream / stream_options: redo non-streaming.
+                    response.close()
+                    use_stream = False
+                    payload["stream"] = False
+                    payload.pop("stream_options", None)
+                    response = requests.post(
+                        url, json=payload, headers=headers, timeout=(10, self.timeout)
+                    )
                 duration_ms = int((time.time() - start_time) * 1000)
 
                 if response.status_code >= 500:
@@ -979,7 +1251,11 @@ class LLMClient:
                         "error_detail": error_msg,
                     }
 
-                result = response.json()
+                if use_stream and "text/event-stream" in (response.headers.get("Content-Type") or "").lower():
+                    result = _consume_openai_stream(response, stream_callback)
+                    duration_ms = int((time.time() - start_time) * 1000)
+                else:
+                    result = response.json()
 
                 # Transform Ollama native response to OpenAI-compatible format
                 if is_ollama_fmt:
@@ -1256,7 +1532,7 @@ class LLMClient:
                     continue
                 return last_error_result
 
-            except requests.exceptions.ConnectionError as e:
+            except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError) as e:
                 log_api_call(
                     messages,
                     None,

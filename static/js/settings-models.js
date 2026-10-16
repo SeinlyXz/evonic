@@ -96,7 +96,7 @@ window.settingsModels = {
                     ? models.map((model) => this._renderModelCard(model)).join("")
                     : `<div class="col-span-full text-center py-4 text-sm text-gray-400 dark:text-gray-500">No models yet — click <strong>Fetch Models</strong> to discover available models from this provider.</div>`;
 
-                const hasCredentialSetup = ["codex", "anthropic"].includes(prov.api_format);
+                const hasCredentialSetup = ["codex", "anthropic", "claude_cli"].includes(prov.api_format);
                 const connected = Boolean(prov.credential_configured);
 
                 let actionButtons;
@@ -152,6 +152,16 @@ window.settingsModels = {
             ? "border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-200 dark:ring-indigo-800"
             : "border-gray-200 dark:border-gray-700";
         const shortcode = model.shortcode != null ? model.shortcode : "?";
+        const operations = (model.capabilities && model.capabilities.operations) || {};
+        const schemaVersions = (model.capabilities && model.capabilities.schema_versions) || [];
+        const decisionCompatible = Boolean(
+            operations.decision && operations.decision !== "unsupported" &&
+            operations.strict_output && operations.strict_output !== "unsupported" &&
+            Array.isArray(schemaVersions) && schemaVersions.includes("decision-schema/v1"),
+        );
+        const decisionBadge = decisionCompatible
+            ? '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-100">Decision ready</span>'
+            : '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Not decision compatible</span>';
 
         return `
         <div class="model-card bg-white dark:bg-gray-800 rounded-lg border ${defaultBorder} p-3 hover:shadow-sm transition-shadow flex flex-col gap-2">
@@ -173,12 +183,14 @@ window.settingsModels = {
                 <span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${typeColors}">${model.type}</span>
                 <span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${enabledColors}">${model.enabled ? "On" : "Off"}</span>
                 ${model.thinking ? '<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300">Thinking</span>' : ""}
+                ${decisionBadge}
             </div>
 
             <div class="flex items-end justify-between gap-2">
                 <div class="text-[11px] text-gray-500 dark:text-gray-400 truncate min-w-0">
                     ${model.model_name}
                 </div>
+                ${decisionCompatible ? `<button class="text-[11px] text-indigo-600 dark:text-indigo-300 hover:underline" onclick="decisionModels.openPlayground({model: '${model.id}'})">Playground</button>` : ""}
                 <button class="p-1 rounded border border-red-400 dark:border-red-500 text-red-400 dark:text-red-400 bg-transparent cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors shrink-0" onclick="settingsModels.remove('${model.id}')" title="Delete"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
             </div>
         </div>`;
@@ -208,22 +220,33 @@ window.settingsModels = {
         document.getElementById("provider-id").disabled = true;
         document.getElementById("provider-name").value = prov.name || "";
         document.getElementById("provider-type").value = prov.type || "remote";
-        document.getElementById("provider-base-url").value = prov.base_url || "";
+        document.getElementById("provider-base-url").value = prov.endpoint || prov.base_url || "";
         document.getElementById("provider-api-key").value = "";
         document.getElementById("provider-api-format").value = prov.api_format || "openai";
         openModal("provider-modal");
     },
 
+    _adapterKeyForFormat(format) {
+        return {
+            openai: "openai.chat_completions.v1",
+            ollama: "ollama.chat.v1",
+            anthropic: "anthropic.messages.v1",
+            codex: "codex.responses.v1",
+        }[format] || "openai.chat_completions.v1";
+    },
+
     async saveProvider(event) {
         event.preventDefault();
         const editId = document.getElementById("provider-edit-id").value;
+        const apiFormat = document.getElementById("provider-api-format").value;
         const data = {
             id: document.getElementById("provider-id").value,
             name: document.getElementById("provider-name").value,
             type: document.getElementById("provider-type").value,
-            base_url: document.getElementById("provider-base-url").value,
+            endpoint: document.getElementById("provider-base-url").value,
             api_key: document.getElementById("provider-api-key").value,
-            api_format: document.getElementById("provider-api-format").value,
+            api_format: apiFormat,
+            adapter_key: this._adapterKeyForFormat(apiFormat),
         };
 
         try {
@@ -372,6 +395,7 @@ window.settingsModels = {
         document.getElementById("modal-title").textContent = "Add Model";
         document.getElementById("model-form").reset();
         document.getElementById("model-id").value = "";
+        document.getElementById("model-decision-schemas").value = "decision-schema/v1";
         this._populateProviderSelect();
         openModal("model-modal");
     },
@@ -383,11 +407,10 @@ window.settingsModels = {
         document.getElementById("modal-title").textContent = "Add Model — " + (prov.name || providerId);
         document.getElementById("model-form").reset();
         document.getElementById("model-id").value = "";
+        document.getElementById("model-decision-schemas").value = "decision-schema/v1";
         this._populateProviderSelect();
         document.getElementById("model-provider").value = providerId;
         document.getElementById("model-type").value = prov.type || "remote";
-        if (prov.base_url) document.getElementById("model-base-url").value = prov.base_url;
-        if (prov.api_format) document.getElementById("model-api-format").value = prov.api_format;
         this.toggleFields();
         openModal("model-modal");
     },
@@ -402,8 +425,7 @@ window.settingsModels = {
         document.getElementById("model-type").value = model.type || "remote";
         this._populateProviderSelect();
         document.getElementById("model-provider").value = model.provider || "";
-        document.getElementById("model-base-url").value = model.base_url || "";
-        document.getElementById("model-api-key").value = model.api_key || "";
+        document.getElementById("model-base-url").value = model.legacy_override_provenance ? "Legacy override retained (read-only)" : "Inherited from provider";
         document.getElementById("model-name-param").value = model.model_name || "";
         document.getElementById("model-max-tokens").value = model.max_tokens || 32768;
         document.getElementById("model-context-window").value = model.context_window || 0;
@@ -419,37 +441,44 @@ window.settingsModels = {
         document.getElementById("model-is-default").checked = !!model.is_default;
         document.getElementById("model-vision-supported").checked =
             !!model.vision_supported;
-        document.getElementById("model-api-format").value = model.api_format || "openai";
+        const operations = (model.capabilities && model.capabilities.operations) || {};
+        const decisionEnabled = operations.decision && operations.decision !== "unsupported";
+        document.getElementById("model-decision-enabled").checked = !!decisionEnabled;
+        document.getElementById("model-decision-schemas").value = Array.isArray(model.capabilities?.schema_versions) && model.capabilities.schema_versions.length
+            ? model.capabilities.schema_versions.join(", ") : "decision-schema/v1";
 
         this.toggleFields();
         openModal("model-modal");
     },
 
     toggleFields() {
-        const type = document.getElementById("model-type").value;
-        const provider = document.getElementById("model-provider").value;
-        const apiKeyGroup = document.getElementById("api-key-group");
-        if (type === "local" && (provider === "ollama" || provider === "llama.cpp")) {
-            apiKeyGroup.style.display = "none";
-        } else {
-            apiKeyGroup.style.display = "block";
-        }
-        const idHint = document.getElementById("model-id-hint");
-        if (idHint) {
-            idHint.style.display = type === "remote" ? "block" : "none";
-        }
+        // Locality is display metadata only. Provider endpoint/adapter/auth own
+        // all connection behavior, so this method intentionally has no routing effects.
     },
 
     async save(event) {
         event.preventDefault();
 
         const modelId = document.getElementById("model-id").value;
+        const existingModel = this.models.find((model) => model.id === modelId);
+        const decisionEnabled = document.getElementById("model-decision-enabled").checked;
+        const schemaVersions = document.getElementById("model-decision-schemas").value
+            .split(",").map((value) => value.trim()).filter(Boolean);
+        const capabilities = {
+            version: "model-capabilities/v1",
+            operations: {
+                chat: "advertised",
+                ...(document.getElementById("model-vision-supported").checked ? { vision: "advertised" } : {}),
+                ...(decisionEnabled ? { decision: "advertised", strict_output: "advertised" } : {}),
+            },
+            schema_versions: decisionEnabled ? schemaVersions : [],
+            confidence: "unsupported",
+            data_egress: ["public"],
+        };
         const modelData = {
             name: document.getElementById("model-name").value,
             type: document.getElementById("model-type").value,
             provider: document.getElementById("model-provider").value,
-            base_url: document.getElementById("model-base-url").value,
-            api_key: document.getElementById("model-api-key").value,
             model_name: document.getElementById("model-name-param").value,
             max_tokens:
                 parseInt(document.getElementById("model-max-tokens").value) || 32768,
@@ -470,7 +499,7 @@ window.settingsModels = {
             vision_supported: document.getElementById("model-vision-supported").checked
                 ? 1
                 : 0,
-            api_format: document.getElementById("model-api-format").value,
+            capabilities,
         };
 
         try {
@@ -718,8 +747,6 @@ window.settingsModels = {
     _credentialSourceLabel(source) {
         return ({
             api_key: "Anthropic API key",
-            setup_token: "Claude setup-token",
-            claude_code: "Claude Code credential store",
             codex_cli_import: "Imported Codex CLI login",
             evonic_oauth: "Evonic-managed OAuth",
         })[source] || "Not configured";
@@ -737,19 +764,64 @@ window.settingsModels = {
         openModal("provider-auth-modal");
         try {
             const status = await apiGet(this._authBase() + "/status");
-            this._renderCredentialChoices(status);
+            if (status.api_format === "claude_cli") this._renderClaudeCliSetup(status);
+            else if (status.api_format === "anthropic") this._renderAnthropicKeySetup(status);
+            else this._renderCredentialChoices(status);
         } catch (error) {
             this._showAuthError(error.message || "Could not check credentials.");
         }
     },
 
+    _statusHeader(connected, title, detail) {
+        return `
+            <div class="flex items-start justify-between gap-4 pb-5 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                    <p class="font-semibold text-gray-900 dark:text-gray-100">${this._escapeHtml(title)}</p>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">${this._escapeHtml(detail)}</p>
+                </div>
+                <span class="inline-flex items-center gap-2 text-sm font-medium ${connected ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}">
+                    <span class="w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}"></span>${connected ? "Ready" : "Setup needed"}
+                </span>
+            </div>`;
+    },
+
+    _renderClaudeCliSetup(status) {
+        const cli = status.cli || {};
+        const detail = status.connected
+            ? `Claude Code CLI ${cli.version || ""} signed in (${cli.auth_method || "unknown"}).`
+            : (cli.error || "Claude Code CLI is not signed in.");
+        document.getElementById("provider-auth-content").innerHTML = `
+            ${this._statusHeader(status.connected, status.connected ? "Connected" : "Sign in with the Claude Code CLI", detail)}
+            <div class="py-5 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                <p>Evonic runs the official <code>claude -p</code> command and never reads or stores your Claude login. Sign in once in a terminal:</p>
+                <pre class="rounded-lg bg-gray-100 dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-gray-100 select-all">claude auth login</pre>
+                <p>Claude's built-in tools are turned off for these calls; Evonic's own tools and safety checks stay in charge.</p>
+            </div>
+            <button type="button" onclick="settingsModels.authRecheckClaudeCli()" class="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">Check again</button>`;
+    },
+
+    async authRecheckClaudeCli() {
+        try {
+            this._renderClaudeCliSetup(await apiGet(this._authBase() + "/status?refresh=1"));
+            await this.load();
+        } catch (error) {
+            this._showAuthError(error.message || "Could not check the Claude Code CLI.");
+        }
+    },
+
+    _renderAnthropicKeySetup(status) {
+        document.getElementById("provider-auth-content").innerHTML = `
+            ${this._statusHeader(status.connected, status.connected ? "Connected" : "Add an API key", status.connected ? "Anthropic API key saved." : "Pay-per-token access through the Anthropic API.")}
+            <div class="py-5"><label for="provider-auth-secret" class="font-medium text-gray-900 dark:text-gray-100">Anthropic API key</label>
+                <p class="mt-1 mb-3 text-sm text-gray-600 dark:text-gray-300">For a Claude Pro/Max subscription, use the <strong>Claude Code (CLI)</strong> provider instead.</p>
+                <div class="flex flex-col sm:flex-row gap-2"><input id="provider-auth-secret" type="password" autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" placeholder="sk-ant-api…" class="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"><button type="button" onclick="settingsModels.authSaveSecret()" class="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">Save key</button></div></div>
+            ${status.connected ? '<div class="pt-5 border-t border-gray-200 dark:border-gray-700"><button type="button" onclick="settingsModels.authDisconnect()" class="text-sm font-medium text-red-600 dark:text-red-400 hover:underline focus:outline-none focus:ring-2 focus:ring-red-400 rounded">Remove API key</button></div>' : ""}`;
+    },
+
     _renderCredentialChoices(status) {
-        const isCodex = this._authKind === "codex";
         const source = this._credentialSourceLabel(status.credential_source);
-        const existingLabel = isCodex ? "Import Codex CLI login" : "Use Claude Code login";
-        const existingHelp = isCodex
-            ? "Imports the current CLI credential snapshot. A separate login is safer if Codex CLI is used often."
-            : "Links the freshest credential from macOS Keychain or ~/.claude/.credentials.json.";
+        const existingLabel = "Import Codex CLI login";
+        const existingHelp = "Imports the current CLI credential snapshot. A separate login is safer if Codex CLI is used often.";
         document.getElementById("provider-auth-content").innerHTML = `
             <div class="flex items-start justify-between gap-4 pb-5 border-b border-gray-200 dark:border-gray-700">
                 <div>
@@ -766,10 +838,9 @@ window.settingsModels = {
                     <button type="button" onclick="settingsModels.authUseExisting()" ${status.existing_available ? "" : "disabled"} class="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed">${status.existing_available ? "Use existing" : "Not detected"}</button>
                 </div>
                 <div class="py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div class="max-w-md"><p class="font-medium text-gray-900 dark:text-gray-100">Sign in with another account</p><p class="mt-1 text-sm text-gray-600 dark:text-gray-300">${isCodex ? "Use OpenAI's device-code flow without changing your Codex CLI login." : "Authorize a Claude Pro or Max account and paste the returned code."}</p></div>
+                    <div class="max-w-md"><p class="font-medium text-gray-900 dark:text-gray-100">Sign in with another account</p><p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Use OpenAI's device-code flow without changing your Codex CLI login.</p></div>
                     <button type="button" onclick="settingsModels.authStartNew()" class="px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2">Start sign-in</button>
                 </div>
-                ${isCodex ? "" : `<div class="py-5"><label for="provider-auth-secret" class="font-medium text-gray-900 dark:text-gray-100">API key or setup-token</label><p class="mt-1 mb-3 text-sm text-gray-600 dark:text-gray-300">Use a pay-per-token API key, or paste a token created by <code>claude setup-token</code>.</p><div class="flex flex-col sm:flex-row gap-2"><input id="provider-auth-secret" type="password" autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" placeholder="sk-ant-…" class="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"><button type="button" onclick="settingsModels.authSaveSecret()" class="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">Save credential</button></div></div>`}
             </div>
             ${status.connected ? '<div class="pt-5 border-t border-gray-200 dark:border-gray-700"><button type="button" onclick="settingsModels.authDisconnect()" class="text-sm font-medium text-red-600 dark:text-red-400 hover:underline focus:outline-none focus:ring-2 focus:ring-red-400 rounded">Disconnect this provider</button></div>' : ""}`;
     },
@@ -799,18 +870,6 @@ window.settingsModels = {
                     </div>`;
                 window.open(result.verification_url, "_blank", "noopener");
                 this._pollCodexDevice(providerId, Math.max(3, result.interval || 5));
-            } else {
-                const result = await apiPost(this._authBase() + "/oauth", {});
-                if (result.error) return this._showAuthError(result.error);
-                document.getElementById("provider-auth-content").innerHTML = `
-                    <div class="py-2">
-                        <p class="text-sm text-gray-600 dark:text-gray-300">Authorize Evonic in the Claude page. Copy the full code shown after approval, including the part after <code>#</code>.</p>
-                        <a href="${result.auth_url}" target="_blank" rel="noopener" class="inline-flex mt-4 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">Open Claude authorization</a>
-                        <label for="provider-auth-code" class="block mt-6 mb-2 text-sm font-medium text-gray-900 dark:text-gray-100">Authorization code</label>
-                        <textarea id="provider-auth-code" rows="3" placeholder="code#state" class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
-                        <button type="button" onclick="settingsModels.authCompleteClaude()" class="mt-3 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">Complete sign-in</button>
-                    </div>`;
-                window.open(result.auth_url, "_blank", "noopener");
             }
         } catch (error) {
             this._showAuthError(error.message || "Could not start sign-in.");
@@ -833,25 +892,13 @@ window.settingsModels = {
         }, interval * 1000);
     },
 
-    async authCompleteClaude() {
-        const code = document.getElementById("provider-auth-code")?.value.trim();
-        if (!code) return this._showAuthError("Paste the authorization code first.");
-        try {
-            const result = await apiPost(this._authBase() + "/oauth/complete", { code });
-            if (result.error) return this._showAuthError(result.error);
-            await this._finishAuth("Claude connected.");
-        } catch (error) {
-            this._showAuthError(error.message || "Could not complete sign-in.");
-        }
-    },
-
     async authSaveSecret() {
         const secret = document.getElementById("provider-auth-secret")?.value.trim();
-        if (!secret) return this._showAuthError("Enter an API key or setup-token first.");
+        if (!secret) return this._showAuthError("Enter an API key first.");
         try {
             const result = await apiPost(this._authBase() + "/secret", { secret });
             if (result.error) return this._showAuthError(result.error);
-            await this._finishAuth("Anthropic credential saved.");
+            await this._finishAuth("Anthropic API key saved.");
         } catch (error) {
             this._showAuthError(error.message || "Could not save the credential.");
         }

@@ -378,6 +378,7 @@ from config import (AGENT_MAX_TOOL_ITERATIONS as MAX_TOOL_ITERATIONS,
                     AGENT_TIMEOUT_RETRIES as MAX_TIMEOUT_RETRIES,
                     ACTIVE_CONTEXT_MODE,
                     ACTIVE_CONTEXT_SOFT_TOKENS,
+                    ACTIVE_CONTEXT_CAPACITY_PERCENT,
                     ACTIVE_CONTEXT_RECENT_GROUPS,
                     ACTIVE_CONTEXT_RECEIPT_MAX_CHARS)
 
@@ -401,6 +402,19 @@ def _extract_command(tool_name: str, args: dict) -> str:
     """
     from backend.token_compressor.extract_command import extract_command
     return extract_command(tool_name, args)
+
+
+def _new_thinking_stream(agent_id, session_id):
+    """Per-call live-thinking emitter, or None when streaming is disabled / unavailable."""
+    try:
+        from config import AGENT_STREAM_THINKING
+        if not AGENT_STREAM_THINKING or not session_id:
+            return None
+        from backend.agent_runtime.thinking_stream import make_realtime_thinking_emitter
+        return make_realtime_thinking_emitter(agent_id, session_id)
+    except Exception:
+        _logger.debug("thinking stream unavailable", exc_info=True)
+        return None
 
 
 def _tool_survives_pruning(fn_name: str,
@@ -767,11 +781,23 @@ def run_tool_loop(agent: Dict[str, Any],
     # Fast mode is a session preference. The Codex client revalidates support
     # against every effective model, so it cannot leak into an incompatible fallback.
     _session_service_tier = None
+    # Provider-reported prompt size of the previous request — the primary signal
+    # for proactive compaction on the first iteration of this turn (#842).
+    _last_provider_prompt_tokens = None
     try:
         _session_raw = db.get_session_state(session_id, agent_id=agent_id)
         _session_data = json.loads(_session_raw) if _session_raw else {}
-        if isinstance(_session_data, dict) and _session_data.get('service_tier') == 'priority':
-            _session_service_tier = 'priority'
+        if isinstance(_session_data, dict):
+            if _session_data.get('service_tier') == 'priority':
+                _session_service_tier = 'priority'
+            # Seed from the persisted context usage, but only when the provider
+            # actually reported it: an estimated value is the same local
+            # estimator the projection already uses, so it adds no information.
+            _cu_seed = _session_data.get('context_usage')
+            if isinstance(_cu_seed, dict) and not _cu_seed.get('estimated'):
+                _seed_prompt = _cu_seed.get('prompt_tokens') or 0
+                if _seed_prompt > 0:
+                    _last_provider_prompt_tokens = int(_seed_prompt)
     except (TypeError, ValueError):
         pass
 
@@ -786,6 +812,7 @@ def run_tool_loop(agent: Dict[str, Any],
             'thinking': bool(_model.get('thinking', False)),
             'thinking_budget': int(_model.get('thinking_budget', 0) or 0),
             'max_tokens': _model.get('max_tokens', 32768),
+            'context_window': _model.get('context_window'),
             'temperature': _model.get('temperature'),
             'vision_supported': bool(_model.get('vision_supported', False)),
             'api_format': _model.get('api_format', 'openai'),
@@ -879,8 +906,13 @@ def run_tool_loop(agent: Dict[str, Any],
         except Exception as e:
             _logger.warning("Failed to resolve model for agent %s: %s", agent_id, e)
 
-    # Create LLMClient with resolved model config
+    # Create LLMClient with resolved model config.
     llm = LLMClient(model_config=agent_model_config) if agent_model_config else llm_client
+    # Reuse the conversation id as the OpenCode Go/Zen session so repeated
+    # turns in the same conversation share routing/prompt-cache state. Only
+    # set on a per-loop client to avoid mutating the shared fallback client.
+    if agent_model_config and session_id:
+        llm.session_id = session_id
 
     # ATG: give the compile_task_graph builtin access to the resolved LLM.
     # Compiler calls acquire llm_lock per call (same discipline as the main call).
@@ -937,6 +969,20 @@ def run_tool_loop(agent: Dict[str, Any],
                     _msg = {**_msg, 'content': _note}
             _patched.append(_msg)
         messages = _patched
+
+    # Vision-capable models read recent image attachments natively (on a copy of
+    # the messages; the canonical history stays text-only). Opt out per agent
+    # with the ``image_input_mode=describe`` variable.
+    if _vision_supported:
+        try:
+            from backend.agent_runtime import native_images
+            if native_images.native_mode_enabled(
+                    agent_model_config, db.get_agent_variables_dict(db_agent_id)):
+                messages = native_images.attach_native_images(
+                    messages, session_id, db_agent_id, db)
+        except Exception:
+            _logger.warning("Native image attachment failed; falling back to describe_image",
+                            exc_info=True)
 
     timeout_retries = 0
     MIN_IMAGE_RETRIES = 3
@@ -1208,9 +1254,14 @@ def run_tool_loop(agent: Dict[str, Any],
         # Select tools once, then project and validate the messages against that
         # exact schema set. Every provider path below derives from this snapshot.
         from backend.agent_runtime.active_context import (
-            ActiveContextProjection, project_active_context)
+            ActiveContextProjection, project_active_context, resolve_soft_token_threshold)
         from backend.llm_usage_events import estimate_context_tokens
         _effective_tools = _prune_tools(tools, _iteration) if tools else None
+        _active_context_threshold = resolve_soft_token_threshold(
+            ACTIVE_CONTEXT_SOFT_TOKENS,
+            (agent_model_config or {}).get('context_window'),
+            ACTIVE_CONTEXT_CAPACITY_PERCENT,
+        )
         try:
             _active_projection = project_active_context(
                 messages,
@@ -1218,7 +1269,8 @@ def run_tool_loop(agent: Dict[str, Any],
                 mode=ACTIVE_CONTEXT_MODE,
                 recent_completed_groups=ACTIVE_CONTEXT_RECENT_GROUPS,
                 receipt_max_chars=ACTIVE_CONTEXT_RECEIPT_MAX_CHARS,
-                soft_token_threshold=ACTIVE_CONTEXT_SOFT_TOKENS,
+                soft_token_threshold=_active_context_threshold,
+                provider_prompt_tokens=_last_provider_prompt_tokens,
             )
         except Exception as _active_exc:
             _active_projection = ActiveContextProjection(
@@ -1236,10 +1288,21 @@ def run_tool_loop(agent: Dict[str, Any],
                 session_id, _active_projection.error)
         elif _active_projection.applied:
             _logger.info(
-                "active_context applied session=%s mode=%s canonical=%d projected=%d saved=%d groups=%d",
+                "active_context applied session=%s mode=%s canonical=%d projected=%d saved=%d groups=%d trigger=%s",
                 session_id, _active_projection.mode, _active_projection.canonical_tokens,
                 _active_projection.projected_tokens, _active_projection.saved_tokens,
-                _active_projection.compacted_groups)
+                _active_projection.compacted_groups, _active_projection.trigger_source)
+        elif _active_projection.no_eligible_groups:
+            # The usage signal crossed the threshold, but every completed tool
+            # group is ineligible (unknown tool, error result, or inside the
+            # recent frontier): the request goes out unchanged.  Surface it so
+            # an un-compacted near-full window is diagnosable (#842).
+            _logger.warning(
+                "active_context threshold reached but no eligible tool groups to compact "
+                "session=%s mode=%s usage_signal=%d (provider=%d local=%d) completed_groups=%d",
+                session_id, _active_projection.mode, _active_projection.usage_signal,
+                _active_projection.provider_prompt_tokens, _active_projection.canonical_tokens,
+                _active_projection.completed_groups)
         _request_messages = (
             _active_projection.messages
             if (_active_projection.mode == 'enforced'
@@ -1276,6 +1339,7 @@ def run_tool_loop(agent: Dict[str, Any],
 
         # LOCK ORDERING: Main path — llm_lock only. No other locks held here.
         _enable_thinking_this_call = not _thinking_budget_aborted
+        _thinking_stream = _new_thinking_stream(agent_id, session_id)
         with llm_lock:
             result = llm.chat_completion(
                 messages=_request.messages,
@@ -1285,7 +1349,10 @@ def run_tool_loop(agent: Dict[str, Any],
                 max_tokens=None,
                 log_file=llm_log_path,
                 tool_choice=_required_tool if _required_tool_pending else None,
+                **({'stream_callback': _thinking_stream} if _thinking_stream else {}),
             )
+        if _thinking_stream:
+            _thinking_stream.flush()
 
         # Check A: stop signal check after LLM call (earliest safe point)
         if stop_event.is_set():
@@ -1639,6 +1706,9 @@ def run_tool_loop(agent: Dict[str, Any],
                         **_fallback_request.metrics(),
                     })
                     with llm_lock:
+                        _fb_stream = _new_thinking_stream(agent_id, session_id)
+                        if _fb_stream:
+                            _fb_stream.reset(force=True)   # clear whatever the failed primary attempt streamed
                         _fallback_result = _fallback_llm.chat_completion(
                             messages=_fallback_request.messages,
                             tools=_fallback_request.tools,
@@ -1648,7 +1718,10 @@ def run_tool_loop(agent: Dict[str, Any],
                             log_file=llm_log_path,
                             tool_choice=(
                                 _required_tool if _required_tool_pending else None),
+                            **({'stream_callback': _fb_stream} if _fb_stream else {}),
                         )
+                        if _fb_stream:
+                            _fb_stream.flush()
                     if _fallback_result.get('success'):
                         _logger.info(
                             "Fallback model %s succeeded for agent %s — using for remaining iterations",
@@ -1765,7 +1838,16 @@ def run_tool_loop(agent: Dict[str, Any],
 
         # Context telemetry is attributed to the exact successful provider
         # snapshot, including its projected messages and pruned tool schemas.
-        _cu_prompt = result.get('prompt_tokens') or 0
+        # Preserve a genuine provider value separately for the *next* tool-loop
+        # request.  A local fallback estimate must never masquerade as provider
+        # usage, because it cannot correct the estimator/provider mismatch that
+        # proactive compaction is meant to guard against (#842).
+        _reported_prompt = result.get('prompt_tokens') or 0
+        try:
+            _last_provider_prompt_tokens = max(0, int(_reported_prompt)) or None
+        except (TypeError, ValueError):
+            _last_provider_prompt_tokens = None
+        _cu_prompt = _reported_prompt
         _cu_estimated = False
         if _cu_prompt <= 0:
             try:
@@ -2076,6 +2158,51 @@ def run_tool_loop(agent: Dict[str, Any],
                 for inj in pre_final_injections:
                     messages.append(inj)
                 continue  # re-enter loop so LLM can act on the injected reminder
+
+            # ── Active goal completion gate ───────────────────────────
+            # Before committing the candidate answer, ask the goal evaluator
+            # whether the session goal is actually done. complete/blocked (or
+            # an exhausted nudge budget) clears the goal so the Session State
+            # "Goal mode" indicator disappears; continue keeps the candidate as
+            # an intermediate step and emits a visible, session-persisted nudge
+            # so the agent keeps working on the objective. Nothing is injected
+            # into the system prompt.
+            _goal_ms = agent_context.get('agent_state')
+            if (_goal_ms is not None and getattr(_goal_ms, 'active_goal', None)
+                    and not stop_event.is_set()):
+                from backend.goal_runtime import (
+                    ACTION_NUDGE,
+                    clear_active_goal,
+                    evaluate_active_goal,
+                    record_goal_nudge,
+                )
+                _goal_outcome = evaluate_active_goal(ms=_goal_ms, candidate=content or '')
+                if (_goal_outcome.get('action') == ACTION_NUDGE
+                        and _goal_outcome.get('goal')):
+                    # Persist the candidate as an intermediate assistant turn so
+                    # the agent answers the nudge with the full context.
+                    _goal_inj_meta = (
+                        {'reasoning_content': reasoning_text}
+                        if reasoning_text else None)
+                    db.add_chat_message(session_id, 'assistant', content,
+                                        agent_id=db_agent_id, metadata=_goal_inj_meta)
+                    chatlog.append({'type': 'intermediate', 'session_id': session_id,
+                                    'content': content})
+                    _goal_asst_msg: Dict[str, Any] = {'role': 'assistant', 'content': content}
+                    if reasoning_text:
+                        _goal_asst_msg['reasoning_content'] = reasoning_text
+                    messages.append(_goal_asst_msg)
+                    _goal_nudge_msg = record_goal_nudge(
+                        ms=_goal_ms, outcome=_goal_outcome,
+                        session_id=session_id, agent_id=agent_id,
+                        db_agent_id=db_agent_id,
+                    )
+                    if _goal_nudge_msg:
+                        messages.append(_goal_nudge_msg)
+                        continue  # re-enter loop so the agent continues the goal
+                elif _goal_outcome.get('clear'):
+                    clear_active_goal(ms=_goal_ms, session_id=session_id,
+                                      agent_id=agent_id, db_agent_id=db_agent_id)
 
             # Final response — save with timeline metadata
             ms = agent_context.get('agent_state')

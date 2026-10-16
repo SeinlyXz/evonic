@@ -296,6 +296,17 @@ class CreateAgentTests(AgentFactoryTestBase):
         self.assertEqual(db.get_agent_variables(agent_id), [])
         self.assertTrue(os.path.isfile(os.path.join(self.agent_dir(agent_id), "SYSTEM.md")))
 
+    def test_attachments_are_enabled_by_default_and_can_be_disabled_explicitly(self):
+        default_agent_id = create_agent({"id": "default_attachments_agent"}, base_dir=self.tmp)
+        disabled_agent_id = create_agent({
+            "id": "disabled_attachments_agent",
+            "attachments_enabled": False,
+        }, base_dir=self.tmp)
+
+        self.assertEqual(db.get_agent(default_agent_id)["attachments_enabled"], 1)
+        self.assertEqual(db.get_agent(default_agent_id)["attachment_max_size_mb"], 20)
+        self.assertEqual(db.get_agent(disabled_agent_id)["attachments_enabled"], 0)
+
     def test_nested_configuration_form_is_supported(self):
         agent_id = create_agent({
             "id": "nested_agent",

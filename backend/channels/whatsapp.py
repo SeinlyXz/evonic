@@ -21,6 +21,71 @@ _bridge_logger = logging.getLogger('baileys')
 _BRIDGE_DIR = os.path.join(os.path.dirname(__file__), 'whatsapp-bridge')
 
 
+def _proc_info(pid: int):
+    """(ppid, command line) of a live process, or None. Uses ps so it works on Linux and macOS."""
+    try:
+        out = subprocess.run(['ps', '-p', str(int(pid)), '-o', 'ppid=,command='],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        return None
+    if not out:
+        return None
+    parts = out.split(None, 1)
+    try:
+        return int(parts[0]), (parts[1] if len(parts) > 1 else '')
+    except ValueError:
+        return None
+
+
+def reap_orphan_bridge(session_dir: str, *, proc_info=_proc_info, kill=os.kill, sleep=time.sleep,
+                       own_pid: Optional[int] = None, timeout: float = 8.0) -> Optional[int]:
+    """Stop a WhatsApp bridge that is still running from a previous app instance.
+
+    The bridge holds an exclusive lock on its auth dir (``<auth dir>.owner/pid``). If the app is restarted without the bridge
+    being stopped (SIGKILL, crash, an older build), the orphan keeps the WhatsApp session connected but unmanaged, and every
+    new bridge refuses to start ("auth directory is already owned by bridge PID ...") until the app gives up. Only a process
+    that really is a whatsapp-bridge ``index.js`` and is not a child of this app is touched. Returns the reaped PID, if any.
+    """
+    import signal as _signal
+    own_pid = os.getpid() if own_pid is None else own_pid
+    try:
+        with open(os.path.abspath(session_dir) + '.owner/pid', 'r', encoding='utf-8') as f:
+            pid = int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+    if pid <= 1 or pid == own_pid:
+        return None
+    info = proc_info(pid)
+    if not info:
+        return None                       # already gone: the bridge clears the stale lock itself
+    ppid, cmd = info
+    if 'whatsapp-bridge' not in cmd or 'index.js' not in cmd:
+        return None                       # PID was reused by something unrelated
+    if ppid == own_pid:
+        return None                       # ours
+    _logger.warning("Found an orphaned WhatsApp bridge (PID %s) holding %s - stopping it before starting a new one", pid, session_dir)
+    try:
+        kill(pid, _signal.SIGTERM)
+    except ProcessLookupError:
+        return pid
+    except OSError as e:
+        _logger.error("Could not stop orphaned bridge %s: %s", pid, e)
+        return None
+    waited = 0.0
+    while waited < timeout:
+        if not proc_info(pid):
+            return pid
+        sleep(0.25)
+        waited += 0.25
+    try:
+        kill(pid, _signal.SIGKILL)
+    except OSError:
+        pass
+    sleep(0.5)
+    return pid
+
+
+
 def _whatsapp_format(text: str) -> str:
     """Convert Markdown/rich text to WhatsApp-native conversational formatting.
 
@@ -473,7 +538,7 @@ class WhatsAppChannel(BaseChannel):
             return True
 
         # Step 2: User NOT in allowlist — try pairing-code auto-approve
-        from backend.channels.pairing import extract_pair_code, format_pair_code as fmt_code
+        from backend.channels.pairing import extract_pair_code
         raw_code = extract_pair_code(text) if text else None
         if raw_code:
             _logger.info("WhatsApp pairing code received from %s (channel %s)", sender, self.channel_id)
@@ -491,28 +556,32 @@ class WhatsAppChannel(BaseChannel):
                         self._do_send(sender,
                             "✅ You're now approved! Welcome aboard. How can I help you today?")
                 return False
-            else:
+            # The code did not match a live pending approval. Never dead-end the
+            # sender: fall through so a pending approval is (re)created below and
+            # the admin can approve them from the channel's Pending Approvals.
+
+        # No live pairing code (or an unmatched one) — make sure the sender has a
+        # pending approval so they show up in the channel modal, then reply.
+        existing = db.get_pending_approvals(self.channel_id)
+        already_pending = any(
+            p.get('external_user_id') == sender for p in existing
+        )
+        if not already_pending:
+            allowed, pair_code = self._check_allowlist(sender, user_name)
+            if not allowed and pair_code:
                 self._do_send(sender,
-                    "❌ That pairing code is invalid or has expired. "
-                    "Please ask the administrator for a new one.")
-                return False
-        else:
-            # No pairing code in message — check if pending approval already exists
-            existing = db.get_pending_approvals(self.channel_id)
-            already_pending = any(
-                p.get('external_user_id') == sender for p in existing
-            )
-            if not already_pending:
-                allowed, pair_code = self._check_allowlist(sender, user_name)
-                if not allowed and pair_code:
-                    self._do_send(sender,
-                        "👋 You're not yet approved to chat here. "
-                        "Please ask the administrator for a pairing code, then send it in this chat.")
-                # If open mode, user IS allowed — would have been caught above
-            # If already pending, stay silent (don't spam the user)
-            _logger.info("WhatsApp DM from unapproved user %s (pending=%s, channel %s)",
-                         sender, already_pending, self.channel_id)
-            return False
+                    "👋 You're not yet approved to chat here. "
+                    "Please ask the administrator for a pairing code, then send it in this chat.")
+            # If open mode, user IS allowed — would have been caught above
+        elif raw_code:
+            # Already pending and the retried code no longer matches.
+            self._do_send(sender,
+                "❌ That pairing code is invalid or has expired. "
+                "Please ask the administrator for a new one.")
+        # If already pending (no code), stay silent (don't spam the user)
+        _logger.info("WhatsApp DM from unapproved user %s (pending=%s, code=%s, channel %s)",
+                     sender, already_pending, bool(raw_code), self.channel_id)
+        return False
 
     def start(self):
         # Register EventStream handlers first (before background bridge startup)
@@ -660,6 +729,7 @@ class WhatsAppChannel(BaseChannel):
                 # an empty auth dir and force a spurious QR re-scan.
                 session_dir = os.path.join(APP_ROOT, 'data', 'whatsapp-sessions', self.channel_id)
                 os.makedirs(session_dir, exist_ok=True)
+                reap_orphan_bridge(session_dir)
 
                 callback_url = (
                     f"http://127.0.0.1:{EVONIC_PORT}"

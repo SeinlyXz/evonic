@@ -652,6 +652,19 @@ class AgentRuntime:
         except Exception:
             _logger.exception("Failed to stop detached background jobs")
 
+        # Messaging channels own child processes (the WhatsApp bridge). Without this they outlive the app, keep the
+        # WhatsApp session connected but unmanaged, and block the next start ("auth directory is already owned").
+        _logger.info("Stopping channels...")
+        try:
+            from backend.channels.registry import channel_manager
+            t = threading.Thread(target=channel_manager.stop_all, name="shutdown-stop-channels", daemon=True)
+            t.start()
+            t.join(timeout=10)
+            if t.is_alive():
+                _logger.warning("Channels did not stop within 10s; continuing shutdown")
+        except Exception:
+            _logger.exception("Failed to stop channels")
+
         _logger.info("Shutting down background executor...")
         cls._bg_executor.shutdown(wait=False, cancel_futures=True)
 
@@ -920,6 +933,26 @@ class AgentRuntime:
     def _is_busy(self, session_id: str) -> bool:
         with self._session_store._busy_guard:
             return self._session_store._busy.get(session_id, False)
+
+    def _has_live_turn(self, agent_id: str, session_id: str) -> bool:
+        """True when the durable store still holds a running turn for the session.
+
+        The in-process ``_busy`` flag can outlive its durable turn (a worker that
+        was reaped as stale while still marked busy). Probing the store lets the
+        caller avoid injecting into a loop that can no longer consume the
+        message. Falls back to True on any probe error so normal injection is
+        never skipped because of a transient failure.
+        """
+        try:
+            from backend.realtime_store import realtime_store
+            realtime_store.reap_stale_turns()
+            return any(
+                turn.get('state') == 'running'
+                for turn in realtime_store.active_turns(
+                    agent_id=agent_id, session_id=session_id)
+            )
+        except Exception:
+            return True
 
     def _mark_task_queued(self, task: '_QueueTask') -> None:
         from backend.realtime_store import realtime_store
@@ -1304,7 +1337,37 @@ class AgentRuntime:
                     "client_message_id": command_meta.get('client_message_id'),
                     "slash_command": True, "suppressed": True,
                 }
-            if response is not None:
+            if response is not None and cmd_name == "goal":
+                # /goal sets a durable, session-scoped objective. The literal
+                # command is retained for audit only (excluded from LLM context
+                # by its slash_command metadata); the turn itself is driven by a
+                # trusted [SYSTEM] goal event so the model never sees
+                # slash-command syntax and never re-reads its own raw command.
+                original_message = message
+                command_meta = {"slash_command": True, "audit_only": True}
+                if metadata and metadata.get('client_message_id'):
+                    command_meta['client_message_id'] = metadata['client_message_id']
+                audit_id = _db_retry(
+                    db.add_chat_message, session_id, 'user', original_message,
+                    agent_id=db_agent_id, metadata=command_meta,
+                    label="save goal command audit record",
+                )
+                _cl = chatlog_manager.get(db_agent_id, session_id)
+                _cl.append({'type': 'user', 'session_id': session_id,
+                            'content': original_message,
+                            'sender_id': external_user_id,
+                            'metadata': command_meta, 'message_id': audit_id})
+                event_stream.emit('message_received', {
+                    'agent_id': agent_id, 'session_id': session_id,
+                    'external_user_id': external_user_id, 'channel_id': channel_id,
+                    'message': original_message, 'message_id': audit_id,
+                    'client_message_id': command_meta.get('client_message_id'),
+                    'metadata': command_meta, 'role': 'user',
+                })
+                self._prefetcher.invalidate(session_id)
+                # Falls through to normal processing with the translated event.
+                message = str(response)
+            elif response is not None:
                 # Command was recognized — save command echo and response, then return
                 command_meta = {"slash_command": True}
                 if metadata and metadata.get('client_message_id'):
@@ -1550,27 +1613,40 @@ class AgentRuntime:
         # into the active loop instead of blocking/queuing a new task.
         # Message is already saved to DB above, so DB order is preserved.
         if self._is_busy(session_id):
-            _logger.info(
-                "[handle_message] agent=%s session=%s — session busy, injecting into active loop.",
-                agent_id, session_id,
-            )
-            self._get_inject_queue(session_id).put({
-                'role': 'user',
-                'content': message or '[Image]',
-            })
-            event_stream.emit('message_injected', {
-                'agent_id': agent_id,
-                'agent_name': agent.get('name', ''),
-                'session_id': session_id,
-                'external_user_id': external_user_id,
-                'channel_id': channel_id,
-                'message': message,
-            })
-            return {
-                "response": None, "injected": True, "tool_trace": [], "timeline": [],
-                "message_id": message_id,
-                "client_message_id": meta.get('client_message_id'),
-            }
+            # Only inject while a durable running turn still owns the session.
+            # A reaped/stale turn can leave the in-process flag set; injecting
+            # then would hand the message to a dead loop and silently drop it.
+            # In that case clear the flag and queue a normal fresh turn instead
+            # (the per-session lock serializes it behind any real worker).
+            if not self._has_live_turn(agent_id, session_id):
+                _logger.warning(
+                    "[handle_message] agent=%s session=%s — clearing stale in-process "
+                    "busy flag (no live durable turn); queuing a fresh turn instead of "
+                    "injecting.", agent_id, session_id,
+                )
+                self._set_busy(session_id, False)
+            else:
+                _logger.info(
+                    "[handle_message] agent=%s session=%s — session busy, injecting into active loop.",
+                    agent_id, session_id,
+                )
+                self._get_inject_queue(session_id).put({
+                    'role': 'user',
+                    'content': message or '[Image]',
+                })
+                event_stream.emit('message_injected', {
+                    'agent_id': agent_id,
+                    'agent_name': agent.get('name', ''),
+                    'session_id': session_id,
+                    'external_user_id': external_user_id,
+                    'channel_id': channel_id,
+                    'message': message,
+                })
+                return {
+                    "response": None, "injected": True, "tool_trace": [], "timeline": [],
+                    "message_id": message_id,
+                    "client_message_id": meta.get('client_message_id'),
+                }
 
         # Message buffering: debounce rapid messages, then queue
         # Skip when skip_buffer=True (e.g. API routes need synchronous response)
@@ -1993,7 +2069,21 @@ class AgentRuntime:
             # required by read_attachment. This also repairs legacy message text
             # that omitted the ID when restored from JSONL.
             _att = msg.pop('attachment_info', None) or msg.get('attachment_info')
-            if _att and isinstance(_att, dict):
+            _atts = msg.pop('attachment_infos', None) or []
+            _atts = [i for i in _atts if isinstance(i, dict)]
+            if len(_atts) > 1 or (_atts and not _att):
+                # Several attachments in one message: note every one, not just the
+                # first (the singular key is only set for a single attachment).
+                _text = msg.get('content', '') or ''
+                _atts = [i for i in _atts
+                         if f"Attachment ID: {i.get('attachment_id')}" not in _text]
+                if _atts:
+                    msg['content'] = _text.rstrip() + _ctx.build_attachment_notes(
+                        _atts,
+                        has_describe_image=_has_describe_image,
+                        audio_enabled=bool(agent.get('audio_enabled')),
+                    )
+            elif _att and isinstance(_att, dict):
                 _ctx.append_attachment_note(
                     msg,
                     _att,
@@ -3192,7 +3282,29 @@ class AgentRuntime:
                 })
                 self._prefetcher.invalidate(session_id)
                 return True
-            if response is not None:
+            if response is not None and cmd_name == "goal":
+                # Mirror handle_message: keep the literal command out of LLM
+                # context and drive the turn with the translated goal event.
+                command_meta = {"slash_command": True, "audit_only": True}
+                if metadata and metadata.get("client_message_id"):
+                    command_meta["client_message_id"] = metadata["client_message_id"]
+                audit_id = db.add_chat_message(
+                    session_id, "user", text,
+                    agent_id=agent_id, metadata=command_meta,
+                )
+                chatlog_manager.get(agent_id, session_id).append(
+                    {"type": "user", "session_id": session_id, "content": text,
+                     "metadata": command_meta, "message_id": audit_id})
+                event_stream.emit("message_received", {
+                    "agent_id": agent_id, "session_id": session_id,
+                    "external_user_id": external_user_id, "channel_id": channel_id,
+                    "message": text, "message_id": audit_id,
+                    "client_message_id": command_meta.get("client_message_id"),
+                    "metadata": command_meta, "role": "user",
+                })
+                self._prefetcher.invalidate(session_id)
+                text = str(response)
+            elif response is not None:
                 # Command was recognized — save command echo and response, then return
                 command_meta = {'slash_command': True}
                 if metadata and metadata.get('client_message_id'):

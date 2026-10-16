@@ -4,6 +4,7 @@ Commands are parsed and executed in the backend so they work on all channels
 (Telegram, web, etc.) without any frontend-specific logic.
 """
 
+import json
 import logging
 import re
 import os
@@ -821,6 +822,76 @@ def _register_builtins():
         "exec",
         exec_handler,
         "Switch to execute mode",
+    )
+
+    # /goal <query> — persist a durable goal and start an agent-visible system turn.
+    # The runtime records a translated system event rather than forwarding the
+    # slash-command literal into the model's conversation history.
+    def goal_handler(
+        session_id: str,
+        agent_id: str,
+        external_user_id: str,
+        channel_id: Optional[str],
+        args: str,
+    ) -> Optional[str]:
+        from models.db import db
+        from backend.agent_state import AgentState
+        from models.chat import agent_chat_manager
+
+        goal = args.strip()
+        if not goal:
+            return "Usage: /goal <what the agent should complete>"
+
+        agent = db.get_agent(agent_id)
+        if not agent:
+            return "Error: Agent not found."
+        if not agent.get("enable_agent_state"):
+            return "Agent state is not enabled for this agent."
+
+        chat_db = agent_chat_manager.get(agent_id)
+        session_content = chat_db.get_session_state(session_id)
+        ms = AgentState.deserialize(session_content) if session_content else AgentState()
+        result = ms.set_mode(
+            "execute",
+            reason="slash command /goal",
+            bypass_plan_requirement=True,
+        )
+        if "error" in result:
+            return f"Error: {result['error']}"
+
+        raw = chat_db.get_session_state(session_id)
+        try:
+            session_data = json.loads(raw) if raw else {}
+        except (TypeError, ValueError):
+            session_data = {}
+        if not isinstance(session_data, dict):
+            session_data = {}
+        from backend.active_goal import create_active_goal, render_active_goal_event
+
+        state_data = json.loads(ms.serialize())
+        active_goal = create_active_goal(goal)
+        session_data.update({
+            'mode': state_data.get('mode', 'plan'),
+            'tasks': state_data.get('tasks', []),
+            'next_task_id': state_data.get('next_task_id', 1),
+            'plan_file': state_data.get('plan_file'),
+            'states': state_data.get('states', {}),
+            'auto_trivial': state_data.get('auto_trivial', False),
+            'atg': state_data.get('atg'),
+            'cmp': state_data.get('cmp'),
+            'active_goal': active_goal,
+        })
+        chat_db.upsert_session_state(session_id, json.dumps(session_data))
+        # The runtime turns this into an agent-visible [SYSTEM] goal event and
+        # drives the turn with it, keeping the slash-command literal out of the
+        # LLM transcript.
+        return render_active_goal_event(active_goal)
+
+    command_registry.register(
+        "goal",
+        goal_handler,
+        "Execute a goal until it is complete, blocked, or reaches its nudge limit",
+        parameters=[{"name": "query", "placeholder": "Describe the goal to complete"}],
     )
 
     def unfocus_handler(
