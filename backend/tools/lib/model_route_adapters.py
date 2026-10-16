@@ -79,7 +79,9 @@ class RouteAdapterRegistry:
     """Explicit adapter lookup; never infer protocol from hostname or locality."""
 
     def __init__(self, adapters: Mapping[AdapterKey, RouteAdapter] | None = None) -> None:
-        self._adapters = dict(adapters or default_route_adapters())
+        # An explicitly empty mapping must stay empty; only ``None`` selects the
+        # default registry.  Truthiness checks would silently re-add defaults.
+        self._adapters = dict(default_route_adapters() if adapters is None else adapters)
 
     def get(self, key: AdapterKey) -> RouteAdapter | None:
         return self._adapters.get(key)

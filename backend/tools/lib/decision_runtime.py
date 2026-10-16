@@ -269,7 +269,10 @@ class DecisionRuntime:
                         confidence_required = bool(profile.get("require_confidence", False))
                         if (confidence_required and len(confidences) != len(result.fields)) or (confidences and min(confidences) < float(profile["minimum_confidence"])):
                             self._metric("decision_runtime.low_confidence", profile=request.profile_key)
-                            last = replace(result, error=_safe_error(DecisionErrorCode.PROVIDER_RESPONSE_INVALID, "Decision confidence was missing or below the configured threshold."))
+                            # Runtime-detected providers that answer below the
+                            # confidence policy are retryable so the configured
+                            # fallback model gets a chance to answer.
+                            last = replace(result, error=_safe_error(DecisionErrorCode.PROVIDER_RESPONSE_INVALID, "Decision confidence was missing or below the configured threshold.", True))
                         else:
                             self._success(result, request, started, fallback)
                             self._activity(request, result)
@@ -303,7 +306,14 @@ class DecisionRuntime:
         return resolver(model_id) if callable(resolver) else None
 
     def _failure(self, invocation: DecisionInvocation, code: DecisionErrorCode, message: str, started: float, attempts: int = 0, fallback: bool = False) -> DecisionResult:
-        retryable = code in {DecisionErrorCode.PROVIDER_UNAVAILABLE, DecisionErrorCode.DEADLINE_EXCEEDED}
+        # Runtime-detected malformed responses are retryable so the fallback
+        # model is tried.  Errors a provider explicitly declares non-retryable
+        # never reach this helper and stay terminal.
+        retryable = code in {
+            DecisionErrorCode.PROVIDER_UNAVAILABLE,
+            DecisionErrorCode.DEADLINE_EXCEEDED,
+            DecisionErrorCode.PROVIDER_RESPONSE_INVALID,
+        }
         return DecisionResult(invocation.profile, SCHEMA_VERSION, (), None, TimingMetadata(int((time.monotonic() - started) * 1000)), attempts, (), FallbackMetadata(True, "previous_attempt_failed") if fallback else None, _safe_error(code, message, retryable))
 
     def _success(self, result: DecisionResult, request: RuntimeRequest, started: float, fallback: bool) -> None:

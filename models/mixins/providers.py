@@ -162,13 +162,22 @@ class ProvidersMixin:
         # routing until the compatibility window ends; otherwise the provider's
         # versioned adapter is authoritative.
         model_format = result.get("api_format")
-        if model_format and model_format != "openai":
+        if model_format == "claude_cli":
+            # Claude CLI is a direct local client, not a versioned HTTP adapter.
+            # Keep the format while retaining the provider adapter for metadata;
+            # LLMClient dispatches this format before any adapter lookup.
+            adapter_key = provider.get("adapter_key")
+        elif model_format and model_format != "openai":
             adapter_key = _LEGACY_FORMAT_TO_ADAPTER.get(model_format, provider.get("adapter_key"))
         else:
             adapter_key = provider.get("adapter_key") or _LEGACY_FORMAT_TO_ADAPTER.get(
                 provider.get("api_format"), AdapterKey.OPENAI_CHAT_COMPLETIONS_V1.value)
         result["adapter_key"] = adapter_key
-        result["api_format"] = _ADAPTER_TO_LEGACY_FORMAT.get(adapter_key, model_format or provider.get("api_format", "openai"))
+        if model_format == "claude_cli":
+            result["api_format"] = "claude_cli"
+        else:
+            result["api_format"] = _ADAPTER_TO_LEGACY_FORMAT.get(
+                adapter_key, model_format or provider.get("api_format", "openai"))
         result["legacy_provenance"] = "legacy_model_override" if legacy_override else None
         return result
 

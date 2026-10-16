@@ -158,18 +158,9 @@ def test_non_builtin_can_be_deleted_and_routes_require_authentication(client):
 
 
 def test_api_accepts_canonical_decision_model_capabilities(client):
-    db.create_model({
-        "id": "systemone/LiquidAI-d1-3B",
-        "name": "LiquidAI d1-3B",
-        "type": "remote",
-        "provider": "systemone",
-        "model_name": "LiquidAI/d1-3B",
-        "capabilities": {
-            "version": "model-capabilities/v1",
-            "operations": {"decision": "verified", "strict_output": "verified"},
-            "schema_versions": ["decision-schema/v1"],
-        },
-    })
+    # ``systemone/LiquidAI-d1-3B`` ships as a builtin canonical-capability model,
+    # so it is consumed here instead of re-created under the same id.
+    assert db.get_model_by_id("systemone/LiquidAI-d1-3B") is not None
 
     response = client.post("/api/admin/decision-profiles", json=_payload(
         key="application.liquidai", primary_model_id="systemone/LiquidAI-d1-3B",

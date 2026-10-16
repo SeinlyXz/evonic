@@ -20,6 +20,9 @@ def _decode_capabilities(model: Dict[str, Any]) -> Dict[str, Any]:
         except (TypeError, ValueError):
             raw = {}
     model["capabilities"] = raw if isinstance(raw, dict) else {}
+    # SQLite stores BOOLEAN columns as 0/1 integers. Normalize the vision flag so
+    # every caller gets a real boolean instead of a dialect-specific integer.
+    model["vision_supported"] = bool(model.get("vision_supported", 0))
     return model
 
 

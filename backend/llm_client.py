@@ -972,7 +972,9 @@ class LLMClient:
 
         # The persisted versioned adapter is authoritative. Legacy api_format is
         # retained only as a compatibility alias while existing records migrate.
-        adapter_key = self.adapter_key or {
+        # ``getattr`` keeps hand-built/partial clients (tests, dry runs) working
+        # exactly like clients constructed through ``__init__``.
+        adapter_key = getattr(self, "adapter_key", None) or {
             "codex": "codex.responses.v1",
             "ollama": "ollama.chat.v1",
             "anthropic": "anthropic.messages.v1",
