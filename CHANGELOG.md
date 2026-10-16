@@ -2,11 +2,33 @@
 
 ## [Unreleased]
 
-## [1.3.0] - 2026-10-05
+## [1.5.0] - 2026-10-16
 
 ### Features
 
-- Added an ElevenLabs provider to the text-to-speech skill (Eleven v4 by default, with Indonesian voices).
+- Added a provider-neutral decision-model runtime with routing contracts, endpoint-based provider and model routing, decision profiles, built-in profile templates, activity observability, administration, and a bounded Playground for safe testing.
+- Added native SystemOne and LiquidAI decision-model integrations, and migrated DMSS to the safety command profile.
+- Added the official Claude CLI subscription provider with native image input, plus ElevenLabs text-to-speech support.
+- Added Evonet release archive targets and an event-driven GUI log flusher to reduce idle work.
+- Added panel-button edit mode for renaming and deleting actions, and made evaluation model names editable.
+
+### Improvements
+
+- Improved provider diagnostics, decision-profile save feedback, dark-mode contrast, session follow-up navigation, task-progress display, and restart-ready realtime chat notifications.
+- Enabled attachments by default for newly created agents.
+
+### Bug Fixes
+
+- Restored green coverage for model routing, decision-runtime paths, vision fallback settings, the Claude CLI provider, and decision-profile APIs.
+- Fixed OpenCode Go and Zen requests to send their session header.
+
+### Tests
+
+- Added regression coverage for decision profiles, decision runtime and routing, Claude CLI image support, vision fallback settings, panel actions, and Evonet log flushing.
+
+### Release Notes
+
+- The DMSS provider endpoint remains an administrator-configured integration. The previously accepted residual endpoint-egress risk remains subject to authenticated administrative access.
 
 ## [1.4.0] - 2026-10-10
 

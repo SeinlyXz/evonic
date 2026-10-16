@@ -7,9 +7,9 @@
 
 html {
     touch-action: manipulation;
-    
+
     overscroll-behavior: none;
-    
+
     background-color: var(--bg-page) !important;
 }
 
@@ -37,7 +37,7 @@ html.dark { color-scheme: dark; }
 #chat-messages { overflow-x: hidden; }
 #chat-messages { scrollbar-width: thin; scrollbar-color: rgb(148 163 184 / .35) transparent; }
 html.dark {
-    
+
     --color-gray-800: #111827;
     --color-gray-900: #0a0f1c;
     --bg-page: #0a0f1c;
@@ -252,12 +252,12 @@ body {
 }
 
 header {
-    --nav-corner: 22px;                       
+    --nav-corner: 22px;
     position: sticky;
     top: 0;
     z-index: 50;
     background: var(--bg-header);
-    
+
     box-shadow: 0 1px 0 rgb(15 23 42 / .09), 0 8px 18px -10px rgb(15 23 42 / .25);
 }
 html.dark header { box-shadow: 0 1px 0 rgb(255 255 255 / .06), 0 8px 18px -10px rgb(0 0 0 / .7); }
@@ -713,7 +713,7 @@ footer {
         position: relative;
     }
 
-    
+
     .header-left-side { gap: 0.5rem !important; }
     .brand-version { display: none; }
     .nav-toggle {
@@ -723,7 +723,7 @@ footer {
         width: 40px;
         height: 40px;
         padding: 0;
-        margin-right: -4px;   
+        margin-right: -4px;
         border-radius: 50%;
         background: rgba(100, 116, 139, 0.10);
         -webkit-tap-highlight-color: transparent;
@@ -791,7 +791,7 @@ footer {
 
 @media (max-width: 1023px) {
     #tab-chat {
-        
+
         height: calc(100svh - var(--header-h, 56px) - 84px);
         min-height: 0;
         display: flex;
@@ -810,20 +810,20 @@ footer {
     }
 
     #chat-messages {
-        
+
         flex: 1;
-        
+
         min-height: 0 !important;
         overflow-y: auto;
         max-height: none;
     }
 
-    
+
     #chat-messages .flex > div {
         max-width: 94% !important;
     }
 
-    
+
     #chat-input {
         max-height: 120px !important;
     }
@@ -1057,10 +1057,10 @@ html.dark .cell-duration { color: #94a3b8 !important; }
 .dyn-toggle {
     position: relative;
     display: inline-block;
-    width: 2.25rem;   
-    height: 1.25rem;  
+    width: 2.25rem;
+    height: 1.25rem;
     border-radius: 9999px;
-    background-color: #e5e7eb; 
+    background-color: #e5e7eb;
     transition: background-color 0.15s ease-in-out;
     flex-shrink: 0;
     vertical-align: middle;
@@ -1071,8 +1071,8 @@ html.dark .dyn-toggle { background-color: #4b5563;  }
     position: absolute;
     top: 2px;
     left: 2px;
-    width: 1rem;   
-    height: 1rem;  
+    width: 1rem;
+    height: 1rem;
     border-radius: 9999px;
     background-color: #fff;
     box-shadow: 0 1px 2px rgba(0,0,0,0.15);
@@ -1174,7 +1174,7 @@ html.dark .avatar-fallback {
     background-size: 400px 100%;
     animation: chat-img-shimmer 1.5s ease-in-out infinite;
     max-width: 100%;
-    
+
 }
 
 html.dark .chat-img-skeleton {
@@ -1241,7 +1241,7 @@ html.dark #chat-messages time { color: #8b97ab; }
   body.nav-menu-open #nav-backdrop { opacity: 1; visibility: visible; transition: opacity .2s ease; }
   .header-left-side, .nav-toggle { position: relative; z-index: 3; }
 
-  
+
   nav#site-nav { display: flex; flex-direction: column; align-items: stretch; gap: .125rem; position: absolute; z-index: 2;
     top: 100%; left: 0; right: 0; padding: .25rem .75rem .75rem; margin: 0; background: none; border: 0; border-radius: 0; box-shadow: none;
     max-height: calc(100vh - 56px - var(--nav-corner) - 1rem); overflow-y: auto; scrollbar-width: none;
@@ -1260,7 +1260,7 @@ html.dark #chat-messages time { color: #8b97ab; }
   nav#site-nav a.nav-active .nav-ic { opacity: 1; }
   html.dark nav#site-nav a.nav-active { background: rgb(99 102 241 / .22); color: #c7d2fe; }
   nav#site-nav .nav-sep, nav#site-nav .nav-divider { display: block; height: 0; margin: .375rem .75rem; border: 0; border-top: 1px solid rgb(148 163 184 / .25); }
-  
+
   nav#site-nav .nav-version { display: flex; align-items: center; justify-content: center; gap: .375rem; margin: .5rem 0 0; padding-top: .5rem;
     font-size: .6875rem; letter-spacing: .02em; color: #94a3b8; opacity: .8; user-select: none; }
   nav#site-nav .nav-version span { padding: .0625rem .4rem; border-radius: 9999px; background: rgb(148 163 184 / .14); font-variant-numeric: tabular-nums; }
@@ -1294,9 +1294,9 @@ html.dark #chat-messages time { color: #8b97ab; }
     -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
 }
 
-html.dark #chat-messages .chat-prose.rounded-2xl { background: rgb(30 41 59 / .7); border-color: rgb(148 163 184 / .18); }   
-html.dark #chat-messages .rounded-2xl.bg-indigo-500 { background: #4f46e5; }                                              
-html.dark #chat-messages .rounded-2xl.dark\:bg-gray-800 { background: rgb(30 41 59 / .7); border-color: rgb(148 163 184 / .18); }   
+html.dark #chat-messages .chat-prose.rounded-2xl { background: rgb(30 41 59 / .7); border-color: rgb(148 163 184 / .18); }
+html.dark #chat-messages .rounded-2xl.bg-indigo-500 { background: #4f46e5; }
+html.dark #chat-messages .rounded-2xl.dark\:bg-gray-800 { background: rgb(30 41 59 / .7); border-color: rgb(148 163 184 / .18); }
 html.dark .chat-prose code { background: rgb(10 15 28 / .55); }
 html.dark .chat-prose pre { background: rgb(10 15 28 / .72); border: 1px solid rgb(148 163 184 / .14); }
 html.dark .chat-prose pre code { background: none; }
@@ -1366,7 +1366,7 @@ html.dark .ev-cb-search input { color: #f1f5f9; }
 .ev-cb-group { padding: .5rem .625rem .25rem; font-size: .6875rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #94a3b8; }
 .ev-cb-opt { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .5rem .625rem; border-radius: .625rem; font-size: .875rem; color: #1f2937; cursor: pointer; }
 html.dark .ev-cb-opt { color: #e2e8f0; }
-.ev-cb-opt.in-group { padding-left: 1.5rem; }   
+.ev-cb-opt.in-group { padding-left: 1.5rem; }
 .ev-cb-opt.is-active { background: rgb(99 102 241 / .1); }
 html.dark .ev-cb-opt.is-active { background: rgb(99 102 241 / .22); }
 .ev-cb-opt.is-selected { font-weight: 600; color: #4f46e5; }
@@ -1644,7 +1644,7 @@ html.dark .recap-prose pre code { background: #1D2023; color: inherit; }
 }
 
 html.dark {
-    --sidebar-bg: var(--bg-page, #0a0f1c);   
+    --sidebar-bg: var(--bg-page, #0a0f1c);
     --sidebar-hover: rgba(255, 255, 255, 0.06);
     --sidebar-tooltip-bg: #111827;
     --sidebar-avatar-bg: #334155;
@@ -1662,7 +1662,7 @@ html.dark {
     min-width: 64px;
     flex-shrink: 0;
     height: calc(100vh - 56px);
-    
+
     position: sticky;
     top: 56px;
     align-self: flex-start;
@@ -1874,10 +1874,10 @@ html.dark .sidebar-toggle-btn:hover::before { background: rgba(148, 163, 184, 0.
 @media (max-width: 768px) {
     .sidebar-toggle-btn {
         margin-left: -1rem;
-        width: 52px;   
+        width: 52px;
         box-sizing: border-box;
-        padding-left: 12px;   
-        color: #4b5563;       
+        padding-left: 12px;
+        color: #4b5563;
     }
     html.dark .sidebar-toggle-btn { color: #e2e8f0; }
 }
