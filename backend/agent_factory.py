@@ -206,7 +206,7 @@ DEFAULTS: Dict[str, Any] = {
     "enable_agent_state": 1,
     # Capabilities
     "sandbox_enabled": 0,
-    "attachments_enabled": 0,
+    "attachments_enabled": 1,
     "attachment_max_size_mb": 20,
     "artifacts_enabled": 1,
     "safety_checker_enabled": 1,
