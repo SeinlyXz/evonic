@@ -2524,7 +2524,7 @@ let lastSummaryText = null;
 let _sessionStateData = {};
 let _summaryRefreshTimer = null;
 
-let _stTasksDoneOpen = false;
+let _stTasksDoneOpen = true;
 function _planTreeHtml(pf) {
         var parts = String(pf).split('/').filter(Boolean);
         var file = parts.pop();
@@ -2592,7 +2592,7 @@ function _renderSessionStateSnapshot(stateData) {
         const goalSummary = goal.summary || '';
         planHtml += `<div class="mt-2 rounded border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100"><div class="font-medium">🎯 Goal mode</div><div class="mt-0.5 break-words font-medium">${esc(goalTitle)}</div>${goalSummary ? `<div class="mt-0.5 break-words text-[11px] opacity-80">${esc(goalSummary)}</div>` : ''}</div>`;
     }
-    // --- Tasks: progress, open items first, finished ones folded ---
+    // --- Tasks: progress, finished ones in a collapsible (expanded by default) group ---
     if (stateData.tasks && stateData.tasks.length > 0) {
         const tasks = stateData.tasks;
         const staleTaskIds = new Set(Array.isArray(stateData.stale_task_ids) ? stateData.stale_task_ids : []);

@@ -91,14 +91,36 @@
             });
 
             select(location.hash.slice(1));
+            initSettingsNav();
         },
     };
+
+    /* ==================== Settings nav rail ====================
+     * The page shares the System Settings rail (partials/settings/nav.html).
+     * Its section buttons are client-routed on /system, so here they navigate
+     * back to the matching /system#<section> page. */
+
+    function initSettingsNav() {
+        document.querySelectorAll(".settings-nav button[data-section], .settings-nav button[data-group]").forEach(function (b) {
+            b.addEventListener("click", function () {
+                location.href = "/system#" + (b.dataset.section || b.dataset.group);
+            });
+        });
+        // Mobile: the rail is a horizontal pill bar; bring the Safety pill into view.
+        var nav = qs(".settings-nav");
+        var active = nav && nav.querySelector(".settings-nav-item.active");
+        if (active && nav.scrollWidth > nav.clientWidth) {
+            nav.scrollLeft = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
+        }
+    }
 
     /* ==================== General pane: policy + live status ====================
      * Explains the "HMADS only" vs "DMSS enabled" choice, offers the policy
      * controls (segmented policy selector, shadow/enforce mode selector, and a
-     * synced enable switch, persisted via PUT /api/settings/decim-safety —
-     * task #837), and shows the live operational state (settings + health). */
+     * synced enable switch, auto-saved via PUT /api/settings/decim-safety —
+     * task #837), and shows the live operational state (settings + health).
+     * Save feedback matches the System Settings AutoSave: a spinner while
+     * saving, then a check, in the .save-status slot beside the field. */
 
     window.safetyGeneral = {
         _initialized: false,
@@ -108,6 +130,7 @@
         _pending: { policy: null, mode: null }, // policy + mode currently selected in the UI
         _dirty: false,          // _pending differs from the loaded policy
         _saving: false,
+        _queued: null,          // field ("policy" | "mode") changed while a save was in flight
 
         init() {
             if (this._initialized) return;
@@ -115,7 +138,9 @@
             var retry = qs("#sg-retry");
             if (retry) retry.addEventListener("click", function () { window.safetyGeneral.load(); });
             var refresh = qs("#sg-refresh");
-            if (refresh) refresh.addEventListener("click", function () { window.safetyGeneral.load(); });
+            if (refresh) refresh.addEventListener("click", function () {
+                RefreshButton.run(refresh, function () { return window.safetyGeneral.load(true); });
+            });
 
             // Policy selector + enable toggle + save (task #837).
             var self = this;
@@ -127,8 +152,6 @@
             });
             var toggle = qs("#sg-enabled-toggle");
             if (toggle) toggle.addEventListener("change", function () { self._onToggleChange(); });
-            var save = qs("#sg-save");
-            if (save) save.addEventListener("click", function () { self.save(); });
 
             this.load();
             // Keep the status card fresh while the page is open.
@@ -171,6 +194,15 @@
             // it otherwise but keep the selection so re-enabling restores it.
             this._setModeFieldEnabled(on);
             this._applyModeToControls(this._pending && this._pending.mode);
+            this._previewFlow();
+        },
+
+        /* The decision-flow diagram follows the *selected* policy + mode. */
+        _previewFlow() {
+            var panel = qs("#safety-panel-general");
+            if (!panel || !this._pending) return;
+            panel.dataset.policy = this._pending.policy === "dmss" ? "dmss" : "hmads-only";
+            panel.dataset.mode = this._pending.mode === "enforce" ? "enforce" : "shadow";
         },
 
         _setModeFieldEnabled(enabled) {
@@ -185,6 +217,7 @@
             if (mode !== "shadow" && mode !== "enforce") return;
             var radio = qs("#sg-radio-" + mode);
             if (radio) radio.checked = true;
+            this._previewFlow();
         },
 
         _markDirty() {
@@ -197,17 +230,13 @@
                 this._pending.mode &&
                 this._pending.mode !== this._modeFromSettings(this._loaded)
             );
-            var dirty = policyDirty || modeDirty;
-            this._dirty = dirty;
-            var badge = qs("#sg-dirty");
-            if (badge) badge.hidden = !dirty;
+            this._dirty = policyDirty || modeDirty;
         },
 
         _onPolicyChange(value) {
             this._pending.policy = value;
             this._applyPolicyToControls(value);
-            this._clearFieldErrors();
-            this._markDirty();
+            this._autoSave("policy");
         },
 
         _onToggleChange() {
@@ -215,24 +244,37 @@
             var on = !!(toggle && toggle.checked);
             this._pending.policy = on ? "dmss" : "hmads-only";
             this._applyPolicyToControls(this._pending.policy);
-            this._clearFieldErrors();
-            this._markDirty();
+            this._autoSave("policy");
         },
 
         _onModeChange(value) {
             this._pending.mode = value;
             this._applyModeToControls(value);
-            this._clearFieldErrors();
-            this._markDirty();
+            this._autoSave("mode");
         },
 
-        /* Reflect server state into the controls. Skips the overwrite while the
-         * user has unsaved edits so a background refresh doesn't clobber them. */
+        /* Save right after a change. A change made while a save is in flight is
+         * parked and sent once that save finishes (newest selection wins). */
+        _autoSave(field) {
+            this._clearFieldErrors();
+            this._markDirty();
+            if (this._saving) { this._queued = field; return; }
+            if (this._dirty) this.save(field);
+        },
+
+        /* Reflect server state into the controls. Skips the overwrite while a
+         * save is in flight or queued so a background refresh doesn't clobber
+         * the user's newest selection. */
         syncControls(settings) {
             this._loaded = settings || {};
-            if (!this._dirty) {
+            if (!this._saving && !this._queued) {
+                var serverMode = this._loaded.mode;
+                var keepMode = this._pending.mode === "shadow" || this._pending.mode === "enforce";
                 this._pending.policy = this._policyFromSettings(this._loaded);
-                this._pending.mode = this._modeFromSettings(this._loaded);
+                // HMADS-only is stored as mode="off": remember the last DMSS mode so
+                // re-enabling DMSS restores it instead of resetting to shadow.
+                this._pending.mode = (serverMode === "shadow" || serverMode === "enforce" || !keepMode)
+                    ? this._modeFromSettings(this._loaded) : this._pending.mode;
                 this._applyPolicyToControls(this._pending.policy);
             }
             this._markDirty();
@@ -271,23 +313,51 @@
             this._setFieldError("#sg-err-policy", null);
             this._setFieldError("#sg-err-mode", null);
             this._setFieldError("#sg-err-enabled", null);
+            ["policy", "mode"].forEach(function (field) {
+                var slot = qs("#sg-status-" + field);
+                if (slot && slot.classList.contains("is-error")) window.safetyGeneral._status(field, null);
+            });
         },
 
-        save() {
+        /* Same markup + classes as the System Settings AutoSave feedback. */
+        _status(field, state) {
+            var slot = qs("#sg-status-" + field);
+            if (!slot) return;
+            clearTimeout(slot._fadeTimer);
+            slot.classList.remove("is-saving", "is-saved", "is-error");
+            slot.innerHTML = "";
+            if (state === "saving") {
+                slot.classList.add("is-saving");
+                slot.innerHTML = '<span class="spinner"></span>';
+            } else if (state === "saved") {
+                slot.classList.add("is-saved");
+                slot.innerHTML =
+                    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path class="st-check-path" d="M4 12.5l5 5L20 6.5"/></svg>';
+                slot._fadeTimer = setTimeout(function () {
+                    slot.classList.remove("is-saved");
+                    slot.innerHTML = "";
+                }, 1800);
+            } else if (state === "error") {
+                slot.classList.add("is-error");
+                slot.innerHTML =
+                    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+            }
+        },
+
+        save(field) {
             var self = this;
-            if (this._saving) return;
+            field = field === "mode" ? "mode" : "policy";
+            if (this._saving) { this._queued = field; return; }
             var errors = this._validate();
-            if (!errors.ok) { this._showFieldErrors(errors.errors); return; }
-            this._clearFieldErrors();
+            if (!errors.ok) {
+                this._showFieldErrors(errors.errors);
+                this._status(field, "error");
+                return;
+            }
 
             var payload = this._payloadFromPolicy(this._pending.policy);
             this._saving = true;
-            var saveBtn = qs("#sg-save");
-            var status = qs("#sg-save-status");
-            var errBox = qs("#sg-save-error");
-            if (saveBtn) saveBtn.disabled = true;
-            if (status) status.textContent = "Saving\u2026";
-            if (errBox) errBox.hidden = true;
+            this._status(field, "saving");
 
             fetch("/api/settings/decim-safety", {
                 method: "PUT",
@@ -296,34 +366,34 @@
             }).then(function (r) {
                 return r.json().then(function (d) { return { ok: r.ok, data: d }; });
             }).then(function (res) {
+                if (!(res.ok && res.data && res.data.success)) {
+                    var err = new Error((res.data && res.data.error) || "Save failed.");
+                    err.fromServer = true;
+                    throw err;
+                }
                 self._saving = false;
-                if (saveBtn) saveBtn.disabled = false;
-                if (status) status.textContent = "";
-                if (res.ok && res.data && res.data.success) {
-                    if (window.toast) toast.success("Safety policy saved");
-                    else if (window.evToast) evToast("Safety policy saved", "success");
-                    // Re-render from the authoritative server state (keeps health fresh).
-                    self.render((res.data && res.data.settings) || self._loaded, self._lastHealth);
-                } else {
-                    var msg = (res.data && res.data.error) || "Save failed.";
-                    if (errBox) {
-                        var em = qs("#sg-save-error-msg");
-                        if (em) em.textContent = msg;
-                        errBox.hidden = false;
-                    }
-                    if (window.toast) toast.error(msg);
-                    else if (window.evToast) evToast(msg, "error");
+                // Re-render from the authoritative server state (keeps health fresh);
+                // a queued change keeps the controls on the user's newest selection.
+                self.render(res.data.settings || self._loaded, self._lastHealth);
+                self._status(field, "saved");
+                var next = self._queued;
+                self._queued = null;
+                if (next) {
+                    self._markDirty();
+                    if (self._dirty) self.save(next);
+                    else self._status(next, "saved");
                 }
             }).catch(function (e) {
                 self._saving = false;
-                if (saveBtn) saveBtn.disabled = false;
-                if (status) status.textContent = "";
+                self._queued = null;
                 console.error("Failed to save safety policy:", e);
-                if (errBox) {
-                    var em2 = qs("#sg-save-error-msg");
-                    if (em2) em2.textContent = "Network error \u2014 could not reach the server.";
-                    errBox.hidden = false;
-                }
+                var msg = (e && e.fromServer) ? e.message : "Network error \u2014 could not reach the server.";
+                // Snap back to the running policy so the controls never show an unsaved state.
+                self.syncControls(self._loaded);
+                var errs = {};
+                errs[field] = msg;
+                self._showFieldErrors(errs);
+                self._status(field, "error");
                 if (window.toast) toast.error("Failed to save safety policy");
                 else if (window.evToast) evToast("Failed to save safety policy", "error");
             });
@@ -333,21 +403,29 @@
             var loading = qs("#sg-loading");
             var error = qs("#sg-error");
             var body = qs("#sg-status");
-            if (!silent && loading) loading.hidden = false;
+            if (!silent && loading && !this._lastHealth) loading.hidden = false;
             if (error) error.hidden = true;
-
-            Promise.all([
+            return Promise.all([
                 fetch("/api/settings/decim-safety").then(function (r) { return r.json(); }),
                 fetch("/api/admin/decim-safety/health").then(function (r) { return r.json(); }),
             ]).then(function (res) {
                 var settings = (res[0] && res[0].settings) || {};
                 var health = res[1] || {};
                 window.safetyGeneral.render(settings, health);
+                RefreshButton.stamp("#sg-updated");
+                return true;
             }).catch(function (e) {
                 console.error("Failed to load safety status:", e);
                 if (loading) loading.hidden = true;
                 if (body) body.hidden = true;
                 if (error) error.hidden = false;
+                var posture = qs("#sg-posture");
+                if (posture && !window.safetyGeneral._lastHealth) {
+                    posture.dataset.state = "error";
+                    window.safetyGeneral._set("#sg-posture-title", "Status unavailable");
+                    window.safetyGeneral._set("#sg-posture-desc", "The running policy could not be read.");
+                }
+                return false;
             });
         },
 
@@ -374,16 +452,28 @@
                 if (pill) pill.hidden = !active;
             });
 
-            // Mode label: off / shadow / enforce (with the human meaning).
+            // Posture headline: the effective policy + mode, in plain words.
             var mode = settings.mode || "off";
-            var modeText = mode === "off" ? "off" : mode;
-            this._set("#sg-mode", modeText);
-            this._set("#sg-enabled", dmssOn ? "On" : "Off");
+            var state = (!dmssOn || mode === "off") ? "hmads" : (mode === "enforce" ? "enforce" : "shadow");
+            var posture = qs("#sg-posture");
+            if (posture) posture.dataset.state = state;
+            this._set("#sg-posture-title", {
+                hmads: "HMADS only",
+                shadow: "DMSS in shadow mode",
+                enforce: "DMSS enforcing",
+            }[state]);
+            this._set("#sg-posture-desc", {
+                hmads: "Deterministic heuristic rules decide every command. The DMSS provider is never called.",
+                shadow: "HMADS decides; model decisions are recorded and compared.",
+                enforce: "The model decides when it can; HMADS is the exact fallback.",
+            }[state]);
             this._set("#sg-provider", dmssOn ? (settings.provider || "—") : "— (disabled)");
             this._set("#sg-fallback",
                 (health.fallback_rate_24h === null || health.fallback_rate_24h === undefined)
                     ? "—" : (Math.round(health.fallback_rate_24h * 1000) / 10) + "%");
             this._set("#sg-last", health.last_decision_at || "never");
+            var errBox = qs("#sg-error");
+            if (errBox) errBox.hidden = true;
             this._set("#sg-timeout", (settings.request_timeout_ms != null ? settings.request_timeout_ms + " ms" : "—"));
             this._set("#sg-confidence", (settings.minimum_confidence != null ? String(settings.minimum_confidence) : "—"));
             this._set("#sg-breaker",
@@ -410,6 +500,228 @@
         },
     };
 
+    /* ==================== Refresh buttons ====================
+     * Visible feedback for a manual refresh: spinning icon + "Refreshing…",
+     * then "Updated" (or "Failed") for a moment, a short flash on the
+     * refreshed region, and an "Updated hh:mm:ss" stamp beside the button.
+     * The task returns a promise resolving to false on failure. */
+
+    var RefreshButton = {
+        MIN_SPIN_MS: 600,
+        RESULT_MS: 1800,
+
+        run(btn, task) {
+            if (!btn || btn.dataset.state === "busy") return;
+            clearTimeout(btn._rfTimer);
+            var label = btn.querySelector(".rf-label");
+            var started = Date.now();
+            btn.dataset.state = "busy";
+            btn.setAttribute("aria-busy", "true");
+            if (label) label.textContent = "Refreshing\u2026";
+
+            Promise.resolve().then(task).then(function (ok) { return ok !== false; }, function () { return false; })
+                .then(function (ok) {
+                    var wait = Math.max(0, RefreshButton.MIN_SPIN_MS - (Date.now() - started));
+                    setTimeout(function () {
+                        btn.removeAttribute("aria-busy");
+                        btn.dataset.state = ok ? "done" : "failed";
+                        if (label) label.textContent = ok ? "Updated" : "Failed";
+                        if (ok) RefreshButton.flash(btn.dataset.target);
+                        btn._rfTimer = setTimeout(function () {
+                            delete btn.dataset.state;
+                            if (label) label.textContent = "Refresh";
+                        }, RefreshButton.RESULT_MS);
+                    }, wait);
+                });
+        },
+
+        flash(sel) {
+            var el = sel && qs(sel);
+            if (!el) return;
+            el.classList.remove("rf-flash");
+            void el.offsetWidth; // restart the animation
+            el.classList.add("rf-flash");
+            el.addEventListener("animationend", function () { el.classList.remove("rf-flash"); }, { once: true });
+        },
+
+        stamp(sel) {
+            var el = qs(sel);
+            if (!el) return;
+            var now = new Date();
+            el.textContent = "Updated " + now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            el.title = now.toString();
+        },
+    };
+
+    /* ==================== Formatted number fields ====================
+     * .dc-num wraps a text input (not type=number, which follows the page
+     * locale and shows "0,9"). Values display with en-US grouping ("12,000"),
+     * show raw while focused, step with the -/+ buttons or arrow keys, and
+     * accept "12.000" / "0,9" as typed by an id-ID keyboard. */
+
+    var NumField = {
+        decimals(wrap) { return parseInt(wrap.dataset.decimals || "0", 10); },
+
+        parse(raw, decimals) {
+            var t = String(raw === null || raw === undefined ? "" : raw).replace(/\s/g, "");
+            if (!t) return NaN;
+            if (decimals > 0) {
+                if (t.indexOf(".") === -1) t = t.replace(",", ".");
+                t = t.replace(/,/g, "");
+            } else {
+                t = t.replace(/[.,]/g, "");
+            }
+            return /^-?\d*\.?\d+$/.test(t) ? Number(t) : NaN;
+        },
+
+        format(n, decimals) {
+            if (!Number.isFinite(n)) return "";
+            return n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        },
+
+        human(format, n) {
+            if (!Number.isFinite(n)) return "";
+            if (format === "duration-ms") {
+                return n < 1000 ? "under a second" : "= " + NumField.duration(n / 1000);
+            }
+            if (format === "duration-s") return "= " + NumField.duration(n);
+            if (format === "percent") return "Requires \u2265 " + Math.round(n * 100) + "% confidence";
+            return "";
+        },
+
+        duration(sec) {
+            if (sec < 60) {
+                var v = Math.round(sec * 10) / 10;
+                return v + (v === 1 ? " second" : " seconds");
+            }
+            var m = Math.floor(sec / 60), r = Math.round(sec % 60);
+            return m + " min" + (r ? " " + r + " s" : "");
+        },
+
+        value(input) {
+            var wrap = input.closest(".dc-num");
+            return NumField.parse(input.value, wrap ? NumField.decimals(wrap) : 0);
+        },
+
+        set(input, n) {
+            var wrap = input.closest(".dc-num");
+            input.value = NumField.format(n, wrap ? NumField.decimals(wrap) : 0);
+            NumField.sync(input);
+        },
+
+        /* Refresh the human-readable hint and the confidence slider. */
+        sync(input) {
+            var wrap = input.closest(".dc-num");
+            var n = NumField.value(input);
+            var hint = document.querySelector('.dc-human[data-for="' + input.id + '"]');
+            if (hint && wrap) hint.textContent = NumField.human(wrap.dataset.format, n);
+            if (input.id === "dc-confidence") {
+                var range = qs("#dc-confidence-range");
+                if (range && Number.isFinite(n)) range.value = String(n);
+            }
+        },
+
+        step(input, dir) {
+            var wrap = input.closest(".dc-num");
+            var min = Number(wrap.dataset.min), max = Number(wrap.dataset.max), step = Number(wrap.dataset.step) || 1;
+            var n = NumField.value(input);
+            if (!Number.isFinite(n)) n = min;
+            // Snap to the step grid, then move one step.
+            n = Math.round((Math.round(n / step) * step + dir * step) * 1e6) / 1e6;
+            n = Math.min(max, Math.max(min, n));
+            NumField.set(input, n);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        },
+
+        bind(root) {
+            root.querySelectorAll(".dc-num").forEach(function (wrap) {
+                var input = wrap.querySelector("input");
+                if (!input) return;
+                input.addEventListener("focus", function () {
+                    var n = NumField.value(input);
+                    if (Number.isFinite(n)) input.value = String(n);
+                });
+                input.addEventListener("blur", function () {
+                    var n = NumField.value(input);
+                    if (Number.isFinite(n)) NumField.set(input, n);
+                });
+                input.addEventListener("input", function () { NumField.sync(input); });
+                input.addEventListener("keydown", function (e) {
+                    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                        e.preventDefault();
+                        NumField.step(input, e.key === "ArrowUp" ? 1 : -1);
+                    }
+                });
+                wrap.querySelectorAll(".dc-step").forEach(function (b) {
+                    b.addEventListener("click", function () { NumField.step(input, Number(b.dataset.dir)); });
+                });
+            });
+            var range = qs("#dc-confidence-range"), conf = qs("#dc-confidence");
+            if (range && conf) range.addEventListener("input", function () {
+                NumField.set(conf, Number(range.value));
+                conf.dispatchEvent(new Event("input", { bubbles: true }));
+            });
+        },
+    };
+
+    /* ==================== DMSS display helpers ==================== */
+
+    function fmtNum(n) {
+        return (n === null || n === undefined || !Number.isFinite(Number(n))) ? "—" : Number(n).toLocaleString("en-US");
+    }
+
+    function fmtPct(rate) {
+        return (rate === null || rate === undefined) ? "—" : (Math.round(rate * 1000) / 10) + "%";
+    }
+
+    /* "2026-10-16 09:41:12" / ISO -> "Today 09:41" | "16 Oct 09:41" (full value in title). */
+    function parseWhen(s) {
+        if (!s) return null;
+        var d = new Date(String(s).replace(" ", "T"));
+        return isNaN(d.getTime()) ? null : d;
+    }
+    function fmtWhen(s) {
+        var d = parseWhen(s);
+        if (!d) return s ? String(s) : "—";
+        var time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+        var today = new Date();
+        if (d.toDateString() === today.toDateString()) return "Today " + time;
+        return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + " " + time;
+    }
+
+    /* snake_case API values -> readable labels; acronyms stay upper-case. */
+    function humanize(v) {
+        if (v === null || v === undefined || v === "") return "—";
+        var s = String(v).replace(/_/g, " ").toLowerCase()
+            .replace(/\b(hmads|dmss|decim)\b/g, function (m) { return m.toUpperCase(); });
+        return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    /* Semantic tone for a decision / agreement value. */
+    function toneOf(v) {
+        var s = String(v || "").toLowerCase();
+        if (!s) return "muted";
+        if (/(block|deny|denied|unsafe|danger|critical|error|disagree)/.test(s)) return "err";
+        if (/(review|approv|warn|stricter|caution|ask)/.test(s)) return "warn";
+        if (/(allow|safe|agree|pass|ok)/.test(s)) return "ok";
+        return "muted";
+    }
+
+    function pill(v) {
+        if (v === null || v === undefined || v === "") return '<span class="dm-none">—</span>';
+        return '<span class="dm-pill dm-tone-' + toneOf(v) + '">' + esc(humanize(v)) + "</span>";
+    }
+
+    function confirmDialog(opts) {
+        if (typeof window.showConfirm === "function") return window.showConfirm(opts);
+        return Promise.resolve(window.confirm(opts.message));
+    }
+
+    function notify(msg, type) {
+        if (window.toast && toast.show) toast.show(msg, type);
+        else if (window.evToast) evToast(msg, type);
+    }
+
     /* ==================== DMSS pane: migrated dashboard ====================
      * Same data surface as the legacy /system/decim-safety page
      * (health / summary / events / telemetry-clear), restyled with the
@@ -420,8 +732,6 @@
         _initialized: false,
         _timer: null,
         _config: null,
-        _configDirty: false,
-        _savingConfig: false,
         state: { limit: 50, offset: 0, total: 0 },
 
         init() {
@@ -429,7 +739,9 @@
             this._initialized = true;
 
             var refresh = qs("#dmss-refresh");
-            if (refresh) refresh.addEventListener("click", function () { window.safetyDmss.refresh(); });
+            if (refresh) refresh.addEventListener("click", function () {
+                RefreshButton.run(refresh, function () { return window.safetyDmss.refresh(); });
+            });
             var clear = qs("#dmss-clear");
             if (clear) clear.addEventListener("click", function () { window.safetyDmss.clearTelemetry(); });
             var retry = qs("#dmss-retry");
@@ -442,16 +754,9 @@
                 });
             });
             var form = qs("#dmss-config");
-            if (form) form.addEventListener("submit", function (e) {
-                e.preventDefault(); window.safetyDmss.saveConfig();
-            });
-            ["#dc-provider", "#dc-endpoint", "#dc-timeout", "#dc-confidence", "#dc-payload", "#dc-failures", "#dc-cooldown"].forEach(function (sel) {
-                var input = qs(sel);
-                if (input) input.addEventListener("input", function () { window.safetyDmss._markConfigDirty(); });
-            });
+            if (form) this._bindConfig(form);
 
-            this.loadConfig();
-            this.refresh();
+            this.refresh(); // also loads the config form
             this._timer = setInterval(function () {
                 if (!document.hidden) window.safetyDmss.loadHealth();
             }, 30000);
@@ -459,17 +764,166 @@
 
         _field(sel) { return qs(sel); },
 
-        _configPayload() {
-            function value(sel) { var el = qs(sel); return el ? el.value.trim() : ""; }
-            return {
-                provider: value("#dc-provider"),
-                provider_endpoint: value("#dc-endpoint"),
-                request_timeout_ms: Number(value("#dc-timeout")),
-                minimum_confidence: Number(value("#dc-confidence")),
-                max_payload_chars: Number(value("#dc-payload")),
-                circuit_breaker_failures: Number(value("#dc-failures")),
-                circuit_breaker_cooldown_seconds: Number(value("#dc-cooldown")),
+        /* ---------- Provider configuration: per-field auto-save ----------
+         * Each field PUTs only its own key (the API merges onto the stored
+         * settings). Saves run one at a time so two quick edits can't race
+         * each other's read-modify-write on the server. Feedback mirrors the
+         * System Settings AutoSave: spinner -> check beside the field label. */
+        CONFIG_FIELDS: {
+            provider: { sel: "#dc-provider", key: "provider", kind: "select" },
+            endpoint: { sel: "#dc-endpoint", key: "provider_endpoint", kind: "text" },
+            timeout: { sel: "#dc-timeout", key: "request_timeout_ms", kind: "num" },
+            confidence: { sel: "#dc-confidence", key: "minimum_confidence", kind: "num" },
+            payload: { sel: "#dc-payload", key: "max_payload_chars", kind: "num" },
+            failures: { sel: "#dc-failures", key: "circuit_breaker_failures", kind: "num" },
+            cooldown: { sel: "#dc-cooldown", key: "circuit_breaker_cooldown_seconds", kind: "num" },
+        },
+        CONFIG_DEBOUNCE_MS: 800,
+        _cfgTimers: {},
+        _cfgPending: {},        // field -> true while a save for it is queued or in flight
+        _cfgChain: null,
+
+        _bindConfig(form) {
+            var self = this;
+            // Enter in a text field would submit the form: commit the field instead.
+            form.addEventListener("submit", function (e) {
+                e.preventDefault();
+                var el = document.activeElement;
+                if (el && form.contains(el) && el.blur) el.blur();
+            });
+            NumField.bind(form);
+            Object.keys(this.CONFIG_FIELDS).forEach(function (name) {
+                var f = self.CONFIG_FIELDS[name];
+                var el = qs(f.sel);
+                if (!el) return;
+                if (f.kind === "select") {
+                    el.addEventListener("change", function () { self._flushField(name); });
+                } else {
+                    // typing, -/+ steppers and the confidence slider all fire "input"
+                    el.addEventListener("input", function () { self._queueField(name); });
+                    el.addEventListener("blur", function () { self._flushField(name); });
+                }
+            });
+        },
+
+        _fieldValue(name) {
+            var f = this.CONFIG_FIELDS[name], el = qs(f.sel);
+            if (!el) return undefined;
+            return f.kind === "num" ? NumField.value(el) : el.value.trim();
+        },
+
+        /* Field-level rule; returns an error message or "". */
+        _fieldError(name, v) {
+            function intIn(lo, hi) { return Number.isInteger(v) && v >= lo && v <= hi; }
+            switch (name) {
+                case "provider": return v === "systemone" ? "" : "Choose a registered provider.";
+                case "endpoint": return (!v || /^https?:\/\/[^/]+/i.test(v)) ? "" : "Enter an absolute http(s) URL.";
+                case "timeout": return intIn(100, 10000) ? "" : "Use 100–10,000 ms.";
+                case "confidence": return (Number.isFinite(v) && v >= 0 && v <= 1) ? "" : "Use a value from 0 to 1.";
+                case "payload": return intIn(1, 120000) ? "" : "Use 1–120,000 characters.";
+                case "failures": return intIn(1, 20) ? "" : "Use 1–20 failures.";
+                case "cooldown": return intIn(1, 3600) ? "" : "Use 1–3,600 seconds.";
+            }
+            return "";
+        },
+
+        _sameAsSaved(name, v) {
+            var saved = (this._config || {})[this.CONFIG_FIELDS[name].key];
+            if (name === "endpoint") return (v || "") === (saved || "");
+            if (name === "provider") return v === saved;
+            return Number.isFinite(v) && Number(saved) === v;
+        },
+
+        _queueField(name) {
+            var self = this;
+            clearTimeout(this._cfgTimers[name]);
+            this._cfgTimers[name] = setTimeout(function () { self._flushField(name); }, this.CONFIG_DEBOUNCE_MS);
+        },
+
+        _flushField(name) {
+            clearTimeout(this._cfgTimers[name]);
+            delete this._cfgTimers[name];
+            if (!this._config) return; // not loaded yet: nothing to compare against
+            var v = this._fieldValue(name);
+            var err = this._fieldError(name, v);
+            if (err) {
+                this._setConfigError(name, err);
+                this._cfgStatus(name, "error");
+                return;
+            }
+            this._setConfigError(name, "");
+            if (this._sameAsSaved(name, v)) {
+                this._cfgStatus(name, this._cfgStatusState(name) === "error" ? null : undefined);
+                return;
+            }
+            this._saveField(name, v);
+        },
+
+        _saveField(name, value) {
+            var self = this, f = this.CONFIG_FIELDS[name];
+            var body = {};
+            body[f.key] = value;
+            this._cfgPending[name] = true;
+            this._cfgStatus(name, "saving");
+            var run = function () {
+                return fetch("/api/settings/decim-safety", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                }).then(function (r) {
+                    return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+                }).then(function (res) {
+                    if (!res.ok || !res.data || !res.data.success) {
+                        var e = new Error((res.data && res.data.error) || "Could not save.");
+                        e.fromServer = true;
+                        throw e;
+                    }
+                    self._config = res.data.settings || self._config;
+                    delete self._cfgPending[name];
+                    // Echo server normalisation unless the user is editing this field again.
+                    var el = qs(f.sel);
+                    if (el && document.activeElement !== el && !self._cfgTimers[name]) {
+                        self._applyField(name, self._config[f.key]);
+                    }
+                    self._cfgStatus(name, "saved");
+                    self.loadHealth();
+                    if (window.safetyTester) window.safetyTester._updateCount();
+                }).catch(function (e) {
+                    delete self._cfgPending[name];
+                    console.error("Failed to save DMSS " + f.key + ":", e);
+                    self._setConfigError(name, e.fromServer ? e.message : "Network error — could not reach the server.");
+                    self._cfgStatus(name, "error");
+                    notify("Failed to save DMSS configuration", "error");
+                });
             };
+            this._cfgChain = (this._cfgChain || Promise.resolve()).then(run, run);
+        },
+
+        _cfgStatusState(name) {
+            var slot = qs("#dc-status-" + name);
+            if (!slot) return null;
+            return slot.classList.contains("is-error") ? "error" : slot.classList.contains("is-saving") ? "saving" : null;
+        },
+
+        /* state: "saving" | "saved" | "error" | null (clear) | undefined (leave as is) */
+        _cfgStatus(name, state) {
+            if (state === undefined) return;
+            var slot = qs("#dc-status-" + name);
+            if (!slot) return;
+            clearTimeout(slot._fadeTimer);
+            slot.classList.remove("is-saving", "is-saved", "is-error");
+            slot.innerHTML = "";
+            if (state === "saving") {
+                slot.classList.add("is-saving");
+                slot.innerHTML = '<span class="spinner"></span>';
+            } else if (state === "saved") {
+                slot.classList.add("is-saved");
+                slot.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path class="st-check-path" d="M4 12.5l5 5L20 6.5"/></svg>';
+                slot._fadeTimer = setTimeout(function () { slot.classList.remove("is-saved"); slot.innerHTML = ""; }, 1800);
+            } else if (state === "error") {
+                slot.classList.add("is-error");
+                slot.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+            }
         },
 
         _setConfigError(field, message) {
@@ -477,59 +931,38 @@
             if (!el) return;
             el.hidden = !message;
             el.textContent = message || "";
+            var input = qs("#dc-" + field);
+            if (input) {
+                if (message) input.setAttribute("aria-invalid", "true");
+                else input.removeAttribute("aria-invalid");
+            }
         },
 
-        _clearConfigErrors() {
-            ["provider", "endpoint", "timeout", "confidence", "payload", "failures", "cooldown"].forEach(function (name) {
-                window.safetyDmss._setConfigError(name, "");
+        _applyField(name, v) {
+            var f = this.CONFIG_FIELDS[name], el = qs(f.sel);
+            if (!el) return;
+            if (f.kind === "num") NumField.set(el, Number(v));
+            else el.value = (v === null || v === undefined) ? "" : v;
+        },
+
+        /* Reflect server state, skipping any field the user is editing, has
+         * queued/in-flight, or left with an error to fix. */
+        _applyConfig(s) {
+            var self = this;
+            Object.keys(this.CONFIG_FIELDS).forEach(function (name) {
+                var el = qs(self.CONFIG_FIELDS[name].sel);
+                var busy = (el && document.activeElement === el) || self._cfgTimers[name] ||
+                    self._cfgPending[name] || self._cfgStatusState(name) === "error";
+                if (!busy) self._applyField(name, s[self.CONFIG_FIELDS[name].key]);
             });
-            var box = qs("#dc-error"); if (box) box.hidden = true;
-        },
-
-        _validateConfig(payload) {
-            var ok = true;
-            this._clearConfigErrors();
-            function error(name, message) { window.safetyDmss._setConfigError(name, message); ok = false; }
-            if (payload.provider !== "systemone") error("provider", "Choose a registered provider.");
-            // A configured endpoint must be an absolute http(s) URL.
-            if (payload.provider_endpoint && !/^https?:\/\/[^/]+/i.test(payload.provider_endpoint)) error("endpoint", "Enter an absolute http(s) URL.");
-            if (!Number.isInteger(payload.request_timeout_ms) || payload.request_timeout_ms < 100 || payload.request_timeout_ms > 10000) error("timeout", "Use 100–10,000 ms.");
-            if (!Number.isFinite(payload.minimum_confidence) || payload.minimum_confidence < 0 || payload.minimum_confidence > 1) error("confidence", "Use a value from 0 to 1.");
-            if (!Number.isInteger(payload.max_payload_chars) || payload.max_payload_chars < 1 || payload.max_payload_chars > 120000) error("payload", "Use 1–120,000 characters.");
-            if (!Number.isInteger(payload.circuit_breaker_failures) || payload.circuit_breaker_failures < 1 || payload.circuit_breaker_failures > 20) error("failures", "Use 1–20 failures.");
-            if (!Number.isInteger(payload.circuit_breaker_cooldown_seconds) || payload.circuit_breaker_cooldown_seconds < 1 || payload.circuit_breaker_cooldown_seconds > 3600) error("cooldown", "Use 1–3,600 seconds.");
-            return ok;
-        },
-
-        _markConfigDirty() {
-            this._configDirty = true;
-            var badge = qs("#dmss-config-dirty"); if (badge) badge.hidden = false;
         },
 
         loadConfig() {
             var self = this;
-            fetch("/api/settings/decim-safety").then(function (r) { if (!r.ok) throw new Error(); return r.json(); }).then(function (data) {
-                var s = data.settings || {};
-                self._config = s;
-                if (self._configDirty) return;
-                var values = { "#dc-provider": s.provider, "#dc-endpoint": s.provider_endpoint || "", "#dc-timeout": s.request_timeout_ms, "#dc-confidence": s.minimum_confidence, "#dc-payload": s.max_payload_chars, "#dc-failures": s.circuit_breaker_failures, "#dc-cooldown": s.circuit_breaker_cooldown_seconds };
-                Object.keys(values).forEach(function (sel) { var el = qs(sel); if (el) el.value = values[sel]; });
-                var badge = qs("#dmss-config-dirty"); if (badge) badge.hidden = true;
-            }).catch(function () { window.safetyDmss._setError(true, "Failed to load DMSS configuration."); });
-        },
-
-        saveConfig() {
-            if (this._savingConfig) return;
-            var self = this, payload = this._configPayload();
-            if (!this._validateConfig(payload)) return;
-            this._savingConfig = true;
-            var btn = qs("#dc-save"), status = qs("#dc-status"); if (btn) btn.disabled = true; if (status) status.textContent = "Saving…";
-            fetch("/api/settings/decim-safety", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); }).then(function (res) {
-                self._savingConfig = false; if (btn) btn.disabled = false; if (status) status.textContent = "";
-                if (!res.ok || !res.data.success) throw new Error((res.data && res.data.error) || "Could not save configuration.");
-                self._configDirty = false; self._config = res.data.settings || {}; self.loadConfig(); self.loadHealth();
-                if (window.evToast) evToast("DMSS configuration saved", "success");
-            }).catch(function (err) { self._savingConfig = false; if (btn) btn.disabled = false; if (status) status.textContent = ""; var box = qs("#dc-error"), msg = qs("#dc-error-msg"); if (msg) msg.textContent = err.message; if (box) box.hidden = false; if (window.evToast) evToast("Failed to save DMSS configuration", "error"); });
+            return fetch("/api/settings/decim-safety").then(function (r) { if (!r.ok) throw new Error(); return r.json(); }).then(function (data) {
+                self._config = data.settings || {};
+                self._applyConfig(self._config);
+            }).catch(function () { window.safetyDmss._setError(true, "Failed to load DMSS configuration."); return false; });
         },
 
         _filters() {
@@ -554,73 +987,103 @@
             }
         },
 
+        /* Resolves to true only when every section loaded. */
         refresh() {
-            this.loadHealth();
-            this.loadSummary();
-            this.loadEvents();
+            // Reload the config form too; fields being edited are left alone.
+            var tasks = [this.loadHealth(), this.loadSummary(), this.loadEvents(), this.loadConfig()];
+            return Promise.all(tasks).then(function (res) {
+                var ok = res.every(function (r) { return r !== false; });
+                if (ok) RefreshButton.stamp("#dmss-updated");
+                return ok;
+            });
         },
 
         loadHealth() {
-            var badge = qs("#dmss-state-badge");
+            var card = qs("#kpi-status-card");
             function text(sel, v) { var el = qs(sel); if (el) el.textContent = v; }
-            fetch(this.API + "/health").then(function (r) {
+            return fetch(this.API + "/health").then(function (r) {
                 if (!r.ok) throw new Error("HTTP " + r.status);
                 return r.json();
             }).then(function (d) {
                 window.safetyDmss._setError(false);
-                text("#kpi-enabled", d.enabled ? "On" : "Off");
-                text("#kpi-mode", d.enabled ? (d.mode || "off") : "off");
-                text("#kpi-provider", d.provider || "—");
-                text("#kpi-circuit", "circuit " + (d.circuit_state || "closed"));
+                var mode = d.enabled ? (d.mode || "off") : "off";
+                var state = mode === "enforce" ? "enforce" : (mode === "shadow" ? "shadow" : "off");
+                if (card) card.dataset.state = state;
+                text("#kpi-enabled", { off: "Off", shadow: "Shadow", enforce: "Enforcing" }[state]);
+                text("#kpi-mode", {
+                    off: "HMADS decides every command",
+                    shadow: "Recorded only, HMADS decides",
+                    enforce: "Model decides, HMADS fallback",
+                }[state]);
+                var provider = qs("#dc-provider");
+                var providerOpt = provider && Array.prototype.find.call(provider.options, function (o) { return o.value === d.provider; });
+                text("#kpi-provider", providerOpt ? providerOpt.textContent : (d.provider || "—"));
+                var circuit = (d.circuit_state || "closed").toLowerCase();
+                var cb = qs("#kpi-circuit");
+                if (cb) {
+                    cb.textContent = "Circuit " + circuit;
+                    cb.className = "sf-badge " + (circuit === "open" ? "sf-badge-err" : (circuit === "half-open" ? "sf-badge-warn" : "sf-badge-ok"));
+                }
                 var latency = d.latency_ms || {};
-                text("#kpi-latency", latency.p50 == null ? "—" : (latency.p50 + " ms p50"));
-                text("#kpi-last-call", "last successful call " + (d.last_decision_at || "—"));
-                text("#kpi-fallback",
-                    (d.fallback_rate_24h === null || d.fallback_rate_24h === undefined)
-                        ? "—" : (Math.round(d.fallback_rate_24h * 1000) / 10) + "%");
-                if (badge) {
-                    var label = d.enabled ? d.mode : "disabled";
-                    badge.textContent = label;
-                    badge.className = "sf-badge " +
-                        (d.enabled && d.mode === "enforce" ? "sf-badge-err" :
-                         d.enabled ? "sf-badge-warn" : "sf-badge-muted");
+                text("#kpi-latency", latency.p50 == null ? "—" : fmtNum(latency.p50) + " ms");
+                var last = qs("#kpi-last-call");
+                if (last) {
+                    var parts = [];
+                    if (latency.p95 != null) parts.push("p95 " + fmtNum(latency.p95) + " ms");
+                    parts.push(d.last_decision_at ? "last call " + fmtWhen(d.last_decision_at) : "no calls yet");
+                    last.textContent = parts.join(" · ");
+                    last.title = d.last_decision_at ? "Last successful call: " + d.last_decision_at : "";
                 }
+                text("#kpi-fallback", fmtPct(d.fallback_rate_24h));
             }).catch(function () {
-                if (badge) {
-                    badge.textContent = "unreachable";
-                    badge.className = "sf-badge sf-badge-err";
-                }
+                if (card) card.dataset.state = "error";
+                text("#kpi-enabled", "Unreachable");
+                text("#kpi-mode", "Health check failed");
                 window.safetyDmss._setError(true, "Health check failed — the Decim Safety API is unreachable.");
+                return false;
             });
         },
 
         loadSummary() {
             var p = this._filters();
-            fetch(this.API + "/summary?" + p.toString()).then(function (r) {
+            return fetch(this.API + "/summary?" + p.toString()).then(function (r) {
                 if (!r.ok) throw new Error("HTTP " + r.status);
                 return r.json();
             }).then(function (d) {
                 function text(sel, v) { var el = qs(sel); if (el) el.textContent = v; }
-                text("#kpi-total", d.total_comparisons != null ? d.total_comparisons : 0);
-                text("#kpi-accepted", (d.decim_accepted != null ? d.decim_accepted : 0) + " accepted · " + (d.fallback_count != null ? d.fallback_count : 0) + " fallback");
+                text("#kpi-total", fmtNum(d.total_comparisons || 0));
+                text("#kpi-accepted", fmtNum(d.decim_accepted || 0) + " accepted · " + fmtNum(d.fallback_count || 0) + " fallback");
                 text("#kpi-unsafe",
                     (d.unsafe && d.unsafe.final != null)
-                        ? (d.unsafe.final + " unsafe · " + Math.round((d.unsafe.final_rate || 0) * 1000) / 10 + "%")
+                        ? (fmtNum(d.unsafe.final) + " unsafe (" + fmtPct(d.unsafe.final_rate || 0) + ")")
                         : "—");
-                window.safetyDmss._renderTable("#tbl-decisions", d.decision_distribution || {});
-                window.safetyDmss._renderTable("#tbl-agreement", d.agreement_matrix || {});
+                window.safetyDmss._renderBars("#tbl-decisions", d.decision_distribution || {});
+                window.safetyDmss._renderBars("#tbl-agreement", d.agreement_matrix || {});
             }).catch(function (e) {
                 console.error("DMSS summary failed:", e);
+                return false;
             });
         },
 
-        _renderTable(sel, obj) {
+        /* Count map -> labelled horizontal bars (share of the window total). */
+        _renderBars(sel, obj) {
             var el = qs(sel);
             if (!el) return;
-            var rows = Object.keys(obj).map(function (k) {
-                return "<tr><td>" + esc(k) + "</td><td>" + esc(obj[k]) + "</td></tr>";
+            var keys = Object.keys(obj).sort(function (a, b) { return (Number(obj[b]) || 0) - (Number(obj[a]) || 0); });
+            var total = keys.reduce(function (s, k) { return s + (Number(obj[k]) || 0); }, 0);
+            if (!keys.length || !total) {
+                el.innerHTML = '<div class="dm-bars-empty">No data in this window</div>';
+                return;
+            }
+            el.innerHTML = keys.map(function (k) {
+                var n = Number(obj[k]) || 0;
+                var pct = total ? (n / total) * 100 : 0;
+                return '<div class="dm-bar dm-tone-' + toneOf(k) + '">' +
+                    '<span class="dm-bar-label">' + esc(humanize(k)) + "</span>" +
+                    '<span class="dm-bar-track" aria-hidden="true"><span class="dm-bar-fill" style="width:' + Math.max(pct, n ? 1.5 : 0).toFixed(1) + '%"></span></span>' +
+                    '<span class="dm-bar-num">' + fmtNum(n) + '<span class="dm-bar-pct">' + (Math.round(pct * 10) / 10) + "%</span></span>" +
+                    "</div>";
             }).join("");
-            el.innerHTML = rows || '<tr><td colspan="2" class="sf-empty-cell">no data in this window</td></tr>';
         },
 
         loadEvents() {
@@ -630,36 +1093,48 @@
             var unsafe = qs("#f-unsafe");
             if (unsafe && unsafe.checked) p.set("unsafe_only", "1");
             var body = qs("#tbl-events-body");
-            if (!body) return;
+            if (!body) return Promise.resolve(true);
 
-            fetch(this.API + "/events?" + p.toString()).then(function (r) {
+            return fetch(this.API + "/events?" + p.toString()).then(function (r) {
                 if (!r.ok) throw new Error("HTTP " + r.status);
                 return r.json();
             }).then(function (d) {
                 window.safetyDmss._setError(false);
                 window.safetyDmss.state.total = d.total || 0;
+                var count = qs("#dmss-events-count");
+                if (count) count.textContent = d.total ? fmtNum(d.total) + (d.total === 1 ? " event" : " events") : "";
                 var events = d.events || [];
+                var unsafeOnly = !!(unsafe && unsafe.checked);
                 if (!events.length) {
-                    body.innerHTML = '<tr><td colspan="11" class="sf-empty-cell">No events in this window. Commands flagged while "Unsafe only" is on appear here.</td></tr>';
+                    body.innerHTML = '<tr><td colspan="10" class="sf-empty-cell dm-events-empty">' +
+                        "<strong>No events in this window</strong>" +
+                        "<span>" + (unsafeOnly
+                            ? "Only commands flagged as unsafe are shown. Turn off “Unsafe only” to see every decision."
+                            : "Decisions appear here once agents run bash or python commands.") + "</span></td></tr>";
                 } else {
                     body.innerHTML = events.map(function (e, index) {
-                        return '<tr data-event-index="' + index + '">' +
-                            "<td>" + esc(e.occurred_at) + "</td>" +
-                            "<td>" + esc(e.mode) + "</td>" +
-                            "<td>" + esc(e.tool_type) + "</td>" +
-                            '<td class="strong">' + esc(e.final_level) + "</td>" +
-                            "<td>" + esc(e.decision_source) + "</td>" +
-                            "<td>" + esc(e.model_decision || "—") + "</td>" +
-                            "<td>" + (e.model_confidence == null ? "—" : esc(e.model_confidence)) + "</td>" +
-                            "<td>" + esc(e.agreement || "—") + "</td>" +
-                            "<td>" + esc(e.fallback_reason || "—") + "</td>" +
-                            "<td>" + esc(e.disposition || "—") + "</td>" +
-                            '<td class="mono">' + esc(e.command_fingerprint || "—") + " (" + esc(e.command_length) + ")</td>" +
+                        var conf = e.model_confidence == null ? "" :
+                            '<span class="dm-conf">' + Math.round(Number(e.model_confidence) * 100) + "%</span>";
+                        var model = e.model_decision ? pill(e.model_decision) + conf : '<span class="dm-none">—</span>';
+                        return '<tr data-event-index="' + index + '" tabindex="0" title="Show detection details">' +
+                            '<td class="dm-when" title="' + esc(e.occurred_at) + '">' + esc(fmtWhen(e.occurred_at)) +
+                                '<span class="dm-sub">' + esc(humanize(e.mode)) + "</span></td>" +
+                            '<td><span class="dm-tool">' + esc(e.tool_type || "—") + "</span></td>" +
+                            "<td>" + pill(e.final_level) + "</td>" +
+                            "<td>" + esc(humanize(e.decision_source)) + "</td>" +
+                            "<td>" + model + "</td>" +
+                            "<td>" + (e.agreement ? '<span class="dm-agree dm-tone-' + toneOf(e.agreement) + '">' + esc(humanize(e.agreement)) + "</span>" : '<span class="dm-none">—</span>') + "</td>" +
+                            "<td>" + (e.fallback_reason ? '<span class="dm-fallback">' + esc(humanize(e.fallback_reason)) + "</span>" : '<span class="dm-none">—</span>') + "</td>" +
+                            "<td>" + esc(humanize(e.disposition)) + "</td>" +
+                            '<td class="mono">' + esc(e.command_fingerprint || "—") +
+                                (e.command_length != null ? '<span class="dm-sub">' + fmtNum(e.command_length) + " chars</span>" : "") + "</td>" +
+                            '<td class="dm-col-go"><i data-lucide="chevron-right"></i></td>' +
                             "</tr>";
                     }).join("");
+                    if (window.lucide) lucide.createIcons();
                 }
                 Array.prototype.forEach.call(body.querySelectorAll("tr[data-event-index]"), function (row) {
-                    row.addEventListener("click", function () {
+                    function open() {
                         var event = events[Number(row.dataset.eventIndex)];
                         if (!event || typeof window.openDmssActivityModal !== "function") return;
                         window.openDmssActivityModal(
@@ -668,13 +1143,18 @@
                             event.detection_type,
                             event.detection_command
                         );
+                    }
+                    row.addEventListener("click", open);
+                    row.addEventListener("keydown", function (ev) {
+                        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); }
                     });
                 });
                 window.safetyDmss._renderPager();
             }).catch(function (e) {
                 console.error("DMSS events failed:", e);
-                body.innerHTML = '<tr><td colspan="11" class="sf-empty-cell sf-empty-cell-err">Failed to load events.</td></tr>';
+                body.innerHTML = '<tr><td colspan="10" class="sf-empty-cell sf-empty-cell-err">Failed to load events.</td></tr>';
                 window.safetyDmss._setError(true, "Failed to load the activity table — check the Decim Safety service and retry.");
+                return false;
             });
         },
 
@@ -685,10 +1165,12 @@
             var limit = this.state.limit;
             var start = total ? this.state.offset + 1 : 0;
             var end = Math.min(this.state.offset + limit, total);
+            el.hidden = total <= limit;
             el.innerHTML =
-                "<span>Showing " + start + "–" + end + " of " + total + "</span>" +
-                '<button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" id="dmss-pg-prev"' + (this.state.offset <= 0 ? " disabled" : "") + ">Prev</button>" +
-                '<button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" id="dmss-pg-next"' + (end >= total ? " disabled" : "") + ">Next</button>";
+                '<span class="dm-pager-range">' + fmtNum(start) + "–" + fmtNum(end) + " of " + fmtNum(total) + "</span>" +
+                '<button type="button" class="hm-icon-btn" id="dmss-pg-prev" aria-label="Previous page"' + (this.state.offset <= 0 ? " disabled" : "") + '><i data-lucide="chevron-left"></i></button>' +
+                '<button type="button" class="hm-icon-btn" id="dmss-pg-next" aria-label="Next page"' + (end >= total ? " disabled" : "") + '><i data-lucide="chevron-right"></i></button>';
+            if (window.lucide) lucide.createIcons();
             var prev = qs("#dmss-pg-prev");
             var next = qs("#dmss-pg-next");
             if (prev) prev.addEventListener("click", function () {
@@ -705,16 +1187,24 @@
 
         clearTelemetry() {
             var self = this;
-            if (!confirm("Clear all Decim Safety telemetry records and statistics? This does not change Decim configuration.")) return;
-            fetch(this.API + "/telemetry/clear", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-            }).then(function (r) { return r.json(); }).then(function (d) {
-                alert(d.success ? ("Cleared " + d.deleted + " record(s).") : "Clear failed.");
-                self.state.offset = 0;
-                self.refresh();
+            confirmDialog({
+                title: "Clear Telemetry",
+                message: "Delete all DMSS telemetry records and statistics? The provider configuration is not changed. This cannot be undone.",
+                confirmText: "Clear telemetry",
+                danger: true,
+            }).then(function (ok) {
+                if (!ok) return;
+                return fetch(self.API + "/telemetry/clear", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                }).then(function (r) { return r.json(); }).then(function (d) {
+                    if (!d.success) throw new Error("clear failed");
+                    notify("Cleared " + fmtNum(d.deleted || 0) + " telemetry record" + (d.deleted === 1 ? "" : "s"), "success");
+                    self.state.offset = 0;
+                    self.refresh();
+                });
             }).catch(function () {
-                alert("Clear failed.");
+                notify("Failed to clear telemetry", "error");
             });
         },
     };
@@ -752,6 +1242,9 @@
                 });
             }
             run.addEventListener("click", function () { window.safetyTester.run(); });
+            // Shortcut hint matches the platform's modifier key.
+            var mod = qs(".dm-kbd-hint kbd");
+            if (mod && !/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) mod.textContent = "Ctrl";
             // Sample chips: populate the payload (and matching tool type) so the
             // probe is ready to submit without typing anything.
             var toolEl = qs("#dmss-tester-tool");
