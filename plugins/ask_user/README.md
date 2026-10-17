@@ -49,7 +49,7 @@ The plugin is self-contained and needs no Evonic core changes:
 
 ## Web UI
 
-`routes.py` serves `static/ask_user.js` and `static/ask_user.css`. An `after_app_request` hook adds them to agent pages (`/agents/<id>`) while the plugin is enabled. The script polls `/api/ask_user/pending` for the page's chat session: every second while the agent is busy or a card is open, and every 4 seconds otherwise. It docks pending questions above the chat input and locks the composer. It relies only on these chat page element ids: `#chat-input`, `#chat-send-btn`, `#chat-attach-btn`, `#chat-file-preview` and `#chat-messages`. If Evonic renames them, update `ask_user.js`. The Sessions page is not covered.
+`routes.py` serves `static/ask_user.js` and `static/ask_user.css`. An `after_app_request` hook adds them to agent pages (`/agents/<id>`) while the plugin is enabled. The script polls `/api/ask_user/pending` for the page's chat session: every second while the agent is busy or a card is open, and every 4 seconds otherwise. It docks pending questions above the chat input and locks the composer. The agent is re-read from the URL on every poll, so the card follows the sidebar's in-place agent switch (which changes the URL without reloading the page). It relies only on these chat page element ids: `#chat-input`, `#chat-send-btn`, `#chat-attach-btn`, `#chat-file-preview` and `#chat-messages`. If Evonic renames them, update `ask_user.js`. The Sessions page is not covered.
 
 ## Endpoints
 

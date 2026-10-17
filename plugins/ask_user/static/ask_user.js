@@ -16,7 +16,14 @@
     if (!$ || !composer || window.__askUserLoaded) return;
     window.__askUserLoaded = true;
 
-    const agentId = decodeURIComponent(location.pathname.split('/')[2] || '');
+    // The sidebar switches agents in place (softSwitchAgent pushes /agents/<id>
+    // without a reload), so the agent is re-read from the URL on every poll.
+    function currentAgentId() {
+        const match = location.pathname.match(/^\/agents\/([^/]+)\/?$/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    let agentId = currentAgentId();
     const POLL_ACTIVE_MS = 1000;   // agent busy or a card is open
     const POLL_IDLE_MS = 4000;
     const SESSION_REFRESH_MS = 15000;
@@ -28,13 +35,19 @@
 
     // ── Dock + composer lock ────────────────────────────────────────────────
 
+    // The dock is a panel fused to the composer's top edge; cards live in an inner
+    // scroller so the panel's concave corner fillets are not clipped by overflow.
     const dock = document.createElement('div');
     dock.id = 'ask-user-dock';
     dock.className = 'ask-dock';
     dock.hidden = true;
     dock.setAttribute('aria-live', 'polite');
-    const preview = document.getElementById('chat-file-preview');
-    const anchor = preview || composer.closest('.flex') || composer;
+    const list = document.createElement('div');
+    list.className = 'ask-dock-list';
+    dock.appendChild(list);
+    // Sit on top of the composer card, outside its grid; older layouts have no card.
+    const anchor = composer.closest('.chat-composer') || document.getElementById('chat-file-preview')
+        || composer.closest('.flex') || composer;
     anchor.parentNode.insertBefore(dock, anchor);
 
     // While a question is docked the agent is blocked on it, so the composer is
@@ -66,13 +79,18 @@
     }
 
     function syncDock() {
-        const open = dock.children.length > 0;
+        const open = list.children.length > 0;
         dock.hidden = !open;
         lockComposer(open);
         setWaitingLabel(open);
     }
 
     // ── Card ────────────────────────────────────────────────────────────────
+
+    // lucide "message-circle-question", drawn like the chat UI's other icons (stroke 2).
+    const QUESTION_ICON =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>';
 
     // Keycap showing that Enter triggers the button (lucide "corner-down-left").
     function enterKeyHint() {
@@ -109,7 +127,7 @@
             .attr('data-question-id', questionId)
             .data('questions', questions);
         $card.append($('<div class="ask-card-title">').append(
-            $('<span class="ask-card-icon" aria-hidden="true">').text('?'),
+            $('<span class="ask-card-icon" aria-hidden="true">').html(QUESTION_ICON),
             $('<span>').text('The agent needs your input')
         ));
 
@@ -247,7 +265,7 @@
         if (cards.has(pending.question_id)) return;
         const $card = buildCard(pending);
         cards.set(pending.question_id, $card);
-        dock.appendChild($card[0]);
+        list.appendChild($card[0]);
         syncDock();
     }
 
@@ -333,12 +351,20 @@
 
     async function poll() {
         try {
-            if (!sessionId || Date.now() - sessionFetchedAt > SESSION_REFRESH_MS) await refreshSession();
-            if (sessionId && !document.hidden) {
+            const nextAgentId = currentAgentId();
+            if (nextAgentId !== agentId) {
+                // Cards belong to the previous agent's chat; they come back if the user returns.
+                agentId = nextAgentId;
+                sessionId = null;
+                expireAll();
+            }
+            if (agentId && (!sessionId || Date.now() - sessionFetchedAt > SESSION_REFRESH_MS)) await refreshSession();
+            if (agentId && sessionId && !document.hidden) {
                 const known = [...cards.keys()].join(',');
                 const res = await fetch(`/api/ask_user/pending?session_id=${encodeURIComponent(sessionId)}` +
                     (known ? `&known=${encodeURIComponent(known)}` : ''));
-                if (res.ok) {
+                // Skip a response that raced an agent switch; the next tick asks for the new agent.
+                if (res.ok && currentAgentId() === agentId) {
                     const data = await res.json();
                     Object.keys(data.resolved || {}).forEach(resolveCard);
                     (data.questions || []).forEach(addCard);
