@@ -8653,9 +8653,13 @@ function openSessionSummaryModal() {
 const _refreshSessionStateImpl = async function() {
     const myReq = ++_refreshSessionStateReq;
     try {
+        // Resolve the session before fetching state. On initial chat-page load,
+        // history loading may still be caching it; without this the API returns
+        // only global state and omits session-scoped plan, tasks, and CMP data.
+        const sessionId = await _getChatSessionId();
+        const sid = sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : '';
         // One round trip: /chat/state?include=summary returns agent state
         // with the session summary attached.
-        const sid = _chatSessionId ? `&session_id=${encodeURIComponent(_chatSessionId)}` : '';
         const res = await fetch(`/api/agents/${AGENT_ID}/chat/state?user_id=web_test${sid}&include=summary`);
         if (!res.ok) return;
         const stateData = await res.json();
@@ -8668,7 +8672,7 @@ const _refreshSessionStateImpl = async function() {
         // Reuse the payload for the agent-state panel — refreshAgentState()
         // would re-fetch the exact same /chat/state endpoint.
         if (ENABLE_AGENT_STATE) {
-            StateUI.renderAgentState(AGENT_ID, _chatSessionId, ['agent-state-content', 'mobile-agent-state-content'], stateData);
+            StateUI.renderAgentState(AGENT_ID, sessionId, ['agent-state-content', 'mobile-agent-state-content'], stateData);
         }
 
         // Session State: Context / Plan / Tasks / Background / Skills, then the summary
@@ -8730,10 +8734,11 @@ function refreshSessionState() {
 async function refreshAgentState() {
     if (!ENABLE_AGENT_STATE) return;
     try {
-        const sid = _chatSessionId ? `&session_id=${encodeURIComponent(_chatSessionId)}` : '';
+        const sessionId = await _getChatSessionId();
+        const sid = sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : '';
         const res = await fetch(`/api/agents/${AGENT_ID}/chat/state?user_id=web_test${sid}`);
         if (!res.ok) return;
-        StateUI.renderAgentState(AGENT_ID, _chatSessionId, ['agent-state-content', 'mobile-agent-state-content'], await res.json());
+        StateUI.renderAgentState(AGENT_ID, sessionId, ['agent-state-content', 'mobile-agent-state-content'], await res.json());
     } catch (e) { /* ignore */ }
 }
 
