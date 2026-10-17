@@ -595,6 +595,22 @@
     </div>
     <p class="setting-group-desc">Public history and access options.</p>
     <div class="setting-group-body">
+        <div class="setting-row" data-search="two factor authentication 2fa totp authenticator google authy login security">
+            <div class="setting-row-text">
+                <div class="setting-row-title">Two-Factor Authentication</div>
+                <div class="setting-row-desc" id="two-factor-auth-description">
+                    Require a six-digit authenticator-app code after the administrator password.
+                    Set <code>ENABLE_2FA=true</code> or <code>ENABLE_2FA=false</code> to override this setting from the environment.
+                </div>
+            </div>
+            <div class="setting-row-control">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="two-factor-auth-toggle" class="sr-only peer">
+                    <span class="dyn-toggle"></span>
+                </label>
+                <span class="save-status" id="two-factor-auth-status" aria-live="polite"></span>
+            </div>
+        </div>
         <div class="setting-row" data-search="public history unauthenticated read-only evaluation data access">
             <div class="setting-row-text">
                 <div class="setting-row-title">Public History</div>

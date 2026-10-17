@@ -46,6 +46,19 @@ def _get_env_bool(name: str, default: bool, invert: bool = False) -> bool:
     return not result if invert else result
 
 
+def get_two_factor_auth_override():
+    """Return the explicit ``ENABLE_2FA`` override, or ``None`` when unset.
+
+    An explicitly supplied environment value always wins over the database
+    setting. This is evaluated on access so test/deployment environments that
+    inject environment variables before process start behave predictably.
+    """
+    raw = os.getenv("ENABLE_2FA")
+    if raw is None:
+        return None
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _get_env_int(name: str, default: int, min_val: int = None, max_val: int = None) -> int:
     """Read an integer environment variable with validation and bounds clamping."""
     try:

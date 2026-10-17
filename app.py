@@ -685,7 +685,7 @@ def _close_db_connection(exc):
 
 def _csrf_exempt(path):
     """Return True if the path should skip CSRF validation."""
-    if path in ('/login', '/logout', '/setup',
+    if path in ('/login', '/logout', '/two-factor', '/setup',
                 '/api/health', '/api/connector/pair',
                 '/api/internal/skills/muktamar-agent/verify-token',
                 '/api/setup', '/api/setup/test-connection', '/api/setup/docker-status'):
@@ -782,7 +782,7 @@ def enforce_auth():
         return None  # Plugin webhook endpoints handle their own auth
     if request.path.startswith('/plugin/'):
         return None  # Plugin routes handle their own auth internally
-    if request.path in ('/login', '/logout'):
+    if request.path in ('/login', '/logout', '/two-factor'):
         return None
 
     # Setup endpoints handle their own auth/state validation — always allow them

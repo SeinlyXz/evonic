@@ -27,6 +27,7 @@ window.settingsGeneral = {
                 throw new Error((general && general.error) || "Failed to load settings");
             }
             this._fill(general);
+            await this._loadTwoFactorAuth();
             this._populateModelSelects(models, {
                 defaultModelId: defaultModel && defaultModel.model ? defaultModel.model.id : "",
                 defaultModelFallbackId: general.default_model_fallback_id || "",
@@ -52,6 +53,7 @@ window.settingsGeneral = {
             this._bound = true;
             this._registerSpecialSaves();
             AutoSave.bind(pane);
+            this._bindTwoFactorAuth();
             // Repopulate model selects when the Models pane changes anything
             document.addEventListener("models:changed", async () => {
                 const models = await ModelsCache.get();
@@ -93,6 +95,48 @@ window.settingsGeneral = {
         set("whatsapp-typing-speed-input", s.whatsapp_typing_chars_per_second);
         set("whatsapp-max-typing-delay-input", s.whatsapp_max_typing_delay_seconds);
         set("whatsapp-outbound-limit-input", s.whatsapp_max_outbound_per_minute);
+    },
+
+    async _loadTwoFactorAuth() {
+        const toggle = document.getElementById("two-factor-auth-toggle");
+        const status = document.getElementById("two-factor-auth-status");
+        const description = document.getElementById("two-factor-auth-description");
+        if (!toggle) return;
+        const data = await apiGet("/api/settings/two-factor-auth");
+        if (!data || !data.success) throw new Error((data && data.error) || "Failed to load two-factor authentication");
+        toggle.checked = !!data.enabled;
+        toggle.dataset.lastSaved = data.stored_enabled ? "1" : "0";
+        toggle.disabled = !!data.env_override;
+        if (data.env_override) {
+            if (status) status.textContent = "Controlled by ENABLE_2FA";
+            if (description) description.textContent = "ENABLE_2FA is set, so its value overrides this saved setting. Remove the environment variable to manage 2FA here.";
+        } else if (data.enabled && !data.configured) {
+            if (status) status.textContent = "Setup required at next login";
+        } else if (status) {
+            status.textContent = "";
+        }
+    },
+
+    _bindTwoFactorAuth() {
+        const toggle = document.getElementById("two-factor-auth-toggle");
+        if (!toggle || toggle.dataset.bound) return;
+        toggle.dataset.bound = "1";
+        toggle.addEventListener("change", async () => {
+            const status = document.getElementById("two-factor-auth-status");
+            const previous = toggle.dataset.lastSaved === "1";
+            if (status) status.textContent = "Saving…";
+            try {
+                const data = await apiPut("/api/settings/two-factor-auth", {enabled: toggle.checked});
+                if (!data || !data.success) throw new Error((data && data.error) || "Failed to save");
+                toggle.checked = !!data.enabled;
+                toggle.dataset.lastSaved = data.stored_enabled ? "1" : "0";
+                if (status) status.textContent = data.env_override ? "Controlled by ENABLE_2FA" : "Saved";
+            } catch (error) {
+                toggle.checked = previous;
+                if (status) status.textContent = "Failed to save";
+                if (window.toast) toast.show(error.message, "error");
+            }
+        });
     },
 
     _profile(profiles, key) {
