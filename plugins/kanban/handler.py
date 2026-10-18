@@ -1721,6 +1721,11 @@ def _state_handler(agent_id: str, session_id: str, agent_state, label: str, data
                     'result': 'error',
                     'message': f"Cannot activate task '{task_id}' — task is archived.",
                 }
+            if not task.get('assignee'):
+                return {
+                    'result': 'error',
+                    'message': f"Cannot activate task '{task_id}' — assign it before starting it.",
+                }
             if task.get('status') not in ('in-progress', 'done'):
                 # Auto-promote to in-progress on activation (no separate kanban_update_status call needed)
                 old_status = task.get('status', 'todo')
