@@ -2417,9 +2417,10 @@ function _fetchBgLog() {
     let logUrl = `/api/agents/${encodeURIComponent(currentAgentId)}/bg-job/log?file=${encodeURIComponent(p.log_file)}&lines=200`;
     if (p.session_id) logUrl += `&session_id=${encodeURIComponent(p.session_id)}`;
     fetch(logUrl)
-        .then(res => {
-            if (!res.ok) throw new Error('Failed to load log');
-            return res.json();
+        .then(async res => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+            return data;
         })
         .then(data => {
             const pre = document.getElementById('bg-log-content');
@@ -2445,8 +2446,8 @@ function _fetchBgLog() {
         })
         .catch(err => {
             const pre = document.getElementById('bg-log-content');
-            if (pre) pre.innerHTML = `<span class="text-red-400 italic">Failed to load log: ${esc(err.message)}</span>`;
-            // Retry after longer delay
+            if (pre) pre.innerHTML = `<span class="text-red-400 italic">${esc(err.message || 'Unable to load live output.')}</span>`;
+            // A process can create its log shortly after registration, so retry.
             _stopBgLogPolling();
             _bgLogPollTimer = setTimeout(_fetchBgLog, 5000);
         });

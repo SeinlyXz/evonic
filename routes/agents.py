@@ -2376,7 +2376,12 @@ def api_bg_job_log(agent_id):
             if not agent:
                 return jsonify({'error': 'Agent not found'}), 404
             from backend.tools.lib.exec_backend import registry
-            backend = registry.get_backend(session_id, {**agent, 'agent_id': agent_id})
+            # A sandbox job can belong to a sub-agent or another runtime context
+            # whose backend identity is not fully represented by the DB row.  Use
+            # its spawn-time snapshot so this request reaches the same sandbox
+            # that owns the log rather than creating/resolving a different one.
+            backend_context = {**agent, 'agent_id': agent_id, **(job.backend_ctx or {})}
+            backend = registry.get_backend(session_id, backend_context)
             command = f"{direction} -n {lines_count} -- {shlex.quote(real)}"
             result = backend.run_bash(command, 15, {})
             if result.get('exit_code') != 0:
