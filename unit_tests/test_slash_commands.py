@@ -99,6 +99,40 @@ def test_exec_preserves_atg_cmp_and_unrelated_session_state():
     assert saved_state["workspace_marker"] == "preserve"
 
 
+def test_plan_preserves_cmp_and_session_data_while_resetting_only_global_focus():
+    from backend.agent_state import AgentState
+
+    state = AgentState(mode="execute", plan_file="plan/current.md")
+    state.atg = {"status": "executing", "dag": {"nodes": {}}}
+    state.cmp = {"version": 1, "active_id": "A1", "paths": {"A1": {}}}
+    session_state = json.loads(state.serialize())
+    session_state["workspace_marker"] = "preserve"
+    global_state = {
+        "focus": True,
+        "focus_reason": "exclusive task",
+        "active_fallback_model_id": "fallback-model",
+    }
+    with patch("models.chat.agent_chat_manager.get") as get_chat:
+        chat_db = get_chat.return_value
+        chat_db.get_session_state.return_value = json.dumps(session_state)
+        chat_db.get_agent_state.return_value = json.dumps(global_state)
+
+        response = execute_command("plan", "", "session-123", "agent-123", "user-123")
+
+    assert response == "Switched to plan mode."
+    saved_session = json.loads(chat_db.upsert_session_state.call_args.args[1])
+    assert saved_session["mode"] == "plan"
+    assert saved_session["plan_file"] == "plan/current.md"
+    assert saved_session["atg"] == state.atg
+    assert saved_session["cmp"] == state.cmp
+    assert saved_session["workspace_marker"] == "preserve"
+
+    saved_global = json.loads(chat_db.upsert_agent_state.call_args.args[0])
+    assert saved_global["focus"] is False
+    assert saved_global["focus_reason"] is None
+    assert saved_global["active_fallback_model_id"] == "fallback-model"
+
+
 def test_agent_mode_transition_still_requires_plan_file():
     from backend.agent_state import AgentState
 

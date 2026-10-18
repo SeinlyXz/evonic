@@ -759,14 +759,25 @@ def _register_builtins():
         from backend.agent_state import AgentState
         from models.chat import agent_chat_manager
 
-        # Create a fresh AgentState in plan mode
-        ms = AgentState()
-
         _db = agent_chat_manager.get(agent_id)
+        session_content = _db.get_session_state(session_id)
+        # Preserve CMP, ATG, plan, tasks, and extension-owned session fields.
+        # Only the operating mode changes for this command.
+        ms = AgentState.deserialize(session_content) if session_content else AgentState()
+        ms.set_mode("plan", reason="slash command /plan")
         _persist_session_agent_state(_db, session_id, ms)
 
-        # Reset focus in global agent_state (focus is cross-session).
-        _db.upsert_agent_state(ms.serialize())
+        # Focus is global, but do not replace unrelated global state such as
+        # an active fallback-model marker.
+        raw_global = _db.get_agent_state()
+        try:
+            global_data = json.loads(raw_global) if raw_global else {}
+        except (TypeError, ValueError):
+            global_data = {}
+        if not isinstance(global_data, dict):
+            global_data = {}
+        global_data.update({'focus': False, 'focus_reason': None})
+        _db.upsert_agent_state(json.dumps(global_data))
 
         return "Switched to plan mode."
 
