@@ -8525,6 +8525,52 @@ function closeMobileChatSummary() {
 // In-memory cache of background process data, keyed by job_id.
 let _bgProcessesData = {};
 
+// Active monitors may be independent of a live background process.
+let _sessionMonitorsData = {};
+let _monitorModalTrigger = null;
+
+function _formatMonitorDuration(seconds) {
+    const secs = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+    return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
+}
+
+function buildMonitorsHtml(monitors) {
+    if (!Array.isArray(monitors) || monitors.length === 0) { _sessionMonitorsData = {}; return ''; }
+    _sessionMonitorsData = Object.fromEntries(monitors.filter(Boolean).map(m => [m.monitor_id, m]));
+    const count = monitors.length;
+    return `<div class="st-sec"><button type="button" onclick="openSessionMonitorsModal(this)" class="inline-flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 -mx-1 text-left transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 dark:hover:bg-gray-700" aria-haspopup="dialog" aria-label="View ${count} active monitor${count === 1 ? '' : 's'}"><span class="st-sec-h"><span aria-hidden="true">👁</span><span>Monitors</span></span><span class="st-chip green">${count} active</span></button></div>`;
+}
+
+function closeSessionMonitorsModal() {
+    const backdrop = document.getElementById('session-monitors-modal');
+    if (backdrop) backdrop.remove();
+    document.removeEventListener('keydown', _sessionMonitorsEsc, true);
+    if (_monitorModalTrigger && document.contains(_monitorModalTrigger)) _monitorModalTrigger.focus();
+    _monitorModalTrigger = null;
+}
+function _sessionMonitorsEsc(event) { if (event.key === 'Escape') { event.stopPropagation(); closeSessionMonitorsModal(); } }
+function openSessionMonitorsModal(trigger) {
+    _monitorModalTrigger = trigger || document.activeElement;
+    const monitors = Object.values(_sessionMonitorsData);
+    if (!monitors.length) return;
+    const rows = monitors.map(m => {
+        const condition = m.condition || 'Notify when the monitor condition is met.';
+        const config = Object.entries(m.when || {}).map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`).join('\n') || 'No additional condition configuration.';
+        return `<article class="rounded-xl border border-gray-200 p-4 dark:border-white/10"><dl class="space-y-3 text-sm"><div><dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Target</dt><dd class="mt-1 break-words font-mono text-xs text-gray-800 dark:text-gray-100">${escapeHtml(m.watching || 'Session condition')}</dd></div><div><dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Condition</dt><dd class="mt-1 text-gray-700 dark:text-gray-200">${escapeHtml(condition)}</dd></div><div><dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Configuration</dt><dd class="mt-1"><textarea readonly aria-label="Monitor condition configuration" class="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 p-2 font-mono text-xs leading-5 text-gray-700 dark:border-white/10 dark:bg-black/20 dark:text-gray-200" rows="${Math.min(5, Math.max(2, config.split('\n').length))}">${escapeHtml(config)}</textarea></dd></div>${m.note ? `<div><dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Note</dt><dd class="mt-1 text-gray-600 dark:text-gray-300">${escapeHtml(m.note)}</dd></div>` : ''}<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400"><span>Checks every ${escapeHtml(_formatMonitorDuration(m.interval_seconds))}</span><span>Expires in ${escapeHtml(_formatMonitorDuration(m.expires_in_seconds))}</span></div></dl></article>`;
+    }).join('');
+    const backdrop = document.createElement('div');
+    backdrop.id = 'session-monitors-modal';
+    backdrop.className = 'fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4';
+    backdrop.setAttribute('role', 'presentation');
+    backdrop.innerHTML = `<section class="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-950 sm:max-h-[90vh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="session-monitors-title"><header class="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-white/10"><div><h3 id="session-monitors-title" class="text-lg font-bold text-gray-900 dark:text-white">Active monitors</h3><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Read-only conditions configured for this session.</p></div><button type="button" onclick="closeSessionMonitorsModal()" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:hover:bg-white/10 dark:hover:text-white" aria-label="Close monitor details">✕</button></header><div class="space-y-3 overflow-y-auto p-5">${rows}</div></section>`;
+    backdrop.addEventListener('mousedown', event => { if (event.target === backdrop) closeSessionMonitorsModal(); });
+    document.body.appendChild(backdrop);
+    document.addEventListener('keydown', _sessionMonitorsEsc, true);
+    setTimeout(() => backdrop.querySelector('button[aria-label="Close monitor details"]')?.focus(), 0);
+}
+
 function buildBgProcessesHtml(procs) {
     if (!Array.isArray(procs)) return '';
     const running = procs.filter(p => p && p.status === 'running');
@@ -8767,7 +8813,7 @@ const _refreshSessionStateImpl = async function() {
         StateUI.setModeChip(stateData);
         const sectionsHtml = StateUI.sessionSections(stateData, {
             taskText: t => marked.parseInline(t.text),
-            bgHtml: buildBgProcessesHtml(stateData.background_processes)
+            bgHtml: buildBgProcessesHtml(stateData.background_processes) + buildMonitorsHtml(stateData.monitors)
         });
         const goal = stateData.active_goal;
         const goalTitle = goal && (goal.title || goal.text) ? (goal.title || goal.text) : '';

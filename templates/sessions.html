@@ -2276,6 +2276,62 @@ async function deleteSession(sessionId) {
 // In-memory cache of background process data, keyed by job_id.
 let _bgProcessesData = {};
 
+// Active monitors are session-scoped and may watch a job, log file, or shell condition.
+// Keep their own cache because some monitors do not belong to a live background process.
+let _sessionMonitorsData = {};
+let _monitorModalTrigger = null;
+
+function _formatMonitorDuration(seconds) {
+    const secs = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+    return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
+}
+
+function buildMonitorsHtml(monitors) {
+    if (!Array.isArray(monitors) || monitors.length === 0) {
+        _sessionMonitorsData = {};
+        return '';
+    }
+    _sessionMonitorsData = Object.fromEntries(monitors.filter(Boolean).map(m => [m.monitor_id, m]));
+    const count = monitors.length;
+    return `<div class="st-sec"><button type="button" onclick="openSessionMonitorsModal(this)" class="inline-flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 -mx-1 text-left transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 dark:hover:bg-gray-700" aria-haspopup="dialog" aria-label="View ${count} active monitor${count === 1 ? '' : 's'}"><span class="st-sec-h"><span aria-hidden="true">👁</span><span>Monitors</span></span><span class="st-chip green">${count} active</span></button></div>`;
+}
+
+function closeSessionMonitorsModal() {
+    const backdrop = document.getElementById('session-monitors-modal');
+    if (backdrop) backdrop.remove();
+    document.removeEventListener('keydown', _sessionMonitorsEsc, true);
+    if (_monitorModalTrigger && document.contains(_monitorModalTrigger)) _monitorModalTrigger.focus();
+    _monitorModalTrigger = null;
+}
+function _sessionMonitorsEsc(event) {
+    if (event.key === 'Escape') {
+        event.stopPropagation();
+        closeSessionMonitorsModal();
+    }
+}
+function openSessionMonitorsModal(trigger) {
+    _monitorModalTrigger = trigger || document.activeElement;
+    const monitors = Object.values(_sessionMonitorsData);
+    if (!monitors.length) return;
+    const rows = monitors.map(m => {
+        const condition = m.condition || 'Notify when the monitor condition is met.';
+        const config = Object.entries(m.when || {}).map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`).join('\n') || 'No additional condition configuration.';
+        return `<article class="rounded-xl border border-gray-200 p-4 dark:border-white/10"><dl class="space-y-3 text-sm"><div><dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Target</dt><dd class="mt-1 break-words font-mono text-xs text-gray-800 dark:text-gray-100">${esc(m.watching || 'Session condition')}</dd></div><div><dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Condition</dt><dd class="mt-1 text-gray-700 dark:text-gray-200">${esc(condition)}</dd></div><div><dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Configuration</dt><dd class="mt-1"><textarea readonly aria-label="Monitor condition configuration" class="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 p-2 font-mono text-xs leading-5 text-gray-700 dark:border-white/10 dark:bg-black/20 dark:text-gray-200" rows="${Math.min(5, Math.max(2, config.split('\n').length))}">${esc(config)}</textarea></dd></div>${m.note ? `<div><dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Note</dt><dd class="mt-1 text-gray-600 dark:text-gray-300">${esc(m.note)}</dd></div>` : ''}<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400"><span>Checks every ${esc(_formatMonitorDuration(m.interval_seconds))}</span><span>Expires in ${esc(_formatMonitorDuration(m.expires_in_seconds))}</span></div></dl></article>`;
+    }).join('');
+    const backdrop = document.createElement('div');
+    backdrop.id = 'session-monitors-modal';
+    backdrop.className = 'fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4';
+    backdrop.setAttribute('role', 'presentation');
+    backdrop.innerHTML = `<section class="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-950 sm:max-h-[90vh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="session-monitors-title"><header class="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-white/10"><div><h3 id="session-monitors-title" class="text-lg font-bold text-gray-900 dark:text-white">Active monitors</h3><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Read-only conditions configured for this session.</p></div><button type="button" onclick="closeSessionMonitorsModal()" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:hover:bg-white/10 dark:hover:text-white" aria-label="Close monitor details">✕</button></header><div class="space-y-3 overflow-y-auto p-5">${rows}</div></section>`;
+    backdrop.addEventListener('mousedown', event => { if (event.target === backdrop) closeSessionMonitorsModal(); });
+    document.body.appendChild(backdrop);
+    document.addEventListener('keydown', _sessionMonitorsEsc, true);
+    setTimeout(() => backdrop.querySelector('button[aria-label="Close monitor details"]')?.focus(), 0);
+}
+
+
 function buildBgProcessesHtml(procs) {
     if (!Array.isArray(procs)) return '';
     const running = procs.filter(p => p && p.status === 'running');
@@ -2620,6 +2676,7 @@ function _renderSessionStateSnapshot(stateData) {
         planHtml += '</div>';
     }
     planHtml += buildBgProcessesHtml(stateData.background_processes);
+    planHtml += buildMonitorsHtml(stateData.monitors);
 
     // --- Skills ---
     const skills = Array.isArray(stateData.loaded_skills)
@@ -2645,6 +2702,27 @@ function _renderSessionStateSnapshot(stateData) {
     });
 }
 
+function closeSessionSummaryModal() {
+    const modal = document.getElementById('session-summary-modal');
+    if (modal) modal.remove();
+    document.removeEventListener('keydown', _sessionSummaryEsc, true);
+    if (window._sessionSummaryTrigger && document.contains(window._sessionSummaryTrigger)) window._sessionSummaryTrigger.focus();
+}
+function _sessionSummaryEsc(event) { if (event.key === 'Escape') { event.stopPropagation(); closeSessionSummaryModal(); } }
+function openSessionSummaryModal(trigger) {
+    window._sessionSummaryTrigger = trigger || document.activeElement;
+    const text = lastSummaryText || '';
+    const modal = document.createElement('div');
+    modal.id = 'session-summary-modal';
+    modal.className = 'fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4';
+    modal.setAttribute('role', 'presentation');
+    modal.innerHTML = `<section class="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-950 sm:max-h-[90vh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="session-summary-title"><header class="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-white/10"><div><h3 id="session-summary-title" class="text-lg font-bold text-gray-900 dark:text-white">Session summary</h3></div><button type="button" onclick="closeSessionSummaryModal()" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:hover:bg-white/10 dark:hover:text-white" aria-label="Close session summary">✕</button></header><div class="p-5"><textarea readonly aria-label="Full session summary" class="h-[55vh] w-full resize-none rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs leading-5 text-gray-700 dark:border-white/10 dark:bg-black/20 dark:text-gray-200">${esc(text)}</textarea></div></section>`;
+    modal.addEventListener('mousedown', event => { if (event.target === modal) closeSessionSummaryModal(); });
+    document.body.appendChild(modal);
+    document.addEventListener('keydown', _sessionSummaryEsc, true);
+    setTimeout(() => modal.querySelector('button[aria-label="Close session summary"]')?.focus(), 0);
+}
+
 function _renderSessionSummary(data) {
     const metaText = data.summary
         ? `${data.message_count} msgs summarized` + (data.updated_at ? ` · ${formatTime(data.updated_at)}` : '')
@@ -2653,8 +2731,8 @@ function _renderSessionSummary(data) {
         const summaryEl = document.getElementById(prefix + 'SessionSummary');
         const meta = document.getElementById(prefix + 'summary-meta');
         if (summaryEl && data.summary) {
-            summaryEl.innerHTML = '<div class="st-sec-h">' + ST_ICON.text + '<span>Summary</span></div><div class="recap-prose">' + marked.parse(data.summary).replace(/^\s*<h[1-3][^>]*>\s*summary\s*<\/h[1-3]>\s*/i, '') + '</div>';
-            ui.addCopyButtons(summaryEl);
+            const preview = data.summary.replace(/\s+/g, ' ').trim().slice(0, 180);
+            summaryEl.innerHTML = '<div class="st-sec-h">' + ST_ICON.text + '<span>Summary</span></div><p class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">' + esc(preview) + (data.summary.length > 180 ? '…' : '') + '</p><button type="button" onclick="openSessionSummaryModal(this)" class="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-800 focus:outline-none focus:underline dark:text-indigo-400" aria-haspopup="dialog">Show more</button>';
             if (meta) {
                 meta.textContent = metaText || '';
                 meta.classList.remove('hidden');
