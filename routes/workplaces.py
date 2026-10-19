@@ -36,6 +36,9 @@ def workplace_detail(workplace_id):
 
 @workplaces_bp.route('/api/workplaces', methods=['GET'])
 def api_list_workplaces():
+    # ?summary=1: lightweight picker list (single query, no agent lists or tokens)
+    if request.args.get('summary') in ('1', 'true'):
+        return jsonify(db.get_workplace_summaries())
     workplaces = db.get_workplaces()
     for w in workplaces:
         w['agents'] = db.get_workplace_agents(w['id'])

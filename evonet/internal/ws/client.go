@@ -182,6 +182,10 @@ func (c *Client) connect() error {
 	header.Set("X-Device-Name", hostname)
 	header.Set("X-Platform", runtime.GOOS)
 	header.Set("X-Evonet-Version", version.Version)
+	// The server only sees the tunnel/NAT address, so report our own.
+	if ips := deviceIPs(); len(ips) > 0 {
+		header.Set("X-Device-IPs", strings.Join(ips, ", "))
+	}
 	// Advertise that this client deduplicates requests by id, so the server may
 	// safely re-send an in-flight request after a reconnect (exactly-once).
 	header.Set("X-Evonet-Caps", "idempotent-replay")

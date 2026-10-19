@@ -603,6 +603,7 @@ const _UI_ICONS = {
     'alert': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     'chevron-right': '<path d="m9 18 6-6-6-6"/>',
     'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+    'server': '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/>',
 };
 
 function uiIcon(name, size) {
@@ -1768,7 +1769,31 @@ function _addCopyButtons($bubble) {
     });
 }
 
+// Divider for a workplace switch note. The note's text is for the agent; the
+// user gets a compact "from → to" marker built from its metadata.
+function buildWorkplaceSwitchMarker(sw, opts, cfg) {
+    const name = side => (side && side.name) ? side.name : 'local workspace';
+    const $label = $('<span class="chat-wp-switch-label">')
+        .append(uiIcon('server', 12), ' Workplace switched: ')
+        .append($('<b>').text(name(sw.from)), ' → ', $('<b>').text(name(sw.to)));
+    const date = opts.timestamp != null ? normalizeTimestamp(opts.timestamp) : null;
+    if (date) {
+        let label = '';
+        try {
+            label = cfg.formatTimestamp ? cfg.formatTimestamp(date)
+                : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {}
+        // Not <time>: '#chat-messages time' styles bubble timestamps as blocks
+        if (label) $label.append($('<span class="chat-wp-switch-time">').attr('title', date.toLocaleString()).text(' · ' + label));
+    }
+    return $('<div class="chat-wp-switch" role="note" data-msg-role="system">')
+        .append('<span class="chat-wp-switch-line"></span>', $label, '<span class="chat-wp-switch-line"></span>');
+}
+
 function buildMessageBubble(role, content, opts = {}, cfg = {}) {
+    if (opts.metadata && opts.metadata.workplace_switch) {
+        return buildWorkplaceSwitchMarker(opts.metadata.workplace_switch, opts, cfg);
+    }
     const {
         userAlign = 'right',
         assistantAlign = 'left',
@@ -3628,6 +3653,10 @@ class ChatUI {
             }
             if (entry.type === 'system') {
                 const sysMeta = (entry.metadata && (entry.metadata.slash_command || entry.metadata.bash_exec)) ? { metadata: { slash_command: entry.metadata.slash_command || false, bash_exec: entry.metadata.bash_exec || false } } : {};
+                if (entry.metadata && entry.metadata.workplace_switch) {
+                    sysMeta.metadata = { workplace_switch: entry.metadata.workplace_switch };
+                    sysMeta.timestamp = entry.ts || null;
+                }
                 this.appendMessage('system', entry.content || '', sysMeta);
                 continue;
             }

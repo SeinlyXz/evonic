@@ -81,6 +81,17 @@ html.dark {
 .prose hr { border: none; border-top: 1px solid #d1d5db; margin: 0.75em 0; }
 
 /* Chat bubble markdown prose (compact, used in both agent Test Chat and Sessions) */
+/* Workplace switch marker in chat history (see buildWorkplaceSwitchMarker) */
+.chat-wp-switch { display: flex; align-items: center; gap: .75rem; margin: .25rem 0; color: #6b7280; font-size: .75rem; }
+.chat-wp-switch-line { flex: 1 1 0; height: 1px; background: rgb(148 163 184 / .35); }
+.chat-wp-switch-label { flex: 0 1 auto; min-width: 0; max-width: 80%; padding: .1875rem .625rem; border: 1px solid rgb(148 163 184 / .35); border-radius: 9999px;
+    background: rgb(148 163 184 / .08); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-wp-switch-label .ui-ic { vertical-align: -2px; }
+.chat-wp-switch-label b { font-weight: 600; color: #374151; }
+.chat-wp-switch-time { color: #9ca3af; }
+html.dark .chat-wp-switch { color: #9ca3af; }
+html.dark .chat-wp-switch-label b { color: #e5e7eb; }
+html.dark .chat-wp-switch-time { color: #6b7280; }
 .chat-prose { line-height: 1.5; }
 .chat-prose p { margin: 0.25em 0; }
 .chat-prose p:first-child { margin-top: 0; }
