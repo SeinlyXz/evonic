@@ -144,3 +144,22 @@ def test_images_are_sent_as_stream_json_blocks():
     blocks = sent["message"]["content"]
     assert blocks[0]["source"] == {"type": "base64", "media_type": "image/png", "data": "QUJD"}
     assert "[image 1 attached]" in blocks[1]["text"]
+
+
+def test_claude_binary_found_outside_service_path(tmp_path, monkeypatch):
+    from backend.provider import claude_cli
+
+    exe = tmp_path / ".local" / "bin" / "claude"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/nonexistent")
+    monkeypatch.delenv("EVONIC_CLAUDE_BIN", raising=False)
+    assert claude_cli.claude_binary() == str(exe)
+
+    override = tmp_path / "custom-claude"
+    override.write_text("#!/bin/sh\n")
+    override.chmod(0o755)
+    monkeypatch.setenv("EVONIC_CLAUDE_BIN", str(override))
+    assert claude_cli.claude_binary() == str(override)

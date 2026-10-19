@@ -67,8 +67,24 @@ _status_cache: Dict[str, Any] = {"at": 0.0, "value": None}
 _workdir: Optional[str] = None
 
 
+# Service managers (systemd, pm2) start Evonic with a minimal PATH that omits the
+# per-user install locations of the CLI, so look there too.
+_USER_BIN_DIRS = (".local/bin", ".claude/local", ".npm-global/bin", ".bun/bin", ".n/bin")
+
+
 def claude_binary() -> Optional[str]:
-    return shutil.which("claude")
+    override = os.environ.get("EVONIC_CLAUDE_BIN")
+    if override and os.path.isfile(override) and os.access(override, os.X_OK):
+        return override
+    found = shutil.which("claude")
+    if found:
+        return found
+    home = os.path.expanduser("~")
+    for rel in _USER_BIN_DIRS:
+        candidate = os.path.join(home, rel, "claude")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
 
 
 def _neutral_cwd() -> str:
