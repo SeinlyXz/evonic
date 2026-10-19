@@ -797,7 +797,17 @@ html.dark .wp-pop-ip { color: #e2e8f0; }
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .6875rem; overflow-wrap: anywhere; }
 .wp-pop-err { margin-top: .375rem; font-size: .75rem; color: #dc2626; overflow-wrap: anywhere; }
 html.dark .wp-pop-err { color: #f87171; }
-.wp-pop-label { padding: .375rem .625rem .25rem; font-size: .6875rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #94a3b8; }
+.wp-pop-label { display: flex; justify-content: space-between; gap: .5rem; padding: .375rem .625rem .25rem; font-size: .6875rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #94a3b8; }
+.wp-pop-count { font-weight: 500; letter-spacing: 0; text-transform: none; }
+.wp-pop-search { position: relative; margin: .125rem .25rem .375rem; }
+.wp-pop-search[hidden] { display: none; }
+.wp-pop-search svg { position: absolute; left: .625rem; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+.wp-pop-search input { width: 100%; box-sizing: border-box; height: 2rem; padding: 0 .625rem 0 1.875rem; border: 1px solid rgb(148 163 184 / .35); border-radius: .625rem;
+    background: rgb(148 163 184 / .1); color: inherit; font: inherit; font-size: .8125rem; outline: none; }
+.wp-pop-search input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgb(99 102 241 / .18); }
+.wp-pop-hint { padding: .5rem .625rem; font-size: .75rem; color: #94a3b8; }
+.wp-pop-list[hidden] { display: none; }
+.wp-pop-list:not([hidden]) + .wp-pop-none { margin-top: .125rem; padding-top: .125rem; border-top: 1px dashed rgb(148 163 184 / .25); }
 .wp-pop-list { max-height: 15rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .wp-opt { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .5rem .625rem; border: 0; border-radius: .625rem; background: transparent;
     color: inherit; font: inherit; font-size: .8125rem; text-align: left; cursor: pointer; }
@@ -8888,6 +8898,10 @@ const WP_STATUS_LABEL = { connected: 'Connected', connecting: 'Connecting…', d
 const WP_ICON_SERVER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>';
 const WP_ICON_CHEV = '<svg class="wp-chip-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 const WP_ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+const WP_ICON_SEARCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
+const WP_SEARCH_MIN = 7;     // show the search box from this many workplaces (same as ev-combobox)
+const WP_RENDER_LIMIT = 50;  // options rendered at once; the rest are reached by searching
+let _wpQuery = '';           // picker search text; reset each time the picker opens
 let _workplaceList = [];
 let _workplacesById = {};
 let _wpStatus = { id: null, status: null }; // last polled status of the assigned workplace
@@ -8902,7 +8916,7 @@ function _setWorkplaceCache(list) {
 }
 
 async function refreshWorkplaceCache() {
-    const res = await fetch('/api/workplaces');
+    const res = await fetch('/api/workplaces?summary=1');
     if (res.ok) _setWorkplaceCache(await res.json());
 }
 
@@ -8911,7 +8925,9 @@ function _wpAttr(s) {
 }
 
 function _wpConfig(wp) {
-    if (!wp || !wp.config) return {};
+    if (!wp) return {};
+    // Summary items (?summary=1) carry the safe config keys at the top level
+    if (!wp.config) return { workspace_path: wp.workspace_path, host: wp.host, username: wp.username, port: wp.port };
     if (typeof wp.config === 'object') return wp.config;
     try { return JSON.parse(wp.config) || {}; } catch (e) { return {}; }
 }
@@ -9001,18 +9017,68 @@ function _wpOptionHtml(w, isCurrent) {
         + `<span class="wp-opt-check">${isCurrent ? WP_ICON_CHECK : ''}</span></button>`;
 }
 
+// Shell, built when the picker opens; the search box keeps focus while the parts below re-render
 function renderWorkplacePicker() {
+    _wpPicker.innerHTML = '<div class="wp-pop-detail"></div>'
+        + '<div class="wp-pop-label"><span>Switch to</span><span class="wp-pop-count"></span></div>'
+        + `<div class="wp-pop-search" hidden>${WP_ICON_SEARCH}<input type="search" class="wp-pop-input" placeholder="Search workplaces…" aria-label="Search workplaces" autocomplete="off" spellcheck="false"></div>`
+        + '<div class="wp-pop-list"></div>'
+        + '<div class="wp-pop-none"></div>' // outside the scroll area so it stays reachable in long lists
+        + '<div class="wp-pop-foot"></div>';
+    _wpPicker.querySelector('.wp-pop-input').addEventListener('input', e => {
+        _wpQuery = e.target.value;
+        _renderWorkplaceOptions();
+        _wpPicker.querySelector('.wp-pop-list').scrollTop = 0;
+    });
+    _refreshWorkplacePicker();
+}
+
+function _refreshWorkplacePicker() {
     const wp = _wpCurrent();
     const status = wp && _wpStatus.id === wp.id ? _wpStatus.status : null;
-    const options = _workplaceList.map(w => _wpOptionHtml(w, !!wp && w.id === wp.id)).join('') + _wpOptionHtml(null, !wp);
+    const searchable = _workplaceList.length >= WP_SEARCH_MIN;
+    _wpPicker.querySelector('.wp-pop-detail').innerHTML = _wpDetailHtml(wp, status);
+    _wpPicker.querySelector('.wp-pop-search').hidden = !searchable;
+    _wpPicker.querySelector('.wp-pop-count').textContent = searchable ? `${_workplaceList.length} workplaces` : '';
+    _wpPicker.querySelector('.wp-pop-foot').innerHTML =
+        (wp ? `<a href="/workplaces/${encodeURIComponent(wp.id)}">Workplace details</a>` : '')
+        + '<a href="/workplaces">Manage workplaces</a>';
+    _renderWorkplaceOptions();
+}
+
+// Every search word must appear in the name, type or device (as ev-combobox filters)
+function _wpMatches(w, terms) {
+    const hay = [w.name, w.type, WP_TYPE_LABEL[w.type], w.connector && w.connector.device_name]
+        .filter(Boolean).join(' ').toLowerCase();
+    return terms.every(t => hay.includes(t));
+}
+
+function _renderWorkplaceOptions() {
+    const wp = _wpCurrent();
+    const terms = _wpQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    // Assigned workplace first, then A–Z (the API sorts by name)
+    const ordered = wp && _workplacesById[wp.id]
+        ? [_workplacesById[wp.id], ..._workplaceList.filter(w => w.id !== wp.id)]
+        : _workplaceList;
+    const matches = terms.length ? ordered.filter(w => _wpMatches(w, terms)) : ordered;
+    const shown = matches.slice(0, WP_RENDER_LIMIT);
+    const list = _wpPicker.querySelector('.wp-pop-list');
     const focused = _wpPicker.contains(document.activeElement) ? document.activeElement.dataset.wpId : undefined;
-    _wpPicker.innerHTML = `<div class="wp-pop-detail">${_wpDetailHtml(wp, status)}</div>`
-        + '<div class="wp-pop-label">Switch to</div>'
-        + `<div class="wp-pop-list">${options}</div>`
-        + '<div class="wp-pop-foot">'
-        + (wp ? `<a href="/workplaces/${encodeURIComponent(wp.id)}">Workplace details</a>` : '')
-        + '<a href="/workplaces">Manage workplaces</a></div>';
-    if (focused !== undefined) _wpFocusOption(_wpPicker.querySelector(`.wp-opt[data-wp-id="${CSS.escape(focused)}"]`));
+    let html = shown.map(w => _wpOptionHtml(w, !!wp && w.id === wp.id)).join('');
+    if (matches.length > shown.length) {
+        html += `<div class="wp-pop-hint">+${matches.length - shown.length} more, refine your search</div>`;
+    } else if (!matches.length && terms.length) {
+        html += `<div class="wp-pop-hint">No workplaces match “${escapeHtml(_wpQuery.trim())}”</div>`;
+    }
+    list.innerHTML = html;
+    list.hidden = !html;
+    _wpPicker.querySelector('.wp-pop-none').innerHTML = _wpOptionHtml(null, !wp);
+    if (focused !== undefined) _wpPicker.querySelector(`.wp-opt[data-wp-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+}
+
+function _wpSearchInput() {
+    const input = _wpPicker && _wpPicker.querySelector('.wp-pop-input');
+    return input && !input.closest('[hidden]') ? input : null;
 }
 
 function _wpFocusOption(opt) {
@@ -9021,12 +9087,19 @@ function _wpFocusOption(opt) {
 }
 
 function _onWorkplacePickerKey(e) {
+    const input = _wpSearchInput();
+    if (e.key === 'Enter' && input && e.target === input) {
+        // Enter in the search box picks the first matching workplace that is not already assigned
+        e.preventDefault();
+        _wpPicker.querySelector('.wp-opt:not(.is-current):not([data-wp-id=""])')?.click();
+        return;
+    }
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
-    const opts = Array.from(_wpPicker.querySelectorAll('.wp-opt'));
-    const i = opts.indexOf(document.activeElement);
-    const next = e.key === 'ArrowDown' ? (i + 1) % opts.length : (i <= 0 ? opts.length - 1 : i - 1);
-    opts[next].focus();
+    const stops = (input ? [input] : []).concat(Array.from(_wpPicker.querySelectorAll('.wp-opt')));
+    const i = stops.indexOf(document.activeElement);
+    const next = e.key === 'ArrowDown' ? (i + 1) % stops.length : (i <= 0 ? stops.length - 1 : i - 1);
+    stops[next].focus();
 }
 
 function _placeWorkplacePicker() {
@@ -9056,6 +9129,13 @@ function _initWorkplacePicker() {
     window.addEventListener('keydown', e => {
         if (e.key !== 'Escape' || _wpPicker.hidden) return;
         e.stopPropagation();
+        const input = _wpSearchInput();
+        if (input && document.activeElement === input && input.value) {
+            e.preventDefault(); // first Escape clears the search, the next one closes
+            input.value = _wpQuery = '';
+            _renderWorkplaceOptions();
+            return;
+        }
         closeWorkplacePicker(true);
     }, true);
     window.addEventListener('resize', () => closeWorkplacePicker());
@@ -9072,15 +9152,18 @@ function openWorkplacePicker(anchor) {
     _wpAnchor = anchor;
     anchor.setAttribute('aria-expanded', 'true');
     _wpIpsExpanded = false;
+    _wpQuery = '';
     renderWorkplacePicker();
     _wpPicker.hidden = false;
     _placeWorkplacePicker();
     requestAnimationFrame(() => _wpPicker.classList.add('is-in'));
-    _wpFocusOption(null);
+    const input = _wpSearchInput();
+    if (input) input.focus({ preventScroll: true });
+    else _wpFocusOption(null);
     // Re-read the list so device / last-seen / newly created workplaces are current
     refreshWorkplaceCache().then(() => {
         if (_wpPicker.hidden) return;
-        renderWorkplacePicker();
+        _refreshWorkplacePicker();
         _placeWorkplacePicker();
     }).catch(() => {});
 }
@@ -9173,7 +9256,7 @@ function updateSandboxVisibility() {
 
 async function loadWorkplaceSelector() {
     try {
-        const res = await fetch('/api/workplaces');
+        const res = await fetch('/api/workplaces?summary=1');
         const workplaces = await res.json();
         _setWorkplaceCache(workplaces);
         const sel = document.getElementById('agent-workplace-id');
@@ -10282,17 +10365,17 @@ async function disconnectPortal(portalId) {
 // Load workplaces for dropdown in portal modal
 async function loadPortalWorkplaces() {
     try {
-        const res = await fetch('/api/workplaces');
+        const res = await fetch('/api/workplaces?summary=1');
         const data = await res.json();
         const workplaces = data || [];
         const sel = document.getElementById('portal-workplace-select');
         if (!sel) return;
         const prevVal = sel.value;
         sel.innerHTML = '<option value="">-- Configure new connection --</option>';
-        workplaces.forEach(w => {
-            const label = `${w.name} (${w.type})`;
-            sel.innerHTML += `<option value="${w.id}">${label}</option>`;
-        });
+        // Option() sets text, not HTML; one append instead of re-parsing innerHTML per row
+        const frag = document.createDocumentFragment();
+        workplaces.forEach(w => frag.appendChild(new Option(`${w.name} (${w.type})`, w.id)));
+        sel.appendChild(frag);
         // Restore previously selected value if it still exists in the new options
         if (prevVal) {
             const exists = Array.from(sel.options).some(o => o.value === prevVal);
