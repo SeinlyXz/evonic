@@ -275,6 +275,10 @@ export class ChatUI {
             }
             if (entry.type === 'system') {
                 const sysMeta = (entry.metadata && (entry.metadata.slash_command || entry.metadata.bash_exec)) ? { metadata: { slash_command: entry.metadata.slash_command || false, bash_exec: entry.metadata.bash_exec || false } } : {};
+                if (entry.metadata && entry.metadata.workplace_switch) {
+                    sysMeta.metadata = { workplace_switch: entry.metadata.workplace_switch };
+                    sysMeta.timestamp = entry.ts || null;
+                }
                 this.appendMessage('system', entry.content || '', sysMeta);
                 continue;
             }

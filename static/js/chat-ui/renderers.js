@@ -1181,7 +1181,31 @@ function _addCopyButtons($bubble) {
     });
 }
 
+// Divider for a workplace switch note. The note's text is for the agent; the
+// user gets a compact "from → to" marker built from its metadata.
+function buildWorkplaceSwitchMarker(sw, opts, cfg) {
+    const name = side => (side && side.name) ? side.name : 'local workspace';
+    const $label = $('<span class="chat-wp-switch-label">')
+        .append(uiIcon('server', 12), ' Workplace switched: ')
+        .append($('<b>').text(name(sw.from)), ' → ', $('<b>').text(name(sw.to)));
+    const date = opts.timestamp != null ? normalizeTimestamp(opts.timestamp) : null;
+    if (date) {
+        let label = '';
+        try {
+            label = cfg.formatTimestamp ? cfg.formatTimestamp(date)
+                : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {}
+        // Not <time>: '#chat-messages time' styles bubble timestamps as blocks
+        if (label) $label.append($('<span class="chat-wp-switch-time">').attr('title', date.toLocaleString()).text(' · ' + label));
+    }
+    return $('<div class="chat-wp-switch" role="note" data-msg-role="system">')
+        .append('<span class="chat-wp-switch-line"></span>', $label, '<span class="chat-wp-switch-line"></span>');
+}
+
 export function buildMessageBubble(role, content, opts = {}, cfg = {}) {
+    if (opts.metadata && opts.metadata.workplace_switch) {
+        return buildWorkplaceSwitchMarker(opts.metadata.workplace_switch, opts, cfg);
+    }
     const {
         userAlign = 'right',
         assistantAlign = 'left',

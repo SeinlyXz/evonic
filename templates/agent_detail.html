@@ -740,6 +740,81 @@ html.dark .chat-header-circle { color: #818cf8; }
 html.dark .chat-header-circle:hover { color: #c7d2fe; border-color: #6366f1; }
 .chat-header-circle svg { width: 18px; height: 18px; }
 @media (max-width: 1023.98px) { .chat-header-circle { display: inline-flex; } }
+/* Workplace chip (chat header + mobile drawer): assigned workplace with live status; opens the quick-switch picker */
+.wp-chip { display: inline-flex; align-items: center; gap: .3125rem; flex: none; max-width: 11rem; height: 1.375rem; padding: 0 .3125rem 0 .4375rem; border: 1px solid; border-radius: .4375rem;
+    font-size: .6875rem; font-weight: 600; line-height: 1; cursor: pointer; transition: background-color .15s, border-color .15s, color .15s; }
+.wp-chip.hidden { display: none; }
+.wp-chip:focus-visible { outline: none; box-shadow: inset 0 0 0 2px #6366f1; } /* inset: the title clips overflow */
+.wp-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-chip > svg { width: 12px; height: 12px; flex: none; }
+.wp-chip-chev { opacity: .6; transition: transform .15s; }
+.wp-chip[aria-expanded="true"] .wp-chip-chev { transform: rotate(180deg); }
+.wp-chip--tunnel { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+.wp-chip--tunnel:hover { background: #bfdbfe; }
+.wp-chip--remote { background: #dcfce7; color: #15803d; border-color: #86efac; }
+.wp-chip--remote:hover { background: #bbf7d0; }
+.wp-chip--bwrap { background: #fef3c7; color: #b45309; border-color: #fcd34d; }
+.wp-chip--bwrap:hover { background: #fde68a; }
+.wp-chip--local { background: #e0e7ff; color: #4338ca; border-color: #a5b4fc; }
+.wp-chip--local:hover { background: #c7d2fe; }
+.wp-chip--none { background: #f3f4f6; color: #6b7280; border-color: #d1d5db; }
+.wp-chip--none:hover { background: #e5e7eb; color: #374151; }
+html.dark .wp-chip--tunnel { background: rgb(30 58 138 / .2); color: #60a5fa; border-color: #1d4ed8; }
+html.dark .wp-chip--tunnel:hover { background: rgb(30 58 138 / .4); }
+html.dark .wp-chip--remote { background: rgb(20 83 45 / .2); color: #4ade80; border-color: #15803d; }
+html.dark .wp-chip--remote:hover { background: rgb(20 83 45 / .4); }
+html.dark .wp-chip--bwrap { background: rgb(120 53 15 / .2); color: #fbbf24; border-color: #b45309; }
+html.dark .wp-chip--bwrap:hover { background: rgb(120 53 15 / .4); }
+html.dark .wp-chip--local { background: rgb(49 46 129 / .25); color: #a5b4fc; border-color: #4338ca; }
+html.dark .wp-chip--local:hover { background: rgb(49 46 129 / .45); }
+html.dark .wp-chip--none { background: rgb(55 65 81 / .4); color: #9ca3af; border-color: #4b5563; }
+html.dark .wp-chip--none:hover { background: rgb(55 65 81 / .7); color: #e5e7eb; }
+.wp-dot { width: .4375rem; height: .4375rem; flex: none; box-sizing: border-box; border-radius: 9999px; background: #9ca3af; }
+.wp-dot--connected { background: #22c55e; box-shadow: 0 0 0 2px rgb(34 197 94 / .22); }
+.wp-dot--connecting { background: #eab308; }
+.wp-dot--error { background: #ef4444; }
+.wp-dot--none { background: transparent; border: 1.5px dashed #9ca3af; }
+.wp-pop { position: fixed; z-index: 10001; width: 18rem; max-width: calc(100vw - 1rem); box-sizing: border-box; padding: .375rem; border-radius: .75rem;
+    background: rgb(255 255 255 / .97); border: 1px solid rgb(148 163 184 / .35); color: #1f2937; font-size: .8125rem;
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 1px 2px rgb(15 23 42 / .06), 0 18px 40px -14px rgb(15 23 42 / .4);
+    opacity: 0; transform: translateY(-4px) scale(.985); transform-origin: top left; transition: opacity .12s ease, transform .16s cubic-bezier(.2, .8, .2, 1); }
+.wp-pop[hidden] { display: none; }
+.wp-pop.is-in { opacity: 1; transform: none; }
+html.dark .wp-pop { background: rgb(30 41 59 / .97); border-color: rgb(148 163 184 / .3); color: #e2e8f0; box-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 18px 40px -14px rgb(0 0 0 / .75); }
+.wp-pop-detail { margin-bottom: .25rem; padding: .5rem .625rem .625rem; border-bottom: 1px solid rgb(148 163 184 / .25); }
+.wp-pop-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.wp-pop-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .875rem; font-weight: 600; }
+.wp-pop-status { display: inline-flex; align-items: center; gap: .375rem; flex: none; font-size: .6875rem; font-weight: 500; color: #6b7280; }
+.wp-pop-meta { margin-top: .25rem; font-size: .75rem; color: #6b7280; overflow-wrap: anywhere; }
+html.dark .wp-pop-status, html.dark .wp-pop-meta { color: #94a3b8; }
+.wp-pop-ips { display: flex; align-items: flex-start; gap: .375rem; }
+.wp-pop-ip-list { display: flex; flex-direction: column; gap: .125rem; min-width: 0; }
+.wp-pop-ip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #374151; overflow-wrap: anywhere; user-select: all; }
+html.dark .wp-pop-ip { color: #e2e8f0; }
+.wp-pop-more { flex: none; padding: 0 .3125rem; border: 0; border-radius: .3125rem; background: rgb(148 163 184 / .18); color: inherit; font: inherit; font-size: .6875rem; line-height: 1.6; cursor: pointer; }
+.wp-pop-more:hover, .wp-pop-more:focus-visible { background: rgb(99 102 241 / .2); outline: none; }
+.wp-pop-path { display: block; margin-top: .375rem; padding: .25rem .4375rem; border-radius: .375rem; background: rgb(148 163 184 / .14);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .6875rem; overflow-wrap: anywhere; }
+.wp-pop-err { margin-top: .375rem; font-size: .75rem; color: #dc2626; overflow-wrap: anywhere; }
+html.dark .wp-pop-err { color: #f87171; }
+.wp-pop-label { padding: .375rem .625rem .25rem; font-size: .6875rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #94a3b8; }
+.wp-pop-list { max-height: 15rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.wp-opt { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .5rem .625rem; border: 0; border-radius: .625rem; background: transparent;
+    color: inherit; font: inherit; font-size: .8125rem; text-align: left; cursor: pointer; }
+.wp-opt:hover, .wp-opt:focus-visible { background: rgb(99 102 241 / .1); outline: none; }
+html.dark .wp-opt:hover, html.dark .wp-opt:focus-visible { background: rgb(99 102 241 / .22); }
+.wp-opt.is-current { font-weight: 600; cursor: default; }
+.wp-opt-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-opt-type { flex: none; font-size: .6875rem; font-weight: 400; color: #94a3b8; }
+.wp-opt-check { flex: none; width: 14px; height: 14px; color: #6366f1; }
+.wp-opt-check svg { display: block; width: 14px; height: 14px; }
+html.dark .wp-opt-check { color: #818cf8; }
+.wp-pop-foot { display: flex; gap: .5rem; margin-top: .25rem; padding: .5rem .625rem .25rem; border-top: 1px solid rgb(148 163 184 / .25); font-size: .75rem; }
+.wp-pop-foot a { color: #6366f1; text-decoration: none; }
+.wp-pop-foot a:hover { text-decoration: underline; }
+.wp-pop-foot a:last-child { margin-left: auto; }
+html.dark .wp-pop-foot a { color: #818cf8; }
+@media (prefers-reduced-motion: reduce) { .wp-pop { transition: opacity .1s linear; transform: none; } }
 #chat-panel { --chat-header-h: 4.25rem; }
 /* Desktop: the header is a compact full-width bar (not a floating bubble) — transparent, with the messages blurring through it */
 @media (min-width: 1024px) {
@@ -2296,7 +2371,7 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
                     <h3 id="chatPanelTitle" onclick="openAgentDrawer()" class="chat-title-tap text-base font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[200px] sm:max-w-[320px] flex items-center gap-1.5">
                         <img id="agent-avatar-header" src="/api/agents/{{ agent.id }}/avatar" alt="" class="w-6 h-6 rounded-full object-cover bg-indigo-50 dark:bg-indigo-900/20 flex-shrink-0" onerror="this.style.display='none'">
                         <span id="chat-panel-agent-name" class="truncate">{{ agent.name }}</span>
-                        <span id="homeWorkplaceBadge" class="hidden"></span>
+                        <button type="button" id="homeWorkplaceBadge" class="wp-chip hidden" aria-haspopup="dialog" aria-expanded="false" onclick="event.stopPropagation(); toggleWorkplacePicker(this)"></button>
                         <svg class="chat-title-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
                     </h3>
                     </div>
@@ -2962,7 +3037,7 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=69" defer></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=70" defer></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=6" defer></script>
 <script src="{{ url_for('static', filename='js/state-ui.js') }}?v=15" defer></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -8290,11 +8365,11 @@ function buildAgentDrawer() {
     idEl.textContent = showId ? badge.textContent.trim() : '';
     idEl.classList.toggle('hidden', !showId);
 
-    const wpBadge = document.getElementById('homeWorkplaceBadge');
+    // The header chip is hidden on mobile; the drawer gets its own chip that opens the same picker
     const badgeSlot = document.getElementById('agent-drawer-badge');
-    const hasBadge = wpBadge && !wpBadge.classList.contains('hidden') && wpBadge.innerHTML.trim();
-    badgeSlot.innerHTML = hasBadge ? wpBadge.innerHTML : '';
-    badgeSlot.classList.toggle('hidden', !hasBadge);
+    badgeSlot.innerHTML = '<button type="button" class="wp-chip" aria-haspopup="dialog" aria-expanded="false" onclick="toggleWorkplacePicker(this)"></button>';
+    badgeSlot.classList.remove('hidden');
+    updateChatPanelTitle();
 
     // Tab list is built from the (CSS-hidden) tab bar so plugin/optional tabs stay in sync
     const list = document.getElementById('agent-drawer-list');
@@ -8359,6 +8434,7 @@ function openAgentDrawer() {
 function closeAgentDrawer() {
     const d = document.getElementById('agent-drawer');
     if (!d) return;
+    closeWorkplacePicker();
     d.classList.remove('open');
     d.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('agent-drawer-open');
@@ -8806,35 +8882,269 @@ function updateWorkspaceVisibility() {
     updateSandboxVisibility();
 }
 
-function updateChatPanelTitle(connectionStatus) {
+// ==================== Workplace chip + quick-switch picker ====================
+const WP_TYPE_LABEL = { local: 'Local', remote: 'SSH', tunnel: 'Evonet', bwrap: 'Bwrap' };
+const WP_STATUS_LABEL = { connected: 'Connected', connecting: 'Connecting…', disconnected: 'Disconnected', error: 'Error' };
+const WP_ICON_SERVER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>';
+const WP_ICON_CHEV = '<svg class="wp-chip-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+const WP_ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+let _workplaceList = [];
+let _workplacesById = {};
+let _wpStatus = { id: null, status: null }; // last polled status of the assigned workplace
+let _wpPicker = null;
+let _wpAnchor = null;
+let _wpIpsExpanded = false; // "+N" IPs revealed; reset each time the picker opens
+
+function _setWorkplaceCache(list) {
+    _workplaceList = Array.isArray(list) ? list : [];
+    _workplacesById = {};
+    _workplaceList.forEach(w => { _workplacesById[w.id] = w; });
+}
+
+async function refreshWorkplaceCache() {
+    const res = await fetch('/api/workplaces');
+    if (res.ok) _setWorkplaceCache(await res.json());
+}
+
+function _wpAttr(s) {
+    return escapeHtml(String(s)).replace(/"/g, '&quot;');
+}
+
+function _wpConfig(wp) {
+    if (!wp || !wp.config) return {};
+    if (typeof wp.config === 'object') return wp.config;
+    try { return JSON.parse(wp.config) || {}; } catch (e) { return {}; }
+}
+
+function _wpAgo(ts) {
+    if (!ts) return '';
+    // SQLite timestamps carry no zone but are UTC
+    const iso = /[zZ]$|[+-]\d\d:?\d\d$/.test(ts) ? ts : ts.replace(' ', 'T') + 'Z';
+    const ms = Date.parse(iso);
+    return isNaN(ms) ? '' : _kbTimeAgo(ms / 1000);
+}
+
+// Assigned workplace: the settings <select> is the source of truth, the cache adds details
+function _wpCurrent() {
     const sel = document.getElementById('agent-workplace-id');
-    const badge = document.getElementById('homeWorkplaceBadge');
-    if (!badge) return;
-    const selectedOpt = sel ? sel.options[sel.selectedIndex] : null;
-    const homeType = selectedOpt ? selectedOpt.dataset.type : '';
-    const isDisconnected = connectionStatus !== 'connected';
-    if (homeType === 'remote') {
-        badge.classList.remove('hidden');
-        badge.textContent = 'SSH';
-        badge.className = 'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 ' + (isDisconnected
-            ? 'bg-gray-100 text-gray-500 border-green-300 dark:bg-gray-700 dark:text-gray-400 dark:border-green-700'
-            : 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-400 dark:border-green-700');
-    } else if (homeType === 'tunnel') {
-        badge.classList.remove('hidden');
-        badge.textContent = 'Evonet';
-        badge.className = 'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 ' + (isDisconnected
-            ? 'bg-gray-100 text-gray-500 border-blue-300 dark:bg-gray-700 dark:text-gray-400 dark:border-blue-700'
-            : 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-700');
-    } else if (homeType === 'bwrap') {
-        badge.classList.remove('hidden');
-        badge.textContent = 'Bwrap';
-        badge.className = 'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 ' + (isDisconnected
-            ? 'bg-gray-100 text-gray-500 border-amber-300 dark:bg-gray-700 dark:text-gray-400 dark:border-amber-700'
-            : 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-700');
-    } else {
-        badge.textContent = '';
-        badge.className = 'hidden';
+    const id = sel ? sel.value : '';
+    if (!id) return null;
+    if (_workplacesById[id]) return _workplacesById[id];
+    const opt = sel.options[sel.selectedIndex];
+    return { id, name: (opt && (opt.dataset.name || opt.textContent.split(' [')[0])) || id, type: opt ? opt.dataset.type : '' };
+}
+
+function _wpPaintChip(el, wp, status) {
+    if (!wp) {
+        el.className = 'wp-chip wp-chip--none';
+        el.innerHTML = `${WP_ICON_SERVER}<span class="wp-chip-name">Workplace</span>${WP_ICON_CHEV}`;
+        el.title = 'No workplace assigned. Click to choose one';
+        return;
     }
+    const typeLabel = WP_TYPE_LABEL[wp.type] || wp.type;
+    el.className = 'wp-chip wp-chip--' + (WP_TYPE_LABEL[wp.type] ? wp.type : 'local');
+    el.innerHTML = `<span class="wp-dot wp-dot--${_wpAttr(status || 'unknown')}"></span><span class="wp-chip-name">${escapeHtml(wp.name)}</span>${WP_ICON_CHEV}`;
+    el.title = `Workplace: ${wp.name} (${typeLabel}), ${WP_STATUS_LABEL[status] || 'checking…'}. Click for details or to switch`;
+}
+
+function updateChatPanelTitle(connectionStatus) {
+    const wp = _wpCurrent();
+    const status = wp ? (connectionStatus || (_wpStatus.id === wp.id ? _wpStatus.status : null)) : null;
+    const badge = document.getElementById('homeWorkplaceBadge');
+    if (badge) _wpPaintChip(badge, wp, status);
+    const drawerChip = document.querySelector('#agent-drawer-badge .wp-chip');
+    if (drawerChip) _wpPaintChip(drawerChip, wp, status);
+    // Keep the open picker's detail block live (the option list is left alone so focus is kept)
+    const detail = _wpPicker && !_wpPicker.hidden ? _wpPicker.querySelector('.wp-pop-detail') : null;
+    if (detail) detail.innerHTML = _wpDetailHtml(wp, status);
+}
+
+function _wpDetailHtml(wp, status) {
+    if (!wp) {
+        return '<div class="wp-pop-title">No workplace</div>'
+            + '<div class="wp-pop-meta">The agent runs in its local workspace directory.</div>';
+    }
+    const cfg = _wpConfig(wp);
+    const conn = wp.connector || null;
+    const meta = [WP_TYPE_LABEL[wp.type] || wp.type];
+    if (wp.type === 'tunnel' && conn && conn.device_name) meta.push(conn.device_name);
+    if (wp.type === 'remote' && cfg.host) {
+        meta.push(`${cfg.username ? cfg.username + '@' : ''}${cfg.host}${cfg.port && +cfg.port !== 22 ? ':' + cfg.port : ''}`);
+    }
+    let html = `<div class="wp-pop-head"><span class="wp-pop-title">${escapeHtml(wp.name)}</span>`
+        + `<span class="wp-pop-status"><span class="wp-dot wp-dot--${_wpAttr(status || 'unknown')}"></span>${WP_STATUS_LABEL[status] || 'Checking…'}</span></div>`
+        + `<div class="wp-pop-meta">${escapeHtml(meta.join(' · '))}</div>`;
+    const ips = (wp.type === 'tunnel' && conn && conn.ip_addresses) ? conn.ip_addresses.split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (ips.length) {
+        const shown = _wpIpsExpanded ? ips : ips.slice(0, 1);
+        const more = ips.length - shown.length;
+        html += '<div class="wp-pop-meta wp-pop-ips"><span>IP</span><span class="wp-pop-ip-list">'
+            + shown.map(ip => `<span class="wp-pop-ip">${escapeHtml(ip)}</span>`).join('') + '</span>'
+            + (more ? `<button type="button" class="wp-pop-more" data-wp-action="show-ips" aria-label="Show ${more} more IP address${more > 1 ? 'es' : ''}">+${more}</button>` : '')
+            + '</div>';
+    }
+    if (cfg.workspace_path) html += `<code class="wp-pop-path">${escapeHtml(cfg.workspace_path)}</code>`;
+    if (status && status !== 'connected') {
+        const ago = _wpAgo((conn && conn.last_seen_at) || wp.last_connected_at);
+        if (ago) html += `<div class="wp-pop-meta">Last seen ${escapeHtml(ago)}</div>`;
+    }
+    if (status === 'error' && wp.error_msg) html += `<div class="wp-pop-err">${escapeHtml(wp.error_msg)}</div>`;
+    return html;
+}
+
+function _wpOptionHtml(w, isCurrent) {
+    const dot = w ? `<span class="wp-dot wp-dot--${_wpAttr(w.status || 'disconnected')}"></span>` : '<span class="wp-dot wp-dot--none"></span>';
+    const name = w ? escapeHtml(w.name) : 'No workplace';
+    const sub = w ? escapeHtml(WP_TYPE_LABEL[w.type] || w.type) : 'Local workspace';
+    return `<button type="button" class="wp-opt${isCurrent ? ' is-current' : ''}" data-wp-id="${w ? _wpAttr(w.id) : ''}"${isCurrent ? ' aria-current="true"' : ''}>`
+        + `${dot}<span class="wp-opt-name">${name}</span><span class="wp-opt-type">${sub}</span>`
+        + `<span class="wp-opt-check">${isCurrent ? WP_ICON_CHECK : ''}</span></button>`;
+}
+
+function renderWorkplacePicker() {
+    const wp = _wpCurrent();
+    const status = wp && _wpStatus.id === wp.id ? _wpStatus.status : null;
+    const options = _workplaceList.map(w => _wpOptionHtml(w, !!wp && w.id === wp.id)).join('') + _wpOptionHtml(null, !wp);
+    const focused = _wpPicker.contains(document.activeElement) ? document.activeElement.dataset.wpId : undefined;
+    _wpPicker.innerHTML = `<div class="wp-pop-detail">${_wpDetailHtml(wp, status)}</div>`
+        + '<div class="wp-pop-label">Switch to</div>'
+        + `<div class="wp-pop-list">${options}</div>`
+        + '<div class="wp-pop-foot">'
+        + (wp ? `<a href="/workplaces/${encodeURIComponent(wp.id)}">Workplace details</a>` : '')
+        + '<a href="/workplaces">Manage workplaces</a></div>';
+    if (focused !== undefined) _wpFocusOption(_wpPicker.querySelector(`.wp-opt[data-wp-id="${CSS.escape(focused)}"]`));
+}
+
+function _wpFocusOption(opt) {
+    const opts = Array.from(_wpPicker.querySelectorAll('.wp-opt'));
+    (opt || opts.find(o => !o.classList.contains('is-current')) || opts[0])?.focus({ preventScroll: true });
+}
+
+function _onWorkplacePickerKey(e) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const opts = Array.from(_wpPicker.querySelectorAll('.wp-opt'));
+    const i = opts.indexOf(document.activeElement);
+    const next = e.key === 'ArrowDown' ? (i + 1) % opts.length : (i <= 0 ? opts.length - 1 : i - 1);
+    opts[next].focus();
+}
+
+function _placeWorkplacePicker() {
+    const r = _wpAnchor.getBoundingClientRect();
+    const m = 8, gap = 6;
+    const pw = _wpPicker.offsetWidth, ph = _wpPicker.offsetHeight;
+    let top = r.bottom + gap;
+    if (top + ph > window.innerHeight - m && r.top - gap - ph >= m) top = r.top - gap - ph;
+    _wpPicker.style.left = Math.max(m, Math.min(r.left, window.innerWidth - pw - m)) + 'px';
+    _wpPicker.style.top = top + 'px';
+}
+
+function _initWorkplacePicker() {
+    _wpPicker = document.createElement('div');
+    _wpPicker.className = 'wp-pop';
+    _wpPicker.setAttribute('role', 'dialog');
+    _wpPicker.setAttribute('aria-label', 'Workplace');
+    _wpPicker.hidden = true;
+    _wpPicker.addEventListener('click', onWorkplacePickerClick);
+    _wpPicker.addEventListener('keydown', _onWorkplacePickerKey);
+    document.body.appendChild(_wpPicker);
+    document.addEventListener('mousedown', e => {
+        if (_wpPicker.hidden || _wpPicker.contains(e.target) || (_wpAnchor && _wpAnchor.contains(e.target))) return;
+        closeWorkplacePicker();
+    }, true);
+    // Capture phase so Escape closes only the picker, not the mobile drawer behind it
+    window.addEventListener('keydown', e => {
+        if (e.key !== 'Escape' || _wpPicker.hidden) return;
+        e.stopPropagation();
+        closeWorkplacePicker(true);
+    }, true);
+    window.addEventListener('resize', () => closeWorkplacePicker());
+}
+
+function toggleWorkplacePicker(anchor) {
+    if (_wpPicker && !_wpPicker.hidden && _wpAnchor === anchor) return closeWorkplacePicker();
+    openWorkplacePicker(anchor);
+}
+
+function openWorkplacePicker(anchor) {
+    if (!_wpPicker) _initWorkplacePicker();
+    if (_wpAnchor && _wpAnchor !== anchor) _wpAnchor.setAttribute('aria-expanded', 'false');
+    _wpAnchor = anchor;
+    anchor.setAttribute('aria-expanded', 'true');
+    _wpIpsExpanded = false;
+    renderWorkplacePicker();
+    _wpPicker.hidden = false;
+    _placeWorkplacePicker();
+    requestAnimationFrame(() => _wpPicker.classList.add('is-in'));
+    _wpFocusOption(null);
+    // Re-read the list so device / last-seen / newly created workplaces are current
+    refreshWorkplaceCache().then(() => {
+        if (_wpPicker.hidden) return;
+        renderWorkplacePicker();
+        _placeWorkplacePicker();
+    }).catch(() => {});
+}
+
+function closeWorkplacePicker(restoreFocus) {
+    if (!_wpPicker || _wpPicker.hidden) return;
+    _wpPicker.hidden = true;
+    _wpPicker.classList.remove('is-in');
+    if (_wpAnchor) {
+        _wpAnchor.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) _wpAnchor.focus();
+    }
+}
+
+async function onWorkplacePickerClick(e) {
+    if (e.target.closest('[data-wp-action="show-ips"]')) {
+        _wpIpsExpanded = true;
+        updateChatPanelTitle(); // re-renders the detail block
+        return;
+    }
+    const opt = e.target.closest('.wp-opt');
+    if (!opt || opt.classList.contains('is-current')) return;
+    const id = opt.dataset.wpId;
+    const target = id ? _workplacesById[id] : null;
+    if (id && !target) return;
+    closeWorkplacePicker();
+    const nameEl = document.getElementById('chat-panel-agent-name');
+    const agentName = (nameEl && nameEl.textContent.trim()) || 'this agent';
+    const ok = await showConfirm({
+        title: 'Switch Workplace',
+        message: target
+            ? `Switch ${agentName} to "${target.name}" (${WP_TYPE_LABEL[target.type] || target.type})? New commands and file operations will run there.`
+            : `Switch ${agentName} to its local workspace (no workplace)? New commands and file operations will run in its local workspace directory.`,
+        confirmText: 'Switch',
+        danger: false,
+    });
+    if (!ok) return;
+    try {
+        await putAgent({ workplace_id: id || null });
+    } catch (err) {
+        showToast(err.message || 'Failed to switch workplace', 'error');
+        return;
+    }
+    const sel = document.getElementById('agent-workplace-id');
+    if (sel) {
+        // Workplaces created after page load are not in the settings select yet
+        if (target && !Array.from(sel.options).some(o => o.value === id)) _appendWorkplaceOption(sel, target);
+        sel.value = id;
+    }
+    updateWorkspaceVisibility();
+    pollWorkplaceStatus();
+    updateChatPanelTitle();
+    showToast(`Workplace switched to ${target ? target.name : 'local workspace'}`, 'success');
+}
+
+function _appendWorkplaceOption(sel, h) {
+    const opt = document.createElement('option');
+    opt.value = h.id;
+    opt.dataset.type = h.type;
+    opt.dataset.name = h.name;
+    const typeLabel = {local: 'Local', remote: 'Remote SSH', tunnel: 'Tunnel'}[h.type] || h.type;
+    opt.textContent = `${h.name} [${typeLabel}]`;
+    sel.appendChild(opt);
+    return opt;
 }
 
 function updateSandboxVisibility() {
@@ -8865,16 +9175,12 @@ async function loadWorkplaceSelector() {
     try {
         const res = await fetch('/api/workplaces');
         const workplaces = await res.json();
+        _setWorkplaceCache(workplaces);
         const sel = document.getElementById('agent-workplace-id');
         if (!sel) return;
         workplaces.forEach(h => {
-            const opt = document.createElement('option');
-            opt.value = h.id;
-            opt.dataset.type = h.type;
-            const typeLabel = {local: 'Local', remote: 'Remote SSH', tunnel: 'Tunnel'}[h.type] || h.type;
-            opt.textContent = `${h.name} [${typeLabel}]`;
+            const opt = _appendWorkplaceOption(sel, h);
             if (h.id === CURRENT_HOME_ID) opt.selected = true;
-            sel.appendChild(opt);
         });
         updateWorkspaceVisibility();
         if (CURRENT_HOME_ID) pollWorkplaceStatus();
@@ -8898,6 +9204,7 @@ async function pollWorkplaceStatus() {
         const res = await fetch(`/api/workplaces/${homeId}/status`);
         const data = await res.json();
         connectionStatus = data.status || 'disconnected';
+        _wpStatus = { id: homeId, status: connectionStatus };
         const dot = document.getElementById('workplace-status-indicator');
         if (dot) dot.className = 'flex-shrink-0 inline-block w-2.5 h-2.5 rounded-full ' + (HOME_STATUS_DOT_CLS[connectionStatus] || 'bg-gray-400');
         if (connectionStatus !== 'connected') {

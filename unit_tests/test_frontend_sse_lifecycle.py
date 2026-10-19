@@ -195,8 +195,8 @@ def test_realtime_assets_are_cache_busted_and_legacy_buffers_are_gone():
     runtime = read_repo_file("backend/agent_runtime/runtime.py")
 
     assert "realtime.js') }}?v=3" in base
-    assert "chat-ui.js') }}?v=69" in detail
-    assert "chat-ui.js') }}?v=69" in sessions
+    assert "chat-ui.js') }}?v=70" in detail
+    assert "chat-ui.js') }}?v=70" in sessions
     assert "get_session_events" not in agents
     assert "register_web_listener" not in event_stream
     assert "_session_chat_seq" not in event_stream

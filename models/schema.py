@@ -1216,6 +1216,12 @@ class SchemaMixin:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration: device-reported IP addresses (comma-separated, from X-Device-IPs)
+            try:
+                cursor.execute("ALTER TABLE tunnel_connectors ADD COLUMN ip_addresses TEXT")
+            except sqlite3.OperationalError:
+                pass
+
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_workplaces_type ON workplaces(type)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tunnel_connectors_workplace ON tunnel_connectors(workplace_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tunnel_connectors_token ON tunnel_connectors(connector_token)")

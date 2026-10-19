@@ -478,6 +478,12 @@ def api_update_agent(agent_id):
         data['model_id'] = None  # empty string resets to global default
     db.update_agent(agent_id, data)
     agent = db.get_agent(agent_id)
+    if 'workplace_id' in data and (agent.get('workplace_id') or None) != (existing.get('workplace_id') or None):
+        try:
+            from backend.workplaces.switch_note import note_workplace_switch
+            note_workplace_switch(existing, agent)
+        except Exception:
+            logger.warning("Failed to add workplace switch note for agent %s", agent_id, exc_info=True)
     agent['system_prompt'] = _read_system_prompt(agent_id, fallback=agent.get('system_prompt', ''))
     audit.log_agent_crud(user_id='admin', agent_id=agent_id, action='update', ip=_audit_ip())
     return jsonify({'success': True, 'agent': _sanitize_agent(agent)})

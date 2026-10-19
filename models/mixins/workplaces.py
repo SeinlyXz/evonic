@@ -118,7 +118,7 @@ class WorkplaceMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at FROM tunnel_connectors WHERE id = ?", (connector_id,))
+            cursor.execute("SELECT id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at, ip_addresses FROM tunnel_connectors WHERE id = ?", (connector_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -126,7 +126,7 @@ class WorkplaceMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at FROM tunnel_connectors WHERE connector_token = ?", (token,))
+            cursor.execute("SELECT id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at, ip_addresses FROM tunnel_connectors WHERE connector_token = ?", (token,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -134,7 +134,7 @@ class WorkplaceMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at FROM tunnel_connectors WHERE workplace_id = ?", (workplace_id,))
+            cursor.execute("SELECT id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at, ip_addresses FROM tunnel_connectors WHERE workplace_id = ?", (workplace_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -142,7 +142,7 @@ class WorkplaceMixin:
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at FROM tunnel_connectors WHERE pairing_code = ?", (code,))
+            cursor.execute("SELECT id, workplace_id, connector_token, pairing_code, pairing_expires_at, device_name, platform, version, last_seen_at, ip_addresses FROM tunnel_connectors WHERE pairing_code = ?", (code,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -169,7 +169,8 @@ class WorkplaceMixin:
 
     def update_connector(self, connector_id: str, data: Dict[str, Any]) -> bool:
         allowed = {'connector_token', 'pairing_code', 'pairing_expires_at',
-                   'device_name', 'platform', 'version', 'last_seen_at'}
+                   'device_name', 'platform', 'version', 'last_seen_at',
+                   'ip_addresses'}
         updates = {k: v for k, v in data.items() if k in allowed}
         if not updates:
             return False
