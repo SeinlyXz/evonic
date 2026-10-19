@@ -73,8 +73,12 @@ class ProvidersMixin:
                 raise ValueError("connection_options must be a JSON object") from exc
         if not isinstance(options, dict):
             raise ValueError("connection_options must be an object")
+        # claude_cli is a local client with no HTTP adapter; collapsing it to
+        # the adapter's legacy format would silently turn it into "openai".
+        api_format = "claude_cli" if result.get("api_format") == "claude_cli" \
+            else _ADAPTER_TO_LEGACY_FORMAT[adapter_key]
         result.update(endpoint=endpoint, base_url=endpoint, adapter_key=adapter_key,
-                      api_format=_ADAPTER_TO_LEGACY_FORMAT[adapter_key],
+                      api_format=api_format,
                       connection_options=json.dumps(options, sort_keys=True))
         return result
 
