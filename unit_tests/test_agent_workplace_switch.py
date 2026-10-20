@@ -106,3 +106,17 @@ def test_tools_tab_lists_switch_workplace_only_when_enabled():
     assert "switch_workplace" not in names()
     c.put("/api/agents/ws_agent", json={"workplace_switch_enabled": 1})
     assert "switch_workplace" in names()
+
+
+def test_workplace_endpoint_follows_a_switch_the_agent_made():
+    from backend.workplaces import agent_switch
+    from models.db import db
+
+    _setup(db, workplace_switch_enabled=1)
+    c = _client()
+    assert c.get("/api/agents/ws_agent/workplace").get_json() == {"workplace_id": "ws-a"}
+    agent_switch.switch("ws_agent", "ws-b")
+    assert c.get("/api/agents/ws_agent/workplace").get_json() == {"workplace_id": "ws-b"}
+    agent_switch.switch("ws_agent", "local")
+    assert c.get("/api/agents/ws_agent/workplace").get_json() == {"workplace_id": None}
+    assert c.get("/api/agents/nope/workplace").status_code == 404

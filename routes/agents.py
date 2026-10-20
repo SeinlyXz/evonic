@@ -295,6 +295,15 @@ def api_get_agent(agent_id):
     return jsonify(_sanitize_agent(agent))
 
 
+@agents_bp.route('/api/agents/<agent_id>/workplace', methods=['GET'])
+def api_get_agent_workplace(agent_id):
+    """Current workplace only: the page header polls this to follow a switch the agent made itself."""
+    agent = db.get_agent(agent_id)
+    if not agent:
+        return jsonify({'error': 'Agent not found'}), 404
+    return jsonify({'workplace_id': agent.get('workplace_id') or None})
+
+
 @agents_bp.route('/api/agents/<agent_id>/commands', methods=['GET'])
 def api_list_agent_commands(agent_id):
     if not db.get_agent(agent_id):

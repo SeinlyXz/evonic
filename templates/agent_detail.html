@@ -3144,7 +3144,7 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=70" defer></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=71" defer></script>
 <script src="{{ url_for('static', filename='js/ai-logos.js') }}?v=1" defer></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=12" defer></script>
 <script src="{{ url_for('static', filename='js/state-ui.js') }}?v=16" defer></script>
@@ -9419,7 +9419,31 @@ async function loadWorkplaceSelector() {
     }
 }
 
+// The agent can switch workplace on its own (switch_workplace tool), so the settings
+// select, which drives the header chip, follows the server instead of only the page load.
+async function syncAgentWorkplace() {
+    const sel = document.getElementById('agent-workplace-id');
+    if (!sel || document.activeElement === sel) return;
+    if (typeof AgentAutoSave !== 'undefined' && AgentAutoSave._timers && AgentAutoSave._timers['agent-workplace-id']) return;   // user edit still saving
+    const requested = AGENT_ID;
+    try {
+        const res = await fetch(`/api/agents/${encodeURIComponent(requested)}/workplace`);
+        if (!res.ok) return;
+        const id = (await res.json()).workplace_id || '';
+        if (requested !== AGENT_ID || sel.value === id) return;
+        if (id && !Array.from(sel.options).some(o => o.value === id)) {
+            const w = _workplacesById[id];
+            if (w) _appendWorkplaceOption(sel, w);
+        }
+        sel.value = id;
+        updateWorkspaceVisibility();
+    } catch (e) {}
+}
+
+document.addEventListener('evonic:workplace-maybe-changed', () => pollWorkplaceStatus());
+
 async function pollWorkplaceStatus() {
+    await syncAgentWorkplace();
     const homeId = document.getElementById('agent-workplace-id') ? document.getElementById('agent-workplace-id').value : '';
     let connectionStatus = null;
     if (!homeId) {
