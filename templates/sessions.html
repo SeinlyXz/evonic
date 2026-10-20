@@ -902,7 +902,7 @@ html.dark #chat-room { border-color: var(--color-gray-700, #364153); background:
 </div>
 
 <script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=70"></script>
-<script src="{{ url_for('static', filename='js/agent-state.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='js/agent-state.js') }}?v=13"></script>
 <script>
 let allSessions = [];
 let currentSessionId = null;
@@ -2549,9 +2549,11 @@ function renderSessionAgentState(agentId, userId, containerIds, sessionId, data)
     let rows = '';
     if (data.active_model) {
         const am = data.active_model;
-        rows += am.is_fallback
-            ? _sessKv(ST_ICON.model, 'Model', `<span class="st-kv-v" title="Using the fallback model because the primary failed"><span class="st-dot amber"></span><span>${esc(am.name)}</span><button type="button" onclick="_resetActiveModel()" title="Reset to the primary model" aria-label="Reset to the primary model" style="display:inline-flex">${ST_ICON.undo.replace('<svg ', '<svg width="14" height="14" ')}</button></span>`)
-            : _sessKv(ST_ICON.model, 'Model', `<span class="st-kv-v"><span class="st-dot green"></span><span>${esc(am.name)}</span></span>`);
+        const dot = am.is_session_override ? 'st-dot' : (am.is_fallback ? 'st-dot amber' : 'st-dot green');
+        const dotStyle = am.is_session_override ? ' style="background:#6366f1;box-shadow:0 0 0 3px rgb(99 102 241 / .18)"' : '';
+        const small = (svg) => svg.replace('<svg ', '<svg width="14" height="14" ');
+        rows += _sessKv(ST_ICON.model, 'Model', `<button type="button" class="st-kv-v" onclick="_openModelDialog()" title="Click to switch the model for this session"><span class="${dot}"${dotStyle}></span><span>${esc(am.name)}</span></button>`
+            + (am.is_fallback ? `<button type="button" class="st-kv-v" style="margin-left:.25rem" onclick="_resetActiveModel()" title="Reset to the primary model" aria-label="Reset to the primary model">${small(ST_ICON.undo)}</button>` : ''));
     }
     if (data.focus) {
         rows += _sessKv(ST_ICON.focus, 'Focus', `<span class="st-kv-v" title="${esc(data.focus_reason || '')}"><span>${esc(data.focus_reason || 'on')}</span></span>`);
