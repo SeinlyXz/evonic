@@ -1362,3 +1362,28 @@ html.dark .mcd-chip.think { color: #f2b84b; }
 html.dark .mcd-pingres.ok { color: #4fd49a; }
 .mcd-pingres.bad { color: var(--st-err); }
 .mcd-pingres.busy { color: var(--text-muted); font-weight: 500; }
+
+/* ============================================================
+   General > Models & Routing: text above its control, every select the same width,
+   and a flush Vision sub-section
+   ============================================================ */
+#group-models-routing .setting-row { display: flex; flex-direction: column; align-items: stretch; gap: .625rem; }
+#group-models-routing .setting-row .setting-row-control { width: min(100%, 36rem); max-width: 100%; flex-wrap: nowrap; gap: .5rem; }
+#group-models-routing .setting-row .setting-row-control .setting-select,
+#group-models-routing .setting-row select { flex: 1 1 auto; width: 100%; max-width: none; min-width: 0; }
+#group-models-routing .setting-row-desc { max-width: 60ch; }
+#group-models-routing .setting-subgroup { margin: 0; border: 0; border-bottom: 1px solid var(--st-line); padding: 0; }
+#group-models-routing .setting-subgroup-head {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .125rem .625rem;
+    margin: 0; padding: .875rem 1.25rem; background: rgb(148 163 184 / .08); border-bottom: 1px solid var(--st-line);
+}
+#group-models-routing .setting-subgroup-head svg { width: 18px; height: 18px; color: var(--st-accent); }
+#group-models-routing .setting-subgroup-head h4 { font-size: 1rem; font-weight: 650; letter-spacing: 0; text-transform: none; color: var(--text-heading); }
+#group-models-routing .setting-subgroup-head p { flex-basis: 100%; margin: 0; padding-left: calc(18px + .625rem); font-size: .8125rem; max-width: none; }
+#group-models-routing .setting-subgroup-body { border: 0; border-radius: 0; background: transparent; }
+#group-models-routing .setting-subgroup-body .setting-row { padding: 1.125rem 1.25rem; }
+#group-models-routing .setting-subgroup-body .setting-row:last-child { border-bottom: 0; }
+#group-models-routing .vision-models-group .setting-row-control { width: min(100%, 36rem); max-width: 100%; }
+@media (max-width: 767px) {
+    #group-models-routing .setting-subgroup-head, #group-models-routing .setting-subgroup-body .setting-row { padding-inline: .75rem; }
+}
