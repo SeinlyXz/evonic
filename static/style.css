@@ -82,7 +82,7 @@ html.dark {
 
 /* Chat bubble markdown prose (compact, used in both agent Test Chat and Sessions) */
 /* Workplace switch marker in chat history (see buildWorkplaceSwitchMarker) */
-.chat-wp-switch { display: flex; align-items: center; gap: .75rem; margin: .25rem 0; color: #6b7280; font-size: .75rem; }
+.chat-wp-switch { display: flex; align-items: center; gap: .75rem; margin: 1.25rem 0; color: #6b7280; font-size: .75rem; }
 .chat-wp-switch-line { flex: 1 1 0; height: 1px; background: rgb(148 163 184 / .35); }
 .chat-wp-switch-label { flex: 0 1 auto; min-width: 0; max-width: 80%; padding: .1875rem .625rem; border: 1px solid rgb(148 163 184 / .35); border-radius: 9999px;
     background: rgb(148 163 184 / .08); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
