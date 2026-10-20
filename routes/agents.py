@@ -445,6 +445,13 @@ def api_update_agent(agent_id):
                 _json.loads(data['messaging_acl'])
             except _json.JSONDecodeError:
                 return jsonify({'error': 'messaging_acl must be a JSON array of agent IDs.'}), 400
+    if 'workplace_switch_allowed' in data:
+        from backend.workplaces.agent_switch import parse_allowed
+        import json as _json
+        _allowed = parse_allowed(data['workplace_switch_allowed'])
+        data['workplace_switch_allowed'] = _json.dumps(_allowed) if _allowed else None
+    if 'workplace_switch_enabled' in data:
+        data['workplace_switch_enabled'] = 1 if data['workplace_switch_enabled'] else 0
     target_workplace_id = data.get('workplace_id', existing.get('workplace_id'))
     try:
         _apply_sandbox_workplace_policy(data, target_workplace_id)
