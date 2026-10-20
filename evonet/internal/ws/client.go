@@ -38,7 +38,8 @@ type Client struct {
 	cfg               *config.Config
 	exec              *executor.Executor
 	conn              *websocket.Conn
-	mu                sync.Mutex
+	mu                sync.Mutex // protects conn and connection-scoped state
+	writeMu           sync.Mutex // serializes gorilla/websocket writers
 	running           atomic.Bool
 	stopCh            chan struct{}
 	stopOnce          sync.Once
@@ -123,14 +124,18 @@ func (c *Client) RunOnce() error {
 	return nil
 }
 
-// Stop signals the client to disconnect and stop reconnecting.
+// Stop signals the client to disconnect and stop reconnecting. It detaches the
+// active connection before closing it, so callers never wait for a potentially
+// blocked WebSocket write to finish.
 func (c *Client) Stop() {
 	c.running.Store(false)
 	c.stopOnce.Do(func() { close(c.stopCh) })
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn != nil {
-		c.conn.Close()
+	conn := c.conn
+	c.conn = nil
+	c.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
 	}
 }
 
@@ -313,10 +318,15 @@ func (c *Client) heartbeat(conn *websocket.Conn, stop <-chan struct{}) {
 // safeWrite serializes all writes to the connection. gorilla/websocket permits
 // only one concurrent writer, and the read loop, response goroutines and the
 // heartbeat can all write. It also no-ops if conn is no longer the active one.
+// Connection state is deliberately kept separate from the writer lock so Stop
+// can detach and close a blocked connection without waiting for writeTimeout.
 func (c *Client) safeWrite(conn *websocket.Conn, messageType int, data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn != conn {
+	active := c.conn == conn
+	c.mu.Unlock()
+	if !active {
 		return errors.New("connection superseded")
 	}
 	if err := conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
@@ -327,9 +337,12 @@ func (c *Client) safeWrite(conn *websocket.Conn, messageType int, data []byte) e
 }
 
 func (c *Client) safeWriteControl(conn *websocket.Conn, messageType int, data []byte, deadline time.Time) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn != conn {
+	active := c.conn == conn
+	c.mu.Unlock()
+	if !active {
 		return errors.New("connection superseded")
 	}
 	return conn.WriteControl(messageType, data, deadline)

@@ -4,6 +4,7 @@ package gui
 
 import (
 	"os"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -24,6 +25,7 @@ type LogWriter struct {
 	flusher *logFlusher
 	entry   *widget.RichText
 	scroll  *container.Scroll
+	epoch   atomic.Uint64
 }
 
 func newLogWriter(entry *widget.RichText, scroll *container.Scroll) *LogWriter {
@@ -48,7 +50,11 @@ func (lw *LogWriter) Write(p []byte) (int, error) {
 // flusher goroutine and hops to the Fyne main goroutine via fyne.Do, which is
 // required on macOS/Cocoa.
 func (lw *LogWriter) render(text string) {
+	epoch := lw.epoch.Load()
 	fyne.Do(func() {
+		if lw.epoch.Load() != epoch {
+			return
+		}
 		lw.entry.Segments = []widget.RichTextSegment{
 			&widget.TextSegment{
 				Style: widget.RichTextStyle{
@@ -66,8 +72,12 @@ func (lw *LogWriter) render(text string) {
 // Clear removes all log lines immediately and updates the display.
 func (lw *LogWriter) Clear() {
 	lw.buf.clear()
+	epoch := lw.epoch.Add(1)
 
 	fyne.Do(func() {
+		if lw.epoch.Load() != epoch {
+			return
+		}
 		lw.entry.Segments = nil
 		lw.entry.Refresh()
 		lw.scroll.ScrollToTop()
