@@ -124,6 +124,7 @@ window.settingsModels = {
                     <div class="provider-group">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 px-1">
                             <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center justify-center flex-shrink-0 leading-none text-gray-700 dark:text-gray-300">${this._logo({ provider: pid, provider_name: prov.name }, 20)}</span>
                                 <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">${this._escapeHtml(prov.name)}</h3>
                                 ${typeBadge}
                                 <span class="text-xs text-gray-400">${models.length} model${models.length !== 1 ? "s" : ""}</span>
@@ -138,6 +139,13 @@ window.settingsModels = {
                     </div>`;
             })
             .join('<hr class="my-6 border-gray-200 dark:border-gray-700">');
+    },
+
+    // Brand mark (ai-logos.js); the provider's display name helps when the model name says nothing.
+    _logo(m, size) {
+        if (typeof aiLogoHtml !== "function") return "";
+        const prov = this.providers.find((p) => p.id === m.provider);
+        return aiLogoHtml({ ...m, provider_name: m.provider_name || (prov && prov.name) || "" }, size);
     },
 
     _renderModelCard(model) {
@@ -167,7 +175,8 @@ window.settingsModels = {
         <div class="model-card bg-white dark:bg-gray-800 rounded-lg border ${defaultBorder} p-3 hover:shadow-sm transition-shadow flex flex-col gap-2">
             <div class="flex items-start justify-between gap-2">
                 <div class="flex items-center gap-2 min-w-0">
-                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 text-[11px] font-bold text-gray-600 dark:text-gray-300 flex-shrink-0">${shortcode}</span>
+                    <span class="inline-flex items-center justify-center flex-shrink-0 leading-none text-gray-700 dark:text-gray-300">${this._logo(model, 24)}</span>
+                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 text-[11px] font-bold text-gray-600 dark:text-gray-300 flex-shrink-0" title="Shortcode (/model ${shortcode})">${shortcode}</span>
                     <h4 class="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate min-w-0">${model.name}</h4>
                 </div>
                 <div class="flex flex-row items-center gap-1.5 shrink-0">

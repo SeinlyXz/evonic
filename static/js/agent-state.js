@@ -752,7 +752,7 @@ function _renderModelDialog() {
         '    <div data-list style="max-height:330px;overflow-y:auto;padding:10px;">' + options + '</div>' +
         '  </div>' +
         '  <div style="flex:1 1 260px;padding:14px 18px;" class="sm:border-l border-gray-100 dark:border-gray-700">' +
-        (sel ? '<div class="flex items-center gap-3 mb-2 text-gray-800 dark:text-gray-100">' + '<div class="min-w-0"><div class="text-sm font-semibold truncate">' + esc(sel.name) + '</div><div class="text-xs text-gray-500 dark:text-gray-400 truncate">' + esc(sel.provider_name || sel.provider) + '</div></div></div>' + _modelDlgDetail(sel) : '<p class="text-sm text-gray-400">No models available.</p>') +
+        (sel ? '<div class="flex items-center gap-3 mb-2 text-gray-800 dark:text-gray-100">' + aiLogoHtml(sel, 36) + '<div class="min-w-0"><div class="text-sm font-semibold truncate">' + esc(sel.name) + '</div><div class="text-xs text-gray-500 dark:text-gray-400 truncate">' + esc(sel.provider_name || sel.provider) + '</div></div></div>' + _modelDlgDetail(sel) : '<p class="text-sm text-gray-400">No models available.</p>') +
         '  </div>' +
         '</div>' +
         '<div class="flex items-center justify-between gap-2 px-5 py-3 border-t border-gray-100 dark:border-gray-700">' +
@@ -813,10 +813,11 @@ function _modelDlgListHtml() {
             var active = m.id === _modelDlgSelected;
             return '<button type="button" data-model-id="' + esc(m.id) + '" class="w-full text-left px-3 py-2 rounded-lg text-sm cursor-pointer flex items-center gap-3 ' +
                 (active ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-200' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200') + '">' +
+                aiLogoHtml(m, 26) +
                 '<span class="min-w-0 flex-1"><span class="block font-medium truncate">' + esc(m.name) + tags + '</span>' +
                 '<span class="block text-xs opacity-70 truncate">' + esc(m.model_name) + '</span></span></button>';
         }).join('');
-        return '<div class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 px-3 pt-2 pb-1">' + '<span>' + esc(prov) + '</span>' +
+        return '<div class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 px-3 pt-2 pb-1">' + aiLogoHtml({ provider: groups[prov][0].provider, provider_name: prov }, 14) + '<span>' + esc(prov) + '</span>' +
             ' <span class="font-normal">· ' + groups[prov].length + '</span></div>' + items;
     }).join('');
 }
