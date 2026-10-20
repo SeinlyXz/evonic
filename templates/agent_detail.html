@@ -700,6 +700,22 @@ html.dark .mstate-h h3 { color: #f3f4f6; }
 /* Message box background (dark mode). Swap --chat-bg to try other candidates:
    #172236 (navy) · #131B2E (deeper) · #1B2440 (indigo-tinted) · #1A2230 (neutral slate, previous pick); now follows the app's card colour (--bg-card, = the login card) */
 html.dark #chat-shell { --chat-bg: var(--bg-card); background-color: var(--chat-bg); }
+/* Workplace connection notice: floats above the composer instead of hiding behind it */
+.wp-notice { display: flex; align-items: center; gap: .625rem; margin: 0 0 .5rem; padding: .5rem .5rem .5rem .875rem; border-radius: .875rem;
+  border: 1px solid rgb(245 158 11 / .4); background: rgb(254 243 199 / .92); color: #92400e; font-size: .8125rem;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 6px 18px -10px rgb(0 0 0 / .35); }
+html.dark .wp-notice { border-color: rgb(245 158 11 / .35); background: rgb(66 45 8 / .85); color: #fcd34d; }
+.wp-notice.hidden { display: none; }
+.wp-notice-msg { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-notice-ic, .wp-notice-spin { flex: none; width: 1rem; height: 1rem; }
+.wp-notice-spin { display: none; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: wp-notice-spin .8s linear infinite; }
+.wp-notice.is-connecting .wp-notice-spin { display: block; }
+.wp-notice.is-connecting .wp-notice-ic { display: none; }
+.wp-notice-btn { flex: none; font: inherit; font-size: .75rem; font-weight: 600; padding: .3rem .7rem; border: 0; border-radius: .5rem; background: rgb(245 158 11 / .22); color: inherit; cursor: pointer; }
+.wp-notice-btn:hover { background: rgb(245 158 11 / .36); }
+.wp-notice-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@keyframes wp-notice-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .wp-notice-spin { animation: none; } }
 #chat-composer-wrap { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; border-top: 0; pointer-events: none; }
 #chat-composer-wrap > * { pointer-events: auto; }
 #chat-composer-wrap > .pblur { pointer-events: none; }
@@ -2523,13 +2539,15 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
                     </button>
                 </div>
                 <!-- Workplace Connection Overlay (shown when agent workplace is not connected) -->
-                <div id="workplace-connection-overlay" class="hidden border-t border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 flex items-center gap-3">
-                    <div class="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
-                    <p id="workplace-overlay-msg" class="text-sm text-yellow-700 dark:text-yellow-400">Connecting to workplace...</p>
-                    <button onclick="retryWorkplaceConnect()" class="ml-auto text-xs text-yellow-700 dark:text-yellow-400 hover:underline flex-shrink-0">Retry</button>
-                </div>
                 <div id="chat-composer-wrap" class="p-4">
                     <div class="pblur pblur-bottom" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                    <!-- Workplace not reachable: a notice that sits right above the composer (inside the wrap, so the message list reserves its height) -->
+                    <div id="workplace-connection-overlay" class="wp-notice hidden" role="status" aria-live="polite">
+                        <span class="wp-notice-spin" aria-hidden="true"></span>
+                        <svg class="wp-notice-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                        <p id="workplace-overlay-msg" class="wp-notice-msg">Connecting to workplace...</p>
+                        <button type="button" onclick="retryWorkplaceConnect()" class="wp-notice-btn">Retry</button>
+                    </div>
                     <div id="chat-composer" class="chat-composer" onclick="if(!event.target.closest('button,a,textarea,[role=button]')) document.getElementById('chat-input').focus()">
                         <!-- Editor-mode tip (shown on Shift+Enter): a strip joined to the top of the composer card -->
                         <div id="editor-tip" class="hidden chat-anim-in">
@@ -9434,8 +9452,12 @@ function showWorkplaceConnectionOverlay(homeId, status) {
     const sel = document.getElementById('agent-workplace-id');
     const selectedOpt = sel ? sel.options[sel.selectedIndex] : null;
     const homeName = selectedOpt && selectedOpt.value ? selectedOpt.dataset.name || selectedOpt.textContent.split(' [')[0] : 'workplace';
-    const msg = status === 'error' ? `Connection error — ${homeName}.` : `Connecting to ${homeName}...`;
-    document.getElementById('workplace-overlay-msg').textContent = msg;
+    const msg = status === 'error' ? `Connection error — ${homeName}.` : status === 'connecting' ? `Connecting to ${homeName}...` : `${homeName} is not connected.`;
+    const msgEl = document.getElementById('workplace-overlay-msg');
+    msgEl.textContent = msg;
+    msgEl.title = msg;
+    // The spinner only belongs to an attempt that is actually in progress.
+    overlay.classList.toggle('is-connecting', status === 'connecting');
 }
 
 function hideWorkplaceConnectionOverlay() {
