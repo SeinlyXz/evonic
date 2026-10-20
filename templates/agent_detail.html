@@ -1282,6 +1282,9 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
 #tab-general .gcard:has(> .mb-4), #tab-general .gcard:has(> .prof) { padding: 0 !important; background: var(--gs-surface); overflow: hidden; }
 #tab-general .gcard-h { gap: .625rem; margin: 0; padding: 1rem 1.25rem; border-bottom: 1px solid var(--gs-line); }
 #tab-general .gcard:not(:has(> .mb-4)):not(:has(> .prof)) .gcard-h { margin-bottom: 1.25rem; padding: 0 0 1rem; }
+/* Variables and Plugin Settings cards are not .gcard: keep their header flush with the rows and leave room under the divider */
+#tab-general .gpanel-vars > div:has(> #agent-variables-list) > .gcard-h,
+#tab-general #plugin-settings-card > .gcard-h { margin: 0 0 1.25rem; padding: 0 0 1rem; }
 #tab-general .gcard-h h3 { font-size: 1.0625rem; font-weight: 700; color: var(--gs-title); }
 #tab-general .gcard > .prof { padding: 1.25rem; }
 #tab-general .gcard > .mb-4 { display: flex; flex-direction: column; margin: 0 !important; padding: 1.125rem 1.25rem; border-bottom: 1px solid var(--gs-line); transition: background-color .15s; }
