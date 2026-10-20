@@ -3,8 +3,8 @@
 The agent's ``workplace_id`` is agent-wide, exactly like the manual switcher in
 the chat header, so a switch here is the same operation: it updates the agent
 row and leaves a ``[SYSTEM]`` note in the web chat. The per-agent allowlist in
-``workplace_switch_allowed`` (JSON array of workplace ids, plus the pseudo id
-``local``) limits where the agent may go; an empty list means anywhere.
+``workplace_switch_allowed`` (JSON array of workplace ids) limits where the agent
+may go; an empty list means anywhere. The local workspace is always allowed.
 """
 
 import json
@@ -44,10 +44,9 @@ def list_options(agent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     allowed = set(parse_allowed(agent.get('workplace_switch_allowed')))
     current = agent.get('workplace_id') or None
-    options = []
-    if not allowed or LOCAL_ID in allowed:
-        options.append({'id': LOCAL_ID, 'name': 'Local workspace', 'type': 'local',
-                        'status': 'connected', 'current': current is None})
+    # The local workspace is always available, whatever the allowlist says.
+    options = [{'id': LOCAL_ID, 'name': 'Local workspace', 'type': 'local',
+                'status': 'connected', 'current': current is None}]
     for wp in db.get_workplace_summaries():
         if allowed and wp['id'] not in allowed:
             continue

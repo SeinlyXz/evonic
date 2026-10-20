@@ -64,6 +64,9 @@ def test_allowlist_blocks_other_workplaces():
     assert agent_switch.switch("ws_agent", "ws-b")["ok"] is True
     denied = agent_switch.switch("ws_agent", "ws-a")
     assert denied["ok"] is False and db.get_agent("ws_agent")["workplace_id"] == "ws-b"
+    # the local workspace can never be taken away, even though it is not in the list
+    assert "local" in {o["id"] for o in agent_switch.list_options(db.get_agent("ws_agent"))}
+    assert agent_switch.switch("ws_agent", "local")["ok"] is True
 
 
 def test_disabled_agent_cannot_switch_and_sandbox_agent_cannot_leave_local():
