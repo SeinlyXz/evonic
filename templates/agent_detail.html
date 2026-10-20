@@ -2277,7 +2277,7 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
         <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6">
             <div class="gcard-h">
                 <span class="gcard-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m9 13 2 2 4-4"/></svg></span>
-                <div class="flex-1 min-w-0"><h3>Portals</h3><p>Virtual paths that let file tools (read_file, write_file, patch, str_replace) reach other folders or machines. Not available to bash or runpy.</p></div>
+                <div class="flex-1 min-w-0"><h3>Portals</h3><p>Virtual paths that let file tools (read_file, write_file, patch, str_replace) reach folders on your workplaces. Not available to bash or runpy.</p></div>
                 <button id="portals-add-btn" type="button" onclick="showAddPortalModal()" class="ch-add">+ Add portal</button>
             </div>
             <div id="portals-list" class="ch-list">
@@ -2285,24 +2285,8 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
             </div>
             <div id="portals-empty" class="hidden">
                 <p class="ch-empty-t">No portals yet</p>
-                <p class="ch-empty-s">A portal maps a <code class="ch-code">/_portal/name/</code> path to files on another machine or directory. Choose where the files live.</p>
-                <div class="ch-picks">
-                    <button type="button" class="ch-pick ch-pick-wa" onclick="showAddPortalModal('local')">
-                        <span class="ch-pick-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></span>
-                        <span class="ch-pick-tx"><span class="ch-pick-name">Local folder</span><span class="ch-pick-desc">A directory on this host</span></span>
-                        <span class="ch-pick-go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
-                    </button>
-                    <button type="button" class="ch-pick ch-pick-tg" onclick="showAddPortalModal('ssh')">
-                        <span class="ch-pick-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></svg></span>
-                        <span class="ch-pick-tx"><span class="ch-pick-name">SSH server</span><span class="ch-pick-desc">Files on a remote server over SSH</span></span>
-                        <span class="ch-pick-go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
-                    </button>
-                    <button type="button" class="ch-pick ch-pick-dc" onclick="showAddPortalModal('evonet')">
-                        <span class="ch-pick-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="6" height="6" x="9" y="2" rx="1"/><rect width="6" height="6" x="2" y="16" rx="1"/><rect width="6" height="6" x="16" y="16" rx="1"/><path d="M12 8v4"/><path d="M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/></svg></span>
-                        <span class="ch-pick-tx"><span class="ch-pick-name">Evonet machine</span><span class="ch-pick-desc">A machine connected through an Evonet tunnel</span></span>
-                        <span class="ch-pick-go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
-                    </button>
-                </div>
+                <p class="ch-empty-s">A portal maps a <code class="ch-code">/_portal/name/</code> path to a folder on one of your workplaces.</p>
+                <button type="button" class="ch-add" onclick="showAddPortalModal()">+ Add portal</button>
             </div>
         </div>
     </div>
@@ -2876,23 +2860,13 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
                 <p class="text-xs text-gray-400 mt-1">The virtual path prefix agents use. E.g., "data_b" → /_portal/data_b/...</p>
             </div>
             <div class="mb-4">
-                <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Backend Type</label>
-                <select id="portal-backend-type" class="w-full p-2.5 border border-gray-300 rounded-md text-sm" onchange="updatePortalConfigFields()">
-                    <option value="local">Local (host filesystem)</option>
-                    <option value="ssh">SSH (remote server)</option>
-                    <option value="evonet">Evonet (tunnel-connected machine)</option>
-                </select>
-            </div>
-            <!-- Workplace picker (for SSH and evonet) -->
-            <div id="portal-workplace-picker" class="mb-4 hidden">
-                <label class="flex items-center gap-2 cursor-pointer select-none mb-2">
-                    <input type="checkbox" id="portal-use-workplace" onchange="updatePortalConfigFields()" class="rounded border-gray-300 text-indigo-500 focus:ring-indigo-400">
-                    <span class="text-sm text-gray-500">Use existing workplace</span>
-                </label>
-                <select id="portal-workplace-select" class="w-full p-2.5 border border-gray-300 rounded-md text-sm hidden">
+                <label class="block mb-1 text-gray-600 dark:text-gray-300 text-sm font-medium">Workplace</label>
+                <input type="hidden" id="portal-backend-type" value="local">
+                <select id="portal-workplace-select" onchange="onPortalWorkplaceChange()" class="w-full p-2.5 border border-gray-300 rounded-md text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:bg-gray-700 dark:text-gray-100">
                     <option value="">-- Select workplace --</option>
                 </select>
-                <p class="text-xs text-gray-400 mt-1">Reuse an existing workplace connection instead of creating a new one.</p>
+                <p class="text-xs text-gray-400 mt-1">The portal reuses this workplace's connection. <a href="/workplaces" class="text-indigo-500 hover:underline">Manage Workplaces</a></p>
+                <p id="portal-legacy-note" class="hidden ag-note mt-2">This portal uses its own SSH connection (created before portals were tied to workplaces). Keep editing it, or pick a workplace above to switch it over.</p>
             </div>
             <!-- SSH config fields -->
             <div id="portal-ssh-config" class="hidden space-y-3">
@@ -10309,7 +10283,7 @@ async function loadPortals() {
     const list = document.getElementById('portals-list');
     const empty = document.getElementById('portals-empty');
     const addBtn = document.getElementById('portals-add-btn');
-    if (addBtn) addBtn.classList.toggle('hidden', portals.length === 0);   // the picker below already offers every type
+    if (addBtn) addBtn.classList.toggle('hidden', portals.length === 0);   // the empty state has its own button
     if (portals.length === 0) {
         list.innerHTML = '';
         empty.classList.remove('hidden');
@@ -10341,17 +10315,17 @@ async function loadPortals() {
     }).join('');
 }
 
-function showAddPortalModal(type) {
+let _portalLegacySsh = false;   // editing a portal that carries its own SSH config
+
+function showAddPortalModal() {
     _portalEditingId = null;
+    _portalLegacySsh = false;
     document.getElementById('portal-modal-title').textContent = 'Add Portal';
     document.getElementById('portal-name').value = '';
     document.getElementById('portal-virtual-path').value = '';
     document.getElementById('portal-backend-type').value = 'local';
     document.getElementById('portal-real-path').value = '';
     document.getElementById('portal-workplace-select').value = '';
-    // Reset checkbox and SSH fields
-    const cb = document.getElementById('portal-use-workplace');
-    if (cb) { cb.checked = false; cb.disabled = false; }
     document.getElementById('portal-ssh-host').value = '';
     document.getElementById('portal-ssh-port').value = '22';
     document.getElementById('portal-ssh-username').value = '';
@@ -10360,8 +10334,8 @@ function showAddPortalModal(type) {
     document.getElementById('portal-ssh-passphrase').value = '';
     document.getElementById('portal-ssh-password').value = '';
     document.getElementById('portal-modal').classList.remove('hidden');
-    if (type && ['local', 'ssh', 'evonet'].includes(type)) document.getElementById('portal-backend-type').value = type;
     updatePortalConfigFields();
+    loadPortalWorkplaces();
     setTimeout(() => { const n = document.getElementById('portal-name'); if (n) n.focus(); }, 0);
 }
 
@@ -10378,13 +10352,8 @@ async function showEditPortalModal(portalId) {
     document.getElementById('portal-backend-type').value = portal.backend_type || 'local';
     document.getElementById('portal-real-path').value = portal.real_path || '';
     const cfg = typeof portal.backend_config === 'string' ? JSON.parse(portal.backend_config || '{}') : (portal.backend_config || {});
-    document.getElementById('portal-workplace-select').value = cfg.workplace_id || '';
-    if (cfg.workplace_id) {
-        const cb = document.getElementById('portal-use-workplace');
-        if (cb) cb.checked = true;
-        const sel = document.getElementById('portal-workplace-select');
-        if (sel) sel.classList.remove('hidden');
-    }
+    _portalLegacySsh = portal.backend_type === 'ssh' && !cfg.workplace_id;
+    await loadPortalWorkplaces(cfg.workplace_id || '');
     // Pre-populate SSH standalone fields if editing
     if (portal.backend_type === 'ssh' && !cfg.workplace_id) {
         document.getElementById('portal-ssh-host').value = cfg.host || '';
@@ -10405,83 +10374,61 @@ function closePortalModal() {
     document.getElementById('portal-modal').classList.add('hidden');
 }
 
-function updatePortalConfigFields() {
-    const type = document.getElementById('portal-backend-type').value;
-    const sshNewConfig = document.getElementById('portal-ssh-config');
-    const workplaceRow = document.getElementById('portal-workplace-picker');
-    const useWorkplaceCb = document.getElementById('portal-use-workplace');
-    const workplaceSelect = document.getElementById('portal-workplace-select');
+// Backend type follows the chosen workplace: SSH → ssh, Evonet tunnel → evonet, anything else → local.
+const PORTAL_BACKEND_FOR_WORKPLACE = { remote: 'ssh', tunnel: 'evonet' };
 
-    if (type === 'local') {
-        if (sshNewConfig) sshNewConfig.classList.add('hidden');
-        if (workplaceRow) workplaceRow.classList.add('hidden');
-        if (useWorkplaceCb) useWorkplaceCb.checked = false;
-    } else if (type === 'ssh') {
-        if (workplaceRow) workplaceRow.classList.remove('hidden');
-        loadPortalWorkplaces();
-        _applyWorkplaceToggle();
-    } else if (type === 'evonet') {
-        if (sshNewConfig) sshNewConfig.classList.add('hidden');
-        if (workplaceRow) workplaceRow.classList.remove('hidden');
-        if (useWorkplaceCb) { useWorkplaceCb.checked = true; useWorkplaceCb.disabled = true; }
-        if (workplaceSelect) workplaceSelect.classList.remove('hidden');
-        loadPortalWorkplaces();
-    }
+function updatePortalConfigFields() {
+    const sel = document.getElementById('portal-workplace-select');
+    const opt = sel && sel.options[sel.selectedIndex];
+    const wpType = opt && opt.value ? opt.dataset.type : '';
+    if (wpType) document.getElementById('portal-backend-type').value = PORTAL_BACKEND_FOR_WORKPLACE[wpType] || 'local';
+    else if (_portalLegacySsh) document.getElementById('portal-backend-type').value = 'ssh';
+    const legacy = _portalLegacySsh && !(sel && sel.value);
+    document.getElementById('portal-ssh-config').classList.toggle('hidden', !legacy);
+    document.getElementById('portal-legacy-note').classList.toggle('hidden', !_portalLegacySsh);
 }
 
-function _applyWorkplaceToggle() {
-    const sshNewConfig = document.getElementById('portal-ssh-config');
-    const useWorkplaceCb = document.getElementById('portal-use-workplace');
-    const workplaceSelect = document.getElementById('portal-workplace-select');
-    if (!useWorkplaceCb) return;
-    const useExisting = useWorkplaceCb.checked;
-    if (sshNewConfig) {
-        if (useExisting) sshNewConfig.classList.add('hidden');
-        else sshNewConfig.classList.remove('hidden');
-    }
-    if (workplaceSelect) {
-        if (useExisting) workplaceSelect.classList.remove('hidden');
-        else {
-            workplaceSelect.classList.add('hidden');
-            workplaceSelect.value = '';
-        }
-    }
+function onPortalWorkplaceChange() {
+    updatePortalConfigFields();
+    const sel = document.getElementById('portal-workplace-select');
+    const opt = sel.options[sel.selectedIndex];
+    const real = document.getElementById('portal-real-path');
+    if (opt && opt.dataset.path && !real.value.trim()) real.value = opt.dataset.path;
 }
 
 async function savePortal() {
     const name = document.getElementById('portal-name').value.trim();
     const virtualPath = document.getElementById('portal-virtual-path').value.trim().replace(/^\/+|\/+$/g, '');
-    const backendType = document.getElementById('portal-backend-type').value;
     const realPath = document.getElementById('portal-real-path').value.trim();
     const workplaceId = document.getElementById('portal-workplace-select').value.trim();
 
     if (!name) return alert('Name is required.');
     if (!virtualPath) return alert('Virtual path is required.');
     if (!realPath) return alert('Real path is required.');
+    updatePortalConfigFields();
+    const backendType = document.getElementById('portal-backend-type').value;
 
     let backendConfig = {};
-    if (backendType === 'ssh' || backendType === 'evonet') {
-        if (workplaceId) {
-            backendConfig = { workplace_id: workplaceId };
-        } else if (backendType === 'evonet') {
-            return alert('Evonet portals require a workplace_id.');
-        } else {
-            // Standalone SSH config
-            backendConfig = {
-                host: document.getElementById('portal-ssh-host')?.value?.trim() || '',
-                port: parseInt(document.getElementById('portal-ssh-port')?.value || '22'),
-                username: document.getElementById('portal-ssh-username')?.value?.trim() || '',
-                auth_type: document.getElementById('portal-ssh-auth-type')?.value || 'key',
-                key_path: document.getElementById('portal-ssh-key-path')?.value?.trim() || '',
-                passphrase: document.getElementById('portal-ssh-passphrase')?.value?.trim() || '',
-            };
-            if (backendConfig.auth_type === 'password') {
-                backendConfig.password = document.getElementById('portal-ssh-password')?.value?.trim() || '';
-            }
-            if (!backendConfig.host || !backendConfig.username) {
-                return alert('Host and username are required for SSH.');
-            }
+    if (workplaceId) {
+        backendConfig = { workplace_id: workplaceId };
+    } else if (_portalLegacySsh) {
+        // Portal created before portals were tied to workplaces: keep its own SSH config.
+        backendConfig = {
+            host: document.getElementById('portal-ssh-host')?.value?.trim() || '',
+            port: parseInt(document.getElementById('portal-ssh-port')?.value || '22'),
+            username: document.getElementById('portal-ssh-username')?.value?.trim() || '',
+            auth_type: document.getElementById('portal-ssh-auth-type')?.value || 'key',
+            key_path: document.getElementById('portal-ssh-key-path')?.value?.trim() || '',
+            passphrase: document.getElementById('portal-ssh-passphrase')?.value?.trim() || '',
+        };
+        if (backendConfig.auth_type === 'password') {
+            backendConfig.password = document.getElementById('portal-ssh-password')?.value?.trim() || '';
         }
+        if (!backendConfig.host || !backendConfig.username) {
+            return alert('Host and username are required for SSH.');
+        }
+    } else {
+        return alert('Choose a workplace.');
     }
 
     const body = {
@@ -10537,24 +10484,24 @@ async function disconnectPortal(portalId) {
 }
 
 // Load workplaces for dropdown in portal modal
-async function loadPortalWorkplaces() {
+async function loadPortalWorkplaces(selectId) {
     try {
         const res = await fetch('/api/workplaces?summary=1');
-        const data = await res.json();
-        const workplaces = data || [];
+        const workplaces = (await res.json()) || [];
         const sel = document.getElementById('portal-workplace-select');
         if (!sel) return;
-        const prevVal = sel.value;
-        sel.innerHTML = '<option value="">-- Configure new connection --</option>';
-        // Option() sets text, not HTML; one append instead of re-parsing innerHTML per row
+        const keep = selectId !== undefined ? selectId : sel.value;
+        sel.innerHTML = '<option value="">-- Select workplace --</option>';
         const frag = document.createDocumentFragment();
-        workplaces.forEach(w => frag.appendChild(new Option(`${w.name} (${w.type})`, w.id)));
+        workplaces.forEach(w => {
+            const o = new Option(`${w.name} (${(typeof WP_TYPE_LABEL !== 'undefined' && WP_TYPE_LABEL[w.type]) || w.type})`, w.id);
+            o.dataset.type = w.type;
+            if (w.workspace_path) o.dataset.path = w.workspace_path;
+            frag.appendChild(o);
+        });
         sel.appendChild(frag);
-        // Restore previously selected value if it still exists in the new options
-        if (prevVal) {
-            const exists = Array.from(sel.options).some(o => o.value === prevVal);
-            if (exists) sel.value = prevVal;
-        }
+        if (keep && Array.from(sel.options).some(o => o.value === keep)) sel.value = keep;
+        updatePortalConfigFields();
     } catch (e) {
         console.error('Failed to load workplaces for portal picker:', e);
     }

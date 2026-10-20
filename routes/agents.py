@@ -2753,6 +2753,10 @@ def api_create_portal(agent_id):
         except (json.JSONDecodeError, ValueError):
             return jsonify({'error': 'backend_config must be valid JSON'}), 400
 
+    if isinstance(backend_config, dict) and backend_config.get('workplace_id') \
+            and not db.get_workplace(backend_config['workplace_id']):
+        return jsonify({'error': 'workplace not found'}), 400
+
     portal_data = {
         'agent_id': agent_id,
         'name': name,
