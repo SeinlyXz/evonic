@@ -52,6 +52,8 @@ _PRUNE_NOTE = (
 # Higher number = kept longer. Matched case-insensitively against a line's
 # label text. First matching keyword wins.
 _SECTION_KEYWORDS = [
+    ("preference", 6), ("instruction", 6), ("language", 6), ("bahasa", 6),
+    ("preferensi", 6), ("instruksi", 6),
     ("entities", 6), ("relationship", 6), ("relasi", 6), ("entitas", 6),
     ("user information", 5), ("user info", 5), ("identity", 5),
     ("contact", 5), ("profil", 5), ("user", 5),
@@ -64,6 +66,13 @@ _SECTION_KEYWORDS = [
     ("history", 1), ("resolved", 1), ("done", 1), ("selesai", 1),
 ]
 _DEFAULT_SECTION_PRIO = 3  # between requests (3) and facts (2) → keep over facts
+
+# Pins written by the `remember` tool: "- (noted:key) text" / "- (noted, cat) text".
+_NOTED_RE = re.compile(r"^\s*-\s*\(noted(?::([^)\s]+))?[^)]*\)")
+# Pinned user preferences / standing instructions (reply language, form of
+# address, ...) are never worth dropping: forgetting one makes the agent revert.
+_STANDING_KEYS = ("preference", "instruction", "language", "bahasa", "preferensi", "instruksi")
+_NOTE_PRIO = 3  # a plain pin ties with Requests; ties drop the later (pinned) one first
 
 _HEADER_RE = re.compile(
     r"^\s*(?:#{1,6}\s+\S|\*\*[^*]+\*\*\s*$|-?\s*[A-Za-z][A-Za-z0-9 /&,'()_.-]{2,70}:\s*$)"
@@ -117,6 +126,10 @@ def _prune_to_limit(summary: str, max_chars: int) -> str:
     if len(summary) <= max_chars:
         return summary
 
+    # A previous prune already left its marker; drop it so repeated prunes do
+    # not stack one marker per pass (it is re-added below if still needed).
+    summary = "\n".join(l for l in summary.split("\n") if l.strip() != _PRUNE_NOTE)
+
     blocks = []  # {"lines": [str, ...], "prio": int, "header": bool}
     current_prio = _DEFAULT_SECTION_PRIO
     for line in summary.split("\n"):
@@ -125,10 +138,17 @@ def _prune_to_limit(summary: str, max_chars: int) -> str:
         if header_prio is not None:
             current_prio = header_prio
         is_bullet = bool(_BULLET_RE.match(line))
+        prio = 7 if is_header else current_prio
+        noted = None if is_header else _NOTED_RE.match(line)
+        if noted:
+            # A pin belongs to no section: do not let it inherit the priority of
+            # whatever section precedes it (it used to outrank the whole summary).
+            key = (noted.group(1) or "").lower()
+            prio = 7 if any(k in key for k in _STANDING_KEYS) else _NOTE_PRIO
         if not blocks or is_bullet or is_header:
             blocks.append({
                 "lines": [line],
-                "prio": 7 if is_header else current_prio,
+                "prio": prio,
                 "header": is_header,
             })
         else:
@@ -149,6 +169,15 @@ def _prune_to_limit(summary: str, max_chars: int) -> str:
         victim = min(candidates, key=lambda i: (blocks[i]["prio"], -i))
         active.remove(victim)
         dropped_any = True
+
+    if dropped_any:
+        # A heading whose bullets were all dropped is noise ("- Requests:" with
+        # nothing under it reads as "the user asked for nothing").
+        for pos in range(len(active) - 1, -1, -1):
+            nxt = active[pos + 1] if pos + 1 < len(active) else None
+            if blocks[active[pos]]["header"] and (nxt is None or blocks[nxt]["header"]) \
+                    and len(active) > 1:
+                del active[pos]
 
     text = render(active)
     if dropped_any and len(text) + 1 + len(_PRUNE_NOTE) <= max_chars:

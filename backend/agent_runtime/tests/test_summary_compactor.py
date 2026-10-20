@@ -148,3 +148,20 @@ class TestCompactSummary(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_prune_keeps_pinned_preference_and_drops_empty_headings():
+    from backend.agent_runtime.summary_compactor import _prune_to_limit
+    text = "\n".join([
+        "- User Information:", "    - Name: A",
+        "- Requests:", "    - " + "r" * 400,
+        "- Facts:", "    - " + "f" * 400,
+        "## Entities & Relationships", "- X — place",
+        "- (noted:context.s2) " + "n" * 400,
+        "- (noted:preference.bahasa.respons) Reply in Indonesian.",
+    ])
+    out = _prune_to_limit(text, 600)
+    assert len(out) <= 600
+    assert "Reply in Indonesian." in out
+    assert "- Facts:" not in out  # emptied heading is removed with its bullets
+    assert out.count("older / least-relevant") <= 1

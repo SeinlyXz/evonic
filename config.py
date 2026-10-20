@@ -385,7 +385,7 @@ AGENT_MAX_SUMMARIZE_BATCH = _get_env_int("AGENT_MAX_SUMMARIZE_BATCH", 20, min_va
 # compaction (see backend/agent_runtime/summary_compactor.py) — never by naive
 # mid-text truncation. Stale/irrelevant details are dropped first so the summary
 # stays useful as it condenses.
-AGENT_MAX_SUMMARY_CHARS = _get_env_int("AGENT_MAX_SUMMARY_CHARS", 2000, min_val=200, max_val=100_000)
+AGENT_MAX_SUMMARY_CHARS = _get_env_int("AGENT_MAX_SUMMARY_CHARS", 4000, min_val=200, max_val=100_000)
 
 # Max LLM compaction attempts before the deterministic line-level fallback runs.
 AGENT_SUMMARY_COMPACT_ATTEMPTS = _get_env_int("AGENT_SUMMARY_COMPACT_ATTEMPTS", 2, min_val=0, max_val=5)

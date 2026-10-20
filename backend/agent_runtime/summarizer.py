@@ -59,7 +59,8 @@ current date. If the existing summary or messages contain dates from the past (e
 Rules:
 - Write in English only, regardless of the conversation language
 - Extract ONLY facts, decisions, requests, and outcomes
-- Do NOT include any style, tone, greetings, emojis, or honorifics
+- Do NOT include any style, tone, greetings, emojis, or honorifics of your own
+  (standing instructions the USER gave about how to reply are NOT style: keep them, see Preferences)
 - Use bullet points for clarity
 - If there is an existing summary, merge then create new compact summary
 - Ignore the tools, focus to the agent response and user decision.
@@ -71,6 +72,9 @@ Rules:
     - Full Name: ...
     - Phone Number: ...
     - Total Guests: ...
+- Preferences: <-- ALWAYS keep, never drop. Standing instructions from the user about how the assistant must behave.
+    - Reply language: ... (the language the user writes in or asked for, e.g. Indonesian)
+    - Form of address / format / other rules the user asked for: ...
 - Requests:
     - ...
     - ...
