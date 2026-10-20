@@ -7012,6 +7012,12 @@ function renderEntries(entries) {
             let result;
             try { result = JSON.parse(entry.content); } catch(e) { result = {data: entry.content}; }
             chatUI.appendTimelineEntry(thinkingId, {type: 'tool_result', tool: entry.function, result, error: !!entry.error});
+            // switch_workplace: end this bubble and draw the divider here, later steps start a new one.
+            if (entry.function === 'switch_workplace' && !entry.error && result && result.workplace_switch) {
+                chatUI.finalizeThinkingBubble(thinkingId);
+                thinkingId = null;
+                chatUI.appendMessage('system', '', {metadata: {workplace_switch: result.workplace_switch}, timestamp: entry.ts});
+            }
         } else if (type === 'intermediate') {
             if (!thinkingId) thinkingId = chatUI.showThinkingIndicator();
             chatUI.appendTimelineEntry(thinkingId, {type: 'response', content: entry.content});
