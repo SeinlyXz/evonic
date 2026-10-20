@@ -49,11 +49,14 @@ def test_switch_moves_agent_and_updates_live_context():
 
     res = run("switch_workplace", {"action": "switch", "workplace": "ws-b"})
     assert "error" not in res
+    # the chat draws its divider from this, at the point of the call
+    assert res["workplace_switch"]["from"]["id"] == "ws-a" and res["workplace_switch"]["to"]["id"] == "ws-b"
     assert db.get_agent("ws_agent")["workplace_id"] == "ws-b"
     assert ctx["workplace_id"] == "ws-b"      # later calls this turn follow the move
 
-    run("switch_workplace", {"action": "switch", "workplace": "local"})
+    back = run("switch_workplace", {"action": "switch", "workplace": "local"})
     assert not db.get_agent("ws_agent")["workplace_id"]
+    assert back["workplace_switch"]["from"]["id"] == "ws-b" and back["workplace_switch"]["to"] is None
 
 
 def test_allowlist_blocks_other_workplaces():
@@ -120,3 +123,19 @@ def test_workplace_endpoint_follows_a_switch_the_agent_made():
     agent_switch.switch("ws_agent", "local")
     assert c.get("/api/agents/ws_agent/workplace").get_json() == {"workplace_id": None}
     assert c.get("/api/agents/nope/workplace").status_code == 404
+
+
+def test_tool_switch_writes_no_system_note_but_the_manual_path_still_does():
+    from unittest.mock import patch
+    from backend.tools import tool_registry
+    from backend.workplaces import agent_switch
+    from models.db import db
+
+    _setup(db, workplace_switch_enabled=1)
+    ctx = {"id": "ws_agent", "workplace_switch_enabled": True, "workplace_id": "ws-a"}
+    with patch("backend.workplaces.switch_note.note_workplace_switch") as note:
+        tool_registry.get_builtin_executor(ctx)("switch_workplace", {"action": "switch", "workplace": "ws-b"})
+        # a note written mid-turn would only surface after the answer; the tool result carries the divider instead
+        note.assert_not_called()
+        agent_switch.switch("ws_agent", "ws-a")
+        note.assert_called_once()

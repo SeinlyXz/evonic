@@ -68,8 +68,12 @@ def _resolve(options: List[Dict[str, Any]], target: str) -> Optional[Dict[str, A
     return named[0] if len(named) == 1 else None
 
 
-def switch(agent_id: str, target: str) -> Dict[str, Any]:
+def switch(agent_id: str, target: str, note: bool = True) -> Dict[str, Any]:
     """Switch ``agent_id`` to ``target`` (workplace id or exact name, or ``local``).
+
+    ``note=False`` skips the ``[SYSTEM]`` chat note: the switch_workplace tool uses it because
+    its own result already tells the agent, and a note written mid-turn would only show up after
+    the answer. The result then carries ``transition`` so the chat can draw the divider in place.
 
     Returns ``{'ok': True, ...}`` or ``{'ok': False, 'error': ...}``.
     """
@@ -102,11 +106,14 @@ def switch(agent_id: str, target: str) -> Dict[str, Any]:
     if not db.update_agent(agent_id, {'workplace_id': new_id}):
         return {'ok': False, 'error': 'Failed to update the agent workplace.'}
     after = db.get_agent(agent_id)
+    transition = None
     try:
-        from backend.workplaces.switch_note import note_workplace_switch
-        note_workplace_switch(agent, after)
+        from backend.workplaces import switch_note
+        if note:
+            switch_note.note_workplace_switch(agent, after)
+        transition = {'from': switch_note._side(agent)['meta'], 'to': switch_note._side(after)['meta']}
     except Exception:
-        _logger.warning("Failed to add workplace switch note for agent %s", agent_id, exc_info=True)
-    return {'ok': True, 'changed': True, 'workplace': option, 'workplace_id': new_id,
+        _logger.warning("Failed to describe the workplace switch for agent %s", agent_id, exc_info=True)
+    return {'ok': True, 'changed': True, 'workplace': option, 'workplace_id': new_id, 'transition': transition,
             'message': f"Switched to \"{option['name']}\". Your tools now run there; "
                        "earlier tool results came from the previous workplace."}

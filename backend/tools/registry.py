@@ -1618,7 +1618,7 @@ def _builtin_switch_workplace_factory(agent_context: dict):
         target = (arguments or {}).get('workplace')
         if not target:
             return {"error": "workplace is required for action='switch'."}
-        result = agent_switch.switch(agent_id, str(target))
+        result = agent_switch.switch(agent_id, str(target), note=False)
         if not result.get('ok'):
             return {"error": result.get('error')}
         if result.get('changed'):
@@ -1626,7 +1626,11 @@ def _builtin_switch_workplace_factory(agent_context: dict):
             fresh = db.get_agent(agent_id) or {}
             agent_context['workplace_id'] = fresh.get('workplace_id')
             agent_context['workspace'] = _workspace_for(fresh)
-        return {"result": result['message'], "workplace": result['workplace']}
+        out = {"result": result['message'], "workplace": result['workplace']}
+        if result.get('transition'):
+            # The chat UI splits the turn at this point and draws the "Workplace switched" divider.
+            out["workplace_switch"] = result['transition']
+        return out
 
     return tool_def, executor
 

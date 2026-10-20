@@ -3144,7 +3144,7 @@ html.dark #tab-general { --gs-line: rgb(148 163 184 / .22); --gs-surface: rgb(14
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=71" defer></script>
+<script src="{{ url_for('static', filename='js/chat-ui.js') }}?v=72" defer></script>
 <script src="{{ url_for('static', filename='js/ai-logos.js') }}?v=1" defer></script>
 <script src="{{ url_for('static', filename='js/agent-state.js') }}?v=12" defer></script>
 <script src="{{ url_for('static', filename='js/state-ui.js') }}?v=16" defer></script>
@@ -7216,6 +7216,17 @@ function _handleAgentRealtime(evtName, data, sessionId) {
         return;
     }
     turn.ingest({event: evtName, data, seq});
+    // The agent moved itself mid-turn: break the chat here with the "Workplace switched" divider and
+    // carry on in a fresh bubble. Only the display splits; the backend turn is still one chain.
+    if (evtName === 'tool_executed' && data.tool === 'switch_workplace' && !data.error
+            && data.result && data.result.workplace_switch) {
+        const at = data.ts || data.timestamp || Date.now();
+        turn.ingest({event: 'turn_split', data: {timestamp: at}, seq: 0});
+        chatUI.appendMessage('system', '', {metadata: {workplace_switch: data.result.workplace_switch}, timestamp: at});
+        turn = chatUI.showThinkingIndicator();
+        _currentTurn.thinkingId = turn;
+        return;
+    }
     if (evtName === 'done') {
         _renderTurnResponse(data);
         _currentTurn = null;
