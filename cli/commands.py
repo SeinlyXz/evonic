@@ -2763,6 +2763,11 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False, verbose=Fals
     import json
     import platform
 
+    try:
+        import requests
+    except ImportError:
+        requests = None
+
     global _DOCTOR_COMPACT
     _DOCTOR_COMPACT = fix and not verbose
 
@@ -2935,15 +2940,18 @@ def doctor_command(quick=False, fix=False, with_llm_provider=False, verbose=Fals
 
     # External internet connectivity
     try:
+        if requests is None:
+            raise RuntimeError("requests not installed")
         r = requests.get("https://httpbin.org/status/200", timeout=5)
         if r.status_code == 200:
             results.append(_ok("Internet connectivity"))
         else:
             results.append(_warn(f"Internet check HTTP {r.status_code}"))
-    except requests.exceptions.Timeout:
-        results.append(_warn("Internet check timed out"))
     except Exception as e:
-        results.append(_warn(f"Internet check failed: {e}"))
+        if requests is not None and isinstance(e, requests.exceptions.Timeout):
+            results.append(_warn("Internet check timed out"))
+        else:
+            results.append(_warn(f"Internet check failed: {e}"))
 
     # ── 4. Service Check ──────────────────────────────────────
     _section("4. Service Check")
